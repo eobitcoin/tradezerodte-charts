@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "entry_repeg_max" integer DEFAULT 2 NOT NULL;

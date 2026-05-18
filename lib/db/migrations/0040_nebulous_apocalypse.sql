@@ -1,0 +1,2 @@
+ALTER TABLE "bot_config" ADD COLUMN "max_stock_notional_usd" numeric(14, 2) DEFAULT '10000.00' NOT NULL;--> statement-breakpoint
+ALTER TABLE "bot_config" ADD COLUMN "alma939_instrument_mode" text DEFAULT 'options' NOT NULL;

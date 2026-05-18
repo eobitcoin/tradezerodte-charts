@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "highlight.js/styles/github-dark.css";
 
 :root {
   --background: #ffffff;
@@ -22,5 +23,171 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.prose {
+  line-height: 1.7;
+  color: var(--foreground);
+}
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.25;
+}
+.prose h1 { font-size: 1.5rem; }
+.prose h2 { font-size: 1.25rem; }
+.prose h3 { font-size: 1.1rem; }
+.prose p { margin: 0.75em 0; }
+.prose ul, .prose ol { margin: 0.75em 0; padding-left: 1.5rem; }
+.prose ul { list-style: disc; }
+.prose ol { list-style: decimal; }
+.prose li { margin: 0.25em 0; }
+.prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  background: rgba(127, 127, 127, 0.15);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.prose pre {
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 0.9rem 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+.prose blockquote {
+  border-left: 3px solid rgba(127,127,127,0.4);
+  padding: 0.25rem 0.75rem;
+  color: rgba(127,127,127,0.9);
+  margin: 1em 0;
+}
+.prose a { text-decoration: underline; }
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.95em;
+}
+.prose th, .prose td {
+  padding: 0.4em 0.6em;
+  border: 1px solid rgba(127,127,127,0.25);
+  text-align: left;
+}
+.prose th { background: rgba(127,127,127,0.08); font-weight: 600; }
+.prose hr { border: 0; border-top: 1px solid rgba(127,127,127,0.25); margin: 1.5em 0; }
+.prose img { max-width: 100%; height: auto; border-radius: 8px; }
+
+/* learn-prose: styling for /learn/* public glossary pages. Heavier
+   typography (larger H2/H3, generous spacing, colored callouts) since
+   these are content-marketing pages aimed at first-time visitors. */
+.learn-prose {
+  line-height: 1.75;
+  font-size: 16px;
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
+}
+.learn-prose h2 {
+  font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em;
+  margin: 2.5rem 0 0.75rem; color: #fff;
+}
+.learn-prose h3 {
+  font-size: 1.125rem; font-weight: 600;
+  margin: 1.5rem 0 0.5rem; color: #fff;
+}
+.learn-prose p { margin: 1rem 0; }
+.learn-prose ul, .learn-prose ol { margin: 1rem 0; padding-left: 1.5rem; }
+.learn-prose ul { list-style: disc; }
+.learn-prose ol { list-style: decimal; }
+.learn-prose li { margin: 0.35em 0; }
+.learn-prose strong { color: #fff; font-weight: 600; }
+.learn-prose a { color: #f87171; text-decoration: none; }
+.learn-prose a:hover { text-decoration: underline; }
+.learn-prose code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  background: rgba(255,255,255,0.06);
+  color: #fca5a5;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.learn-prose blockquote {
+  border-left: 3px solid rgba(220,38,38,0.6);
+  padding: 0.25rem 0 0.25rem 1rem;
+  margin: 1.5em 0;
+  color: rgba(255,255,255,0.7);
+  font-style: italic;
+}
+.learn-prose hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 2em 0; }
+
+/* ---------------------------------------------------------------------------
+ * 0DTE post body — section header highlighting.
+ *
+ * The Today / post-detail pages render the routine's markdown body. Inside
+ * Section 2 (Individual Ticker Analysis), each ticker is an `<h3>` like
+ * "TSLA — Tesla Inc" and the per-ticker Trade Plan subsection is an `<h4>`
+ * like "0DTE Trade Plan". Highlighting these two header levels gives the
+ * eye easy anchors to skim long reports without changing the prose
+ * rendering elsewhere on the site.
+ * ------------------------------------------------------------------------- */
+.dte-post h3 {
+  display: block;
+  background: rgba(220, 38, 38, 0.18);
+  border-left: 4px solid #dc2626;
+  padding: 0.55em 0.9em;
+  border-radius: 0 6px 6px 0;
+  font-size: 1.2em;
+  font-weight: 600;
+  color: inherit;
+  margin: 2em 0 0.75em;
+}
+.dte-post h4 {
+  /* Inline-block + content-fit width = the yellow only sits behind the
+     text, not the whole row. Like a highlighter mark. */
+  display: inline-block;
+  background: rgba(253, 224, 71, 0.8); /* yellow @ 80% */
+  color: #1c1917;
+  padding: 0.15em 0.55em;
+  border-radius: 4px;
+  font-size: 1em;
+  font-weight: 700;
+  margin: 1.5em 0 0.5em;
+}
+
+/* The routine emits "0DTE Trade Plan" as **bold paragraph** rather than a
+   real <h4>. lib/markdown.ts tags those <p>s with .trade-plan-heading so we
+   can paint the highlighter only behind the text. */
+.dte-post p.trade-plan-heading {
+  margin: 1.5em 0 0.5em;
+}
+.dte-post p.trade-plan-heading > strong {
+  display: inline-block;
+  background: rgba(253, 224, 71, 0.8); /* yellow @ 80% */
+  color: #1c1917;
+  padding: 0.15em 0.55em;
+  border-radius: 4px;
+  font-weight: 700;
+}
+
+/* "Entry Trigger:" labels inside ticker analysis paragraphs. Same yellow
+ * highlighter treatment as Trade Plan so PREMARKET posts visually match
+ * MARKET OPEN posts in how they call out the entry condition. The class is
+ * injected by lib/markdown.ts after rehype-sanitize. */
+.dte-post strong.entry-trigger-label {
+  display: inline-block;
+  background: rgba(253, 224, 71, 0.8);
+  color: #1c1917;
+  padding: 0.05em 0.45em;
+  border-radius: 4px;
+  font-weight: 700;
+  margin-right: 0.35em;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "alma_instrument_mode" text DEFAULT 'options' NOT NULL;

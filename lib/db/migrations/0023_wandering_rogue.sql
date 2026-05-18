@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "day_trade_force_exit" boolean DEFAULT true NOT NULL;

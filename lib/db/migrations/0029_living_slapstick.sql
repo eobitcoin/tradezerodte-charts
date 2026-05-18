@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "alma_reversal_exit" boolean DEFAULT false NOT NULL;

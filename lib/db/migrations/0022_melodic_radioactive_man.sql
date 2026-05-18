@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "max_plan_slippage_pct" numeric(6, 2) DEFAULT '50.00' NOT NULL;

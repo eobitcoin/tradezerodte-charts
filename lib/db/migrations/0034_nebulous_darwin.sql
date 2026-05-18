@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "entry_repeg_max_drift_pct" numeric(6, 2) DEFAULT '30.00' NOT NULL;

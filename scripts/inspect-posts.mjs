@@ -1,0 +1,15 @@
+import postgres from "postgres";
+const sql = postgres(process.env.DATABASE_PUBLIC_URL, { ssl: "require" });
+const cols = await sql`SELECT column_name, data_type, column_default, is_nullable FROM information_schema.columns WHERE table_name='posts' ORDER BY ordinal_position`;
+console.log("=== POSTS COLUMNS ===");
+for (const c of cols) console.log(`${c.column_name.padEnd(20)} ${c.data_type.padEnd(28)} default=${c.column_default ?? "NULL"} nullable=${c.is_nullable}`);
+const idx = await sql`SELECT indexname, indexdef FROM pg_indexes WHERE tablename='posts'`;
+console.log("\n=== POSTS INDEXES ===");
+for (const i of idx) console.log(`${i.indexname}: ${i.indexdef}`);
+const cons = await sql`SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid='posts'::regclass`;
+console.log("\n=== POSTS CONSTRAINTS ===");
+for (const c of cons) console.log(`${c.conname}: ${c.def}`);
+const recent = await sql`SELECT trading_day, scan_kind, title, run_at, updated_at FROM posts ORDER BY updated_at DESC LIMIT 8`;
+console.log("\n=== MOST RECENT POSTS ===");
+for (const r of recent) console.log(`day=${r.trading_day} kind=${r.scan_kind} run_at=${r.run_at?.toISOString?.() ?? r.run_at} updated_at=${r.updated_at?.toISOString?.() ?? r.updated_at} title="${(r.title ?? "").slice(0,50)}"`);
+await sql.end();

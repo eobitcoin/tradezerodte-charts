@@ -1,0 +1,156 @@
+{
+  "title": "0DTE Options Analysis — April 28, 2026",
+  "trading_day": "2026-04-28",
+  "run_at": "2026-04-28T12:00:00Z",
+  "sentiment": "neutral",
+  "bias": "elevated-caution / pre-earnings + pre-FOMC",
+  "meta": {
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3",
+    "routine_name": "0DTE Trading Research",
+    "edition": "Pre-Market — Monday Open"
+  },
+  "trades": [
+    {
+      "ticker": "AAPL",
+      "grade": "A-",
+      "rank": 1,
+      "direction": "call",
+      "strike": "$275C",
+      "expiry": "2026-04-28",
+      "entry_zone": "$2.00–$3.50",
+      "entry_trigger": "Opens above $272, holds VWAP ($270–271) first 15 min, reclaims $273",
+      "target1": 276,
+      "target2": 279,
+      "stop": "Close below $270",
+      "time_stop": "2:30 PM",
+      "rationale": "Strongest premarket gap (+2.69%), clean breakout above $265 resistance, pre-earnings drift into Thursday, high liquidity, manageable IV."
+    },
+    {
+      "ticker": "MU",
+      "grade": "B+",
+      "rank": 2,
+      "direction": "call",
+      "strike": "$530C",
+      "expiry": "2026-04-28",
+      "entry_zone": "$3.50–$6.00",
+      "entry_trigger": "Holds above $523 and pushes through $528 with volume surge",
+      "target1": 533,
+      "target2": 540,
+      "stop": "Close below $518",
+      "time_stop": "2:30 PM",
+      "rationale": "NAND sector momentum, above-average volume, strong intraday trend alongside SNDK sector move."
+    },
+    {
+      "ticker": "PLTR",
+      "grade": "B",
+      "rank": 3,
+      "direction": "call",
+      "strike": "$144C–$145C",
+      "expiry": "2026-04-28",
+      "entry_zone": "$1.50–$3.00",
+      "entry_trigger": "Holds above $142.50 and breaks through $143.50 with volume confirmation",
+      "target1": 145.5,
+      "target2": 148,
+      "stop": "Close below $141.50",
+      "time_stop": "2:30 PM",
+      "rationale": "Clean technical setup, no earnings risk (May 4), steady +1.06%, constructive trend from $105 base."
+    },
+    {
+      "ticker": "NVDA",
+      "grade": "B-",
+      "rank": 4,
+      "direction": "call",
+      "strike": "$203C",
+      "expiry": "2026-04-28",
+      "entry_zone": "$2.00–$3.50",
+      "entry_trigger": "Holds above $201 post-open and pushes through $202 with volume",
+      "target1": 204,
+      "target2": 206,
+      "stop": "Close below $200",
+      "time_stop": "2:00 PM",
+      "rationale": "Record close momentum + AI narrative; RSI 72.6 limits aggressive entry — small size only."
+    },
+    {
+      "ticker": "SPY",
+      "grade": "C+",
+      "rank": 5,
+      "direction": "call",
+      "strike": "$718C",
+      "expiry": "2026-04-28",
+      "entry_zone": "$1.20–$2.20",
+      "entry_trigger": "SPY sustains above $717 after 10:30 AM data print",
+      "target1": 720,
+      "target2": 722,
+      "stop": "Close below $715.50",
+      "time_stop": "2:30 PM",
+      "rationale": "Conditional only — needs Dallas Fed positive AND breakout above $717. No edge on flat tape."
+    },
+    {
+      "ticker": "QQQ",
+      "grade": "C",
+      "rank": 6,
+      "direction": "call",
+      "strike": "$667C",
+      "expiry": "2026-04-28",
+      "entry_zone": "$1.50–$2.50",
+      "entry_trigger": "Holds above $665 past 10 AM AND VIX drops below 17.5",
+      "target1": "$669–670",
+      "stop": "Below $663",
+      "time_stop": "2:00 PM",
+      "rationale": "Flat tape, low conviction; only valid on tech-leadership confirmation."
+    },
+    {
+      "ticker": "TSLA",
+      "grade": "C-",
+      "rank": 7,
+      "direction": "put",
+      "strike": "$370P",
+      "expiry": "2026-04-28",
+      "entry_zone": "$2.00–$3.50",
+      "entry_trigger": "Breaks below $372 after attempting and failing to reclaim $375 in first 30 min",
+      "target1": 368,
+      "target2": 363,
+      "stop": "TSLA reclaims $375.50",
+      "time_stop": "1:00 PM",
+      "rationale": "Only valid if SPY/QQQ turn negative; do not short TSLA into a positive tape."
+    },
+    {
+      "ticker": "AMD",
+      "grade": "D+",
+      "direction": "avoid",
+      "rationale": "Slight negative drift (-0.34%), no catalyst today, elevated RSI after 65% April run."
+    },
+    {
+      "ticker": "AVGO",
+      "grade": "D",
+      "direction": "avoid",
+      "rationale": "Slight negative drift (-0.51%), no fresh catalyst, range-bound."
+    },
+    {
+      "ticker": "GOOGL",
+      "grade": "D",
+      "direction": "avoid",
+      "rationale": "Earnings TOMORROW — IV inflated; 0DTE expires before earnings catalyst."
+    },
+    {
+      "ticker": "AMZN",
+      "grade": "D",
+      "direction": "avoid",
+      "rationale": "Earnings TOMORROW — IV trap; strong PM (+3.49%) but premium not worth it for 0DTE."
+    },
+    {
+      "ticker": "META",
+      "grade": "D",
+      "direction": "avoid",
+      "rationale": "Earnings TOMORROW — same IV-trap issue."
+    },
+    {
+      "ticker": "SNDK",
+      "grade": "F",
+      "direction": "avoid",
+      "rationale": "Earnings April 30 (2 days); -1.99% premarket; IV 80–120%+; bid-ask extreme; gamma risk catastrophic."
+    }
+  ],
+  "body_md": "**Pre-Market Edition · Monday Open**\n\n> **DATA TRANSPARENCY:** Price levels sourced from live searches (Yahoo Finance, MarketBeat, StocksToTrade, Investing.com). Live options-chain data (exact bid/ask, live greeks) is **unavailable** — premium ranges and IV are estimated from historical ranges and pre-earnings context. Technical indicators (VWAP, exact MAs) are projected from available price action. All recommendations are based on confirmed price data only.\n\n## Section 1 — Macro Market Context\n\n| Indicator | Reading | Signal |\n|---|---|---|\n| **SPY** | $715.17 (+0.17%) | Flat / Slight Bid |\n| **QQQ** | $664.23 (−0.01%) | Flat / Neutral |\n| **VIX** | 18.02 | Moderate — Elevated Pre-Event |\n| **S&P 500** | ~7,150 | Above 7,000 — Structurally Bullish |\n| **Market Breadth** | Positive A/D Line | Broadly Constructive |\n| **Nasdaq Futures** | Flat/Slightly Bid | No Strong Directional Bias |\n| **Market Posture** | Pre-Earnings Superweek + Pre-FOMC | **ELEVATED CAUTION** |\n\n### Critical Macro Calendar This Week\n\n| Day | Event |\n|---|---|\n| **Monday Apr 28 (TODAY)** | Dallas Fed Manufacturing 10:30 AM — Pre-earnings drift |\n| **Tuesday Apr 29 (TOMORROW)** | GOOGL, MSFT, AMZN, META earnings after close |\n| **Wednesday Apr 30** | **FOMC Rate Decision** + AAPL, SNDK earnings after close |\n\n**Macro conclusion:** Market is flat-to-slightly-bid with VIX at 18. The backdrop is constructive BUT loaded: the biggest earnings week of 2026 (Mag 7 + SNDK) intersects with a Fed decision. IV is inflated across all pre-earnings names. This limits clean 0DTE setups. **Only trade relative-strength outliers with high-conviction intraday setups. Reduce position size 30–40% from normal.** Broad-index calls (SPY/QQQ) require a clear breakout above resistance — do not chase flat opens.\n\n## Section 2 — Individual Ticker Analysis\n\n### AAPL — Apple Inc.\n\n| Field | Value |\n|---|---|\n| Premarket Price | **$273.33** |\n| Prev Close | ~$266.14 |\n| Premarket Gap | **+$7.19 / +2.69%** |\n| PM High / Low | ~$274 / ~$271 |\n| PM Volume | Elevated |\n| Catalyst | Pre-earnings positioning; broke key resistance at $265; earnings **April 30 after close** |\n\n**Technical summary.** AAPL is the **strongest premarket performer** in today's watchlist. The stock broke above a long-term resistance zone at $265 (Triangle + 50% Fib retracement from Dec decline) on April 27, and is now gapping up further in premarket. Pre-earnings drift into Thursday's print is the primary driver. April 27 range: $265.07–$269.18 (close ~$267.40). Premarket is tagging $273.33 — a decisive breakout. VWAP on open likely near $270–271 as the stock absorbs the gap.\n\nRSI estimated **~60–65** (not overbought, momentum building). IV elevated due to earnings proximity (estimated 35–45%).\n\n**Support / Resistance**\n\n| Level | Type | Notes |\n|---|---|---|\n| $280–282 | Resistance | Prior swing-high zone |\n| $276–278 | Resistance | Next measured target |\n| $274–275 | Resistance | Near-term overhead |\n| **$273.33** | Current PM price | |\n| $270–271 | Support | VWAP on gap open |\n| $267–268 | Support | Prev close / intraday level |\n| $265 | Major Support | Breakout level — must hold |\n\n**0DTE trade plan — see Trade Summary above.**\n\n### MU — Micron Technology\n\n| Field | Value |\n|---|---|\n| Intraday Range | $497.96 – **$531.33** |\n| Current Price | ~$526 |\n| Prev Close (est.) | ~$510 |\n| Change | **+~3% intraday** |\n| PM Volume | 41.3M vs 38.05M avg (above average) |\n| Catalyst | NAND/AI memory momentum; SNDK sector tailwind; AI data-center demand |\n\n**Technical summary.** MU is exhibiting strong relative strength alongside the NAND memory sector. Volume is above average. The stock is breaking to new intraday highs. Momentum-driven 0DTE CALL setup — but the wide intraday range ($33) reflects high volatility and requires careful entry management. RSI estimated ~70–74. IV estimated ~50–65%.\n\n### PLTR — Palantir Technologies\n\n| Field | Value |\n|---|---|\n| Open Price | **$143.09** |\n| Current | ~$143.10 (+1.06%) |\n| Prev Close | ~$141.59 |\n| 52-Wk Range | $105.32 – $207.52 |\n| Earnings | **May 4 (1 week out — no imminent risk)** |\n| Analyst Target | $194.06 (+35.6%) |\n| Catalyst | AI/government contracts; clean uptrend; no event risk today |\n\n**Technical summary.** PLTR is the cleanest 0DTE setup outside of AAPL and MU. No earnings for a week, steady +1.06% gain at open, trading in a constructive uptrend from the $105 lows. RSI estimated ~57–62 (healthy momentum without overbought risk). IV estimated ~55–70%. The large gap between current price ($143) and analyst target ($194) suggests institutions are still accumulating. The 52-week high at $207 gives PLTR room to run.\n\n### NVDA — NVIDIA Corp.\n\n| Field | Value |\n|---|---|\n| Premarket Price | $201.90 |\n| Prev Close | ~$199.89 |\n| Premarket Gap | **+$2.01 / +1.01%** |\n| Catalyst | Record close Friday (April 25); AI infrastructure rally; RSI 72.6 |\n\n**Technical summary.** NVDA set a record close Friday and is continuing higher in premarket. RSI is **72.6** — confirmed slightly overbought. The stock is in a clear uptrend. However, 0DTE CALL risk is higher when RSI is this elevated — reversals from overbought are swift and punishing in gamma-rich 0DTE. VWAP open likely ~$200. IV estimated 40–50%.\n\n### SPY — S&P 500 ETF\n\n| Field | Value |\n|---|---|\n| Price | $715.17 |\n| Prev Close | ~$713.94 |\n| Gap % | +0.17% |\n| PM Volume | High (index ETF) |\n| Catalyst | Pre-earnings drift, FOMC positioning |\n| VIX | 18.02 |\n\n**Technical summary.** SPY is consolidating near the 7,150 S&P 500 equivalent. Breadth is positive. VWAP likely sits at $713–715. The trend is up from late-March lows but momentum is stalling into mega-cap earnings week. No strong directional edge intraday without a catalyst. RSI estimated ~56 (neutral).\n\n### QQQ — Nasdaq 100 ETF\n\n| Field | Value |\n|---|---|\n| Price | $664.23 |\n| Prev Close | ~$664.30 |\n| Gap % | −0.01% |\n| Catalyst | Mag 7 earnings tomorrow; FOMC Wednesday |\n| IV est. | ~20–24% |\n\n**Technical summary.** Essentially flat. Tech is not leading today. Pre-earnings hedging is suppressing QQQ momentum. VWAP near $664. RSI estimated ~55. No edge for 0DTE without a defined catalyst breakout.\n\n### TSLA — Tesla Inc.\n\n| Field | Value |\n|---|---|\n| Premarket Price | **$374.12** |\n| Prev Close (est.) | ~$375.62 |\n| Gap | **−$1.50 / −0.40%** |\n| YTD | **−16%** |\n| Catalyst | Q1 revenue miss; profits beat; Cybercab/robotaxi slower than expected; capex >$25B raises cash-flow concerns |\n\n**Technical summary.** TSLA is the weakest large-cap on the list. At -16% YTD with a revenue miss and a decelerating robotaxi roadmap, the fundamentals weigh. Technically below its 200-day MA. RSI estimated ~38–44. Potentially clean PUT setup if the broader market weakens — but with SPY +0.17%, shorting individual weak stocks against a positive tape is low conviction.\n\n### AVOID list\n\n#### AMD — Advanced Micro Devices\n+65% April rally — now pulling back slightly with no fresh catalyst. After a sustained run, 0DTE momentum plays are risky without a clear intraday breakout. RSI estimated ~68. **Trade Grade: D+ — AVOID.**\n\n#### AVGO — Broadcom Inc.\nAI/ASIC infrastructure leader (22% YTD), but slight negative drift (-0.51%) and no immediate catalyst. **Trade Grade: D — AVOID today.**\n\n#### GOOGL — Alphabet Inc.\nFlat ahead of tomorrow's earnings. IV meaningfully elevated (~35–45%). **AVOID for 0DTE.** Earnings tomorrow = IV bloat + binary risk. Pre-earnings drift trades belong in longer-dated options, not 0DTE. **Trade Grade: D — AVOID.**\n\n#### AMZN — Amazon\nOne of the strongest premarket gainers (+3.49%) but this is almost entirely pre-earnings IV expansion. 0DTE CALL options will be expensive (estimated IV 45–55%) and will expire before the earnings catalyst materializes. **Trade Grade: D — AVOID for 0DTE.**\n\n#### META — Meta Platforms\nSame earnings-tomorrow problem as GOOGL and AMZN. IV is elevated. 0DTE options will not capture the earnings move. **Trade Grade: D — AVOID.**\n\n#### SNDK — SanDisk Corporation\nPulling back sharply in premarket (-1.99%), digesting the massive move from April 27 highs of $1,079. Earnings in 2 days means IV is extremely elevated (estimated 80–120%+). **Trade Grade: F — AVOID.** IV is potentially in triple digits. Bid-ask spreads on 0DTE options will be massive. This is a volatility trap.\n\n## Section 3 — Probability Analysis\n\n| Ticker | IV est. | Expected Move (0DTE) | Momentum | Liquidity | Bid-Ask Risk | Gamma Risk | Overall Probability |\n|---|---|---|---|---|---|---|---|\n| AAPL | 35–45% | ±$3.50–$4.50 | Strong (gap up) | High | Low | Moderate | **70–75%** |\n| MU | 50–65% | ±$16–$22 | Strong (sector run) | Moderate | Moderate | High | **60–65%** |\n| PLTR | 55–70% | ±$4.30–$5.50 | Moderate | High | Low–Mod | Moderate | **60–65%** |\n| NVDA | 40–50% | ±$5.50–$7.00 | Moderate (overbought) | Very High | Low | High | **55–60%** |\n| SPY | ~18–22% | ±$8–$10 | Flat | Very High | Very Low | Low | **50–55%** |\n| QQQ | ~20–24% | ±$9–$11 | Flat | Very High | Very Low | Low | **48–52%** |\n| TSLA (PUT) | 55–70% | ±$11–$14 | Weak | High | Low | High | **45–52%** |\n| AMZN | 45–55% | ±$8–$10 | Strong PM but IV trap | Very High | Low | Very High | **40–45%** |\n| GOOGL | 35–45% | ±$8–$11 | Flat | Very High | Low | Very High | **38–42%** |\n| META | 40–50% | ±$18–$22 | Flat | High | Moderate | Very High | **38–42%** |\n| AMD | 40–55% | ±$9–$13 | Slightly neg | High | Low | High | **38–42%** |\n| AVGO | 35–45% | ±$10–$13 | Slightly neg | High | Low | Moderate | **38–42%** |\n| SNDK | 80–120%+ | ±$50–$75 | Negative PM | Low–Mod | **Very Wide** | Extreme | **30–35%** |\n\n## Section 6 — Execution Checklist & Time Management\n\n**Before entry (any trade):**\n\n- SPY holding above $714? (Confirm tape is supportive)\n- VIX below 19.5? (Spike above 20 = no 0DTE CALLs)\n- Target ticker above VWAP?\n- Premium entry within estimated zone?\n- Size reduced 30–40% given pre-FOMC, pre-earnings week?\n\n**Intraday time guidelines:**\n\n- 09:30–09:45 → Wait, observe open, do not chase\n- 09:45–11:00 → Primary entry window (best theta/gamma balance)\n- 11:00–14:00 → Theta decay accelerates; only trade momentum continuation\n- 14:00–14:30 → Final entry window for strong setups\n- 14:30+ → EXIT OR ROLL — gamma/theta risk skyrockets\n- 15:30–16:00 → 0DTE premium collapse — exit ALL positions\n\n**Risk management:**\n\n- Max loss per trade: 1% of account\n- Max concurrent 0DTE positions: 2\n- If down 20% on premium → exit immediately, no averaging\n\n## Section 7 — Bottom Line\n\nThis is a pre-earnings, pre-FOMC Monday. The edge is narrow. Concentrate size in **AAPL** (strongest gap-and-go setup), use **MU** and **PLTR** as secondary trades, and keep powder dry for the earnings reactions Tuesday/Wednesday in longer-dated structures.\n"
+}

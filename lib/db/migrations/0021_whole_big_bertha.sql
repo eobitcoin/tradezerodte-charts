@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "live_orders_confirmed" boolean DEFAULT false NOT NULL;

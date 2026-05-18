@@ -1,0 +1,1602 @@
+import {
+  pgTable,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  numeric,
+  uuid,
+  date,
+  jsonb,
+  index,
+  uniqueIndex,
+  customType,
+} from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+
+const citext = customType<{ data: string }>({
+  dataType() {
+    return "citext";
+  },
+});
+
+export type UserRole = "user" | "admin";
+export type UserStatus = "pending" | "active" | "disabled";
+export type SubscriptionTier = "free" | "paid";
+
+export const users = pgTable("users", {
+  id: text("id").primaryKey(),
+  email: citext("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  // user lifecycle ----------------------------------------------------------
+  role: text("role").$type<UserRole>().notNull().default("user"),
+  status: text("status").$type<UserStatus>().notNull().default("pending"),
+  // null = no expiry; otherwise access ends at this timestamp
+  accessExpiresAt: timestamp("access_expires_at", { withTimezone: true }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  approvedBy: text("approved_by"),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  disabledReason: text("disabled_reason"),
+  // future paywall hook: subscription tier (defaults free, extend later)
+  subscriptionTier: text("subscription_tier").$type<SubscriptionTier>().notNull().default("free"),
+  // When true, the login-time founding-admin auto-promotion is suppressed for
+  // this account. Set automatically by /api/admin/users/[id]/role when an admin
+  // demotes a founding-admin email; cleared when an admin re-promotes. Lets
+  // demotions of bootstrap accounts actually stick.
+  foundingAdminOptOut: boolean("founding_admin_opt_out").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const userProfiles = pgTable("user_profiles", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  displayName: text("display_name"),
+  fullName: text("full_name"),
+  timezone: text("timezone"),
+  // admin-only notes about the user
+  adminNotes: text("admin_notes"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type AdminAction =
+  | "approve"
+  | "disable"
+  | "enable"
+  | "extend_access"
+  | "set_role"
+  | "update_profile"
+  | "verify_email";
+
+export const adminActions = pgTable(
+  "admin_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: text("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetUserId: text("target_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    action: text("action").$type<AdminAction>().notNull(),
+    beforeValue: jsonb("before_value").$type<Record<string, unknown>>(),
+    afterValue: jsonb("after_value").$type<Record<string, unknown>>(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("admin_actions_target_idx").on(t.targetUserId, t.createdAt.desc()),
+    index("admin_actions_actor_idx").on(t.actorUserId, t.createdAt.desc()),
+  ],
+);
+
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type AdminActionRecord = typeof adminActions.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Economic calendar — upcoming-week macro events that may move US asset prices.
+// Refreshed weekly via Sunday cron from Finnhub (raw events) and optionally
+// enriched by a separate Claude routine that publishes richer "potential
+// impact" commentary on top of the canned event-type description.
+// ----------------------------------------------------------------------------
+
+export type EconImportance = "low" | "medium" | "high";
+
+export const economicEvents = pgTable(
+  "economic_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Finnhub event field (or hash of country|title|time for other sources)
+     *  — used as the dedup/upsert key. */
+    externalId: text("external_id").notNull().unique(),
+    title: text("title").notNull(),                                 // "CPI YoY"
+    country: text("country"),                                       // "US", "EU", "JP", "GB", "CN"
+    eventTime: timestamp("event_time", { withTimezone: true }).notNull(),
+    importance: text("importance").$type<EconImportance>().notNull().default("low"),
+    /** Numeric values for printed/expected/prior readings. Null until known. */
+    actual: numeric("actual", { precision: 24, scale: 6 }),
+    estimate: numeric("estimate", { precision: 24, scale: 6 }),
+    prior: numeric("prior", { precision: 24, scale: 6 }),
+    unit: text("unit"),                                             // "%", "K", "$B"
+    /** Short canned description: what the event measures. Generated at
+     *  ingest from the title pattern. */
+    description: text("description"),
+    /** Longer narrative on potential market impact. Optionally overridden by
+     *  the Sunday Claude routine via /api/economic-calendar/publish. */
+    impactText: text("impact_text"),
+    /** Asset classes typically moved by this event — for filtering. */
+    assetTags: text("asset_tags").array().notNull().default(sql`ARRAY[]::text[]`),
+    /** Where the row came from. */
+    source: text("source").notNull().default("finnhub"),
+    /** Full upstream payload for debugging. */
+    raw: jsonb("raw").$type<Record<string, unknown>>(),
+    /** Monday of the week this event falls in (NY tz). Indexed for week
+     *  pickers. */
+    weekOf: date("week_of").notNull(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("economic_events_time_idx").on(t.eventTime),
+    index("economic_events_week_idx").on(t.weekOf, t.eventTime),
+    index("economic_events_importance_idx").on(t.importance, t.eventTime),
+  ],
+);
+
+export type EconomicEvent = typeof economicEvents.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Waitlist — public signup table from the /welcome marketing page. Admin
+// reviews entries and "invites" selected ones, which creates a `users` row
+// + password-reset link that the new user clicks to set their password and
+// gain access.
+// ----------------------------------------------------------------------------
+
+export type WaitlistStatus = "pending" | "invited" | "declined";
+
+export const waitlistSignups = pgTable(
+  "waitlist_signups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: citext("email").notNull().unique(),
+    fullName: text("full_name").notNull(),
+    whyInterested: text("why_interested").notNull(),
+    tradingExperience: text("trading_experience").notNull(),
+    /** Optional ?ref= tracking from the marketing page URL. */
+    source: text("source"),
+    status: text("status").$type<WaitlistStatus>().notNull().default("pending"),
+    invitedAt: timestamp("invited_at", { withTimezone: true }),
+    invitedBy: text("invited_by").references(() => users.id, { onDelete: "set null" }),
+    /** Set once invited — links the waitlist row to the resulting user. */
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** Free-form admin notes (not visible to applicant). */
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("waitlist_signups_status_idx").on(t.status, t.createdAt.desc()),
+    index("waitlist_signups_created_idx").on(t.createdAt.desc()),
+  ],
+);
+
+export type WaitlistSignup = typeof waitlistSignups.$inferSelect;
+
+export const sessions = pgTable("sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const verificationTokens = pgTable("verification_tokens", {
+  token: text("token").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  token: text("token").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type Grade =
+  | "A+" | "A" | "A-"
+  | "B+" | "B" | "B-"
+  | "C+" | "C" | "C-"
+  | "D+" | "D" | "D-"
+  | "F";
+
+export type Direction = "call" | "put" | "long" | "short" | "avoid";
+
+/** Per-trade status emitted by market_open / analysis scans. Premarket trades
+ *  carry no status (implicitly confirmed). Silence = confirmed: a premarket
+ *  trade that isn't mentioned in a later scan stays as-is. */
+export type TradeStatus = "confirmed" | "revised" | "killed" | "added";
+
+/** Result of a trade once the analysis scan runs end-of-day. */
+export type TradeOutcome =
+  | "target1_hit"
+  | "target2_hit"
+  | "stopped"
+  | "no_fill"
+  | "time_stopped"
+  | "manual_exit";
+
+export type Trade = {
+  ticker: string;
+  grade: Grade;
+  rank?: number;
+  direction?: Direction;
+  strike?: number | string;
+  expiry?: string;
+  entry_zone?: string;
+  entry_trigger?: string;
+  target1?: number | string;
+  target2?: number | string;
+  stop?: number | string;
+  time_stop?: string;
+  rationale?: string;
+  // Scan-hierarchy fields — emitted by market_open / analysis scans.
+  status?: TradeStatus;
+  /** Required when status === "revised". Short human-readable diff. */
+  revision_summary?: string;
+  /** Required when status === "killed". Why the trade was invalidated. */
+  kill_reason?: string;
+  // Analysis-only outcome fields.
+  outcome?: TradeOutcome;
+  actual_entry?: number | string;
+  actual_exit?: number | string;
+  pnl_pct?: number;
+  result_notes?: string;
+};
+
+export type PostImage = {
+  key: string;
+  url: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+};
+
+/** Which scan produced this post — distinguishes the 8:30, 9:45, 10:15,
+ *  and post-close (~4:15) publications for the same trading_day.
+ *  `settlement` is the post-close scan that stamps end-of-day outcomes
+ *  (target hit / stopped / no-fill) onto each trade. */
+export type ScanKind = "premarket" | "market_open" | "analysis" | "settlement";
+
+export const posts = pgTable(
+  "posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tradingDay: date("trading_day").notNull(),
+    /** Defaults to "premarket" so the existing 8:30 routine works unchanged. */
+    scanKind: text("scan_kind").$type<ScanKind>().notNull().default("premarket"),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+    trades: jsonb("trades").$type<Trade[]>().notNull().default([]),
+    tickers: text("tickers").array().notNull().default(sql`ARRAY[]::text[]`),
+    sentiment: text("sentiment"),
+    bias: text("bias"),
+    images: jsonb("images").$type<PostImage[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("posts_trading_day_idx").on(t.tradingDay.desc()),
+    uniqueIndex("posts_day_kind_unique").on(t.tradingDay, t.scanKind),
+  ],
+);
+
+export type User = typeof users.$inferSelect;
+export type Session = typeof sessions.$inferSelect;
+export type Post = typeof posts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Insider scanner — daily SEC Form 4 purchase scan.
+// Independent table so the data shape stays clean (purchases, not trade plans).
+// ----------------------------------------------------------------------------
+
+export type InsiderBuy = {
+  ticker: string;
+  company: string;
+  executive: string;
+  title?: string;
+  shares?: number;
+  total_value?: number;
+  // "new" = first time this insider holds the stock; "addition" = adding to an existing position
+  position_type?: "new" | "addition";
+  filing_date?: string;
+  filing_url?: string;
+  notes?: string;
+};
+
+export const insiderPosts = pgTable(
+  "insider_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull().unique(),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull(),
+    buys: jsonb("buys").$type<InsiderBuy[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("insider_posts_scan_day_idx").on(t.scanDay.desc())],
+);
+
+export type InsiderPost = typeof insiderPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Daily Briefings — 15-second voiceover script + Higgsfield Soul video +
+// YouTube upload. One row per trading_day. Phase 1 stores just the script +
+// scene prompt; Phase 2 adds video_s3_key, Phase 3 adds youtube_video_id.
+// ----------------------------------------------------------------------------
+
+export type BriefingStatus =
+  | "pending"        // row reserved, no script yet
+  | "scripted"       // LLM wrote the script + setting prompt, ready for video
+  | "generating"     // ElevenLabs / Higgsfield job in flight
+  | "pending_upload" // MP4 rendered and available; YouTube upload not yet started
+  | "uploading"      // YouTube upload in flight
+  | "posted"         // live on YouTube, embedded on site
+  | "failed";        // see error_log
+
+export type BriefingErrorEvent = {
+  at: string;          // ISO timestamp
+  step: "scripting" | "generating" | "uploading" | "other";
+  message: string;
+  detail?: unknown;
+};
+
+/**
+ * Per-platform publish state. Set to `pending_review` automatically when the
+ * MP4 lands; admin flips to `approved` to release for upload. `posting` is the
+ * in-flight window (publish routine has picked it up). `posted` means it
+ * succeeded — for YouTube that's a live video, for TikTok (drafts mode) it's
+ * pushed to the user's app inbox awaiting final tap-publish.
+ */
+export type PlatformPublishStatus =
+  | "pending_review"
+  | "approved"
+  | "posting"
+  | "posted"
+  | "failed"
+  | "skipped";
+
+export const briefings = pgTable(
+  "briefings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tradingDay: date("trading_day").notNull().unique(),
+    /** 30-45 word voiceover script. First-person presenter voice. */
+    script: text("script"),
+    /** One-line scene/wardrobe/mood prompt fed to Higgsfield (Soul + Speak). */
+    settingPrompt: text("setting_prompt"),
+    status: text("status").$type<BriefingStatus>().notNull().default("pending"),
+    /** Higgsfield job ID once video generation kicks off (Phase 2). */
+    higgsfieldJobId: text("higgsfield_job_id"),
+    /** Railway bucket key for the durable MP4 copy (Phase 2). */
+    videoS3Key: text("video_s3_key"),
+    /** YouTube video ID once uploaded (Phase 3). */
+    youtubeVideoId: text("youtube_video_id"),
+    thumbnailUrl: text("thumbnail_url"),
+    /** Append-only audit trail of failures across steps. */
+    errorLog: jsonb("error_log").$type<BriefingErrorEvent[]>().notNull().default([]),
+    /** Free-form, e.g. routine_name, model, prompt_version, character_id. */
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Set when the first platform upload completes (legacy / first-success). */
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    // ---------- YouTube publish workflow ----------
+    /** Per-platform publish state. Null until video renders. */
+    ytStatus: text("yt_status").$type<PlatformPublishStatus>(),
+    ytTitle: text("yt_title"),
+    ytCaption: text("yt_caption"),
+    ytPostedAt: timestamp("yt_posted_at", { withTimezone: true }),
+    ytError: text("yt_error"),
+    // ---------- TikTok publish workflow (drafts/inbox mode) ----------
+    ttStatus: text("tt_status").$type<PlatformPublishStatus>(),
+    ttCaption: text("tt_caption"),
+    /** TikTok Content Posting API publish_id returned by /inbox/video/init/. */
+    ttPublishId: text("tt_publish_id"),
+    ttPostedAt: timestamp("tt_posted_at", { withTimezone: true }),
+    ttError: text("tt_error"),
+  },
+  (t) => [index("briefings_trading_day_idx").on(t.tradingDay.desc())],
+);
+
+export type Briefing = typeof briefings.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Max Pain — daily options max-pain + gamma-exposure snapshot per ticker.
+// One row per scan day. Per-ticker data lives in `tickers` JSONB; alerts
+// generated by the routine's regime-change detection live in `alerts` JSONB.
+// ----------------------------------------------------------------------------
+
+export type MaxPainGroup = "trading_focus" | "pin_friendly" | "index_vol" | "mega_cap";
+export type GexRegime = "POS" | "NEG" | "FLIP";
+export type MaxPainAlertSeverity = "HIGH" | "MED" | "LOW";
+
+export type MaxPainExpiration = {
+  exp: string;             // YYYY-MM-DD
+  dte?: number;
+  maxPain?: number;
+  spot?: number;
+  callOI?: number;
+  putOI?: number;
+  pcRatio?: number;
+  netGEX?: number;          // $M per 1%
+  source?: string;
+};
+
+export type MaxPainTicker = {
+  ticker: string;
+  group: MaxPainGroup;
+  spot?: number;
+  frontMonthMaxPain?: number;
+  totalGEX?: number;        // $B per 1%
+  flipStrike?: number;
+  callWall?: number;
+  putWall?: number;
+  regime?: GexRegime;
+  expirations?: MaxPainExpiration[];
+  tags?: string[];          // RETAIL, PIN, EST, STALE
+  source?: string;
+  notes?: string;
+};
+
+export type MaxPainAlert = {
+  id?: string;
+  ticker: string;
+  type: string;             // GAMMA_FLIP_CROSS, REGIME_CHANGE, MAX_PAIN_SHIFT, WALL_BREAK_CALL, WALL_BREAK_PUT, FLIP_MIGRATION, CROSS_SOURCE_DISAGREE
+  severity: MaxPainAlertSeverity;
+  message: string;
+  prior_value?: number | string;
+  current_value?: number | string;
+  acknowledged?: boolean;
+};
+
+export const maxPainPosts = pgTable(
+  "max_pain_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull().unique(),
+    title: text("title").notNull(),
+    bodyMd: text("body_md").notNull().default(""),
+    tickers: jsonb("tickers").$type<MaxPainTicker[]>().notNull().default([]),
+    alerts: jsonb("alerts").$type<MaxPainAlert[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("max_pain_posts_scan_day_idx").on(t.scanDay.desc())],
+);
+
+export type MaxPainPost = typeof maxPainPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Research — daily long-form per-ticker writeups (Wicked Stocks style).
+// One row per (ticker, scan_day). Body markdown + 2 chart images per ticker
+// (slots: "weekly", "daily" — but the slot field is free-form so future
+// templates can use other slots). Images live on the bucket; we just store
+// keys + URLs.
+// ----------------------------------------------------------------------------
+
+export type ResearchImage = {
+  slot: string;            // "weekly" | "daily" | (future: "intraday", etc.)
+  key: string;             // S3 object key
+  url: string;             // /api/images/<key> — gated path served by this app
+  alt?: string;
+  width?: number;
+  height?: number;
+  content_type?: string;
+};
+
+export const researchPosts = pgTable(
+  "research_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),
+    scanDay: date("scan_day").notNull(),
+    title: text("title").notNull(),
+    headline: text("headline").notNull().default(""),
+    bodyMd: text("body_md").notNull().default(""),
+    images: jsonb("images").$type<ResearchImage[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("research_posts_ticker_day_idx").on(t.ticker, t.scanDay),
+    index("research_posts_scan_day_idx").on(t.scanDay.desc()),
+    index("research_posts_ticker_idx").on(t.ticker),
+  ],
+);
+
+export type ResearchPost = typeof researchPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Research image chunked-upload staging table.
+// When the routine's upload_research_image tool call would carry >~200KB of
+// base64 (causing claude.ai's stream-idle timer to fire mid-tool-use), the
+// routine splits the payload into N chunks. Each chunk is one row here;
+// the final chunk triggers reassembly + S3 upload + row cleanup.
+// ----------------------------------------------------------------------------
+
+export const researchUploadChunks = pgTable(
+  "research_upload_chunks",
+  {
+    uploadId: text("upload_id").notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    chunkTotal: integer("chunk_total").notNull(),
+    dataB64: text("data_b64").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("research_upload_chunks_pk_idx").on(t.uploadId, t.chunkIndex),
+  ],
+);
+
+// ----------------------------------------------------------------------------
+// Radar — TradingView buy/sell signals streamed via webhook.
+// One row per signal event (kept as full history). The /radar page shows the
+// LATEST signal per (ticker, timeframe) using DISTINCT ON.
+// ----------------------------------------------------------------------------
+
+export type RadarTimeframe = "4h" | "1d" | "1w";
+export type RadarSignal = "buy" | "sell" | "neutral";
+
+export const radarSignals = pgTable(
+  "radar_signals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),
+    timeframe: text("timeframe").notNull(),
+    signal: text("signal").notNull(),
+    indicator: text("indicator"),
+    price: numeric("price", { precision: 14, scale: 4 }),
+    signalAt: timestamp("signal_at", { withTimezone: true }),
+    raw: jsonb("raw").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("radar_signals_ticker_tf_idx").on(t.ticker, t.timeframe),
+    index("radar_signals_signal_at_idx").on(t.signalAt.desc().nullsLast()),
+  ],
+);
+
+export type RadarSignalRow = typeof radarSignals.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Crypto Radar — same shape as the equity Radar but for crypto USDT pairs.
+// Kept in a separate table so the equity vs crypto schemas can evolve
+// independently (e.g. crypto-specific indicators, different watchlists).
+// ----------------------------------------------------------------------------
+
+export const cryptoRadarSignals = pgTable(
+  "crypto_radar_signals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),         // BTCUSDT, ETHUSDT, ...
+    timeframe: text("timeframe").notNull(),   // "4h" | "1d" | "1w"
+    signal: text("signal").notNull(),         // "buy" | "sell" | "neutral"
+    indicator: text("indicator"),
+    price: numeric("price", { precision: 20, scale: 8 }),  // crypto can be sub-dollar (TAO etc.)
+    signalAt: timestamp("signal_at", { withTimezone: true }),
+    raw: jsonb("raw").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("crypto_radar_signals_ticker_tf_idx").on(t.ticker, t.timeframe),
+    index("crypto_radar_signals_signal_at_idx").on(t.signalAt.desc().nullsLast()),
+  ],
+);
+
+export type CryptoRadarSignalRow = typeof cryptoRadarSignals.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Crypto research — daily writeup with a structured trade plan for the
+// flagship pairs (BTCUSDT/ETHUSDT/SOLUSDT). One row per scan_day. Trades
+// reuse the equity `Trade` shape — `direction` accepts "long"|"short"|"avoid"
+// already, and strike/expiry stay undefined for spot crypto.
+// ----------------------------------------------------------------------------
+
+export type CryptoTrade = {
+  ticker: string;                              // e.g. "BTCUSDT"
+  bias?: "long" | "short" | "neutral" | "avoid";
+  entry_zone?: string;                         // e.g. "$104,500-$105,200"
+  entry_trigger?: string;                      // e.g. "4H close > 105,200"
+  target1?: number | string;
+  target2?: number | string;
+  stop?: number | string;
+  time_horizon?: string;                       // e.g. "intraday", "1-2 days", "swing"
+  rationale?: string;
+};
+
+export const cryptoPosts = pgTable(
+  "crypto_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull().unique(),
+    title: text("title").notNull(),
+    headline: text("headline").notNull().default(""),
+    bodyMd: text("body_md").notNull().default(""),
+    trades: jsonb("trades").$type<CryptoTrade[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("crypto_posts_scan_day_idx").on(t.scanDay.desc())],
+);
+
+export type CryptoPost = typeof cryptoPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Crypto Weekly Research — Wicked-Stocks-style per-ticker writeup with two
+// annotated charts (weekly + daily). Each ticker is its own post (one publish
+// call per ticker), keyed on (ticker, scan_day). Mirrors the equity
+// research_posts table, kept separate so equity and crypto pages stay clean.
+// ----------------------------------------------------------------------------
+
+export const cryptoWeeklyResearchPosts = pgTable(
+  "crypto_weekly_research_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),
+    scanDay: date("scan_day").notNull(),
+    title: text("title").notNull(),
+    headline: text("headline").notNull().default(""),
+    bodyMd: text("body_md").notNull().default(""),
+    images: jsonb("images").$type<ResearchImage[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("crypto_weekly_research_ticker_day_idx").on(t.ticker, t.scanDay),
+    index("crypto_weekly_research_scan_day_idx").on(t.scanDay.desc()),
+    index("crypto_weekly_research_ticker_idx").on(t.ticker),
+  ],
+);
+
+export type CryptoWeeklyResearchPost = typeof cryptoWeeklyResearchPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Institutional flow — weekly 13F scan published as ONE post per scan_day.
+// The post body holds 5 candidate stocks in a structured jsonb array, each
+// with per-fund holdings + a retail-attention block. Posts UPSERT by
+// scan_day so re-runs on the same day overwrite cleanly.
+// ----------------------------------------------------------------------------
+
+export type InstitutionalSupportingFund = {
+  fund: string;
+  sharesNow: number;
+  sharesPrior: number | null;
+  deltaPct: number | null;
+  isNewPosition: boolean;
+};
+
+export type InstitutionalRetailAttention = {
+  googleTrendsScore: number | null;
+  news30DayCount: number | null;
+  isOnRetailHotlist: boolean;
+  optionsCallPutOiRatio: number | null;
+};
+
+export type InstitutionalStock = {
+  ticker: string;
+  companyName: string;
+  sector: string | null;
+  marketCapUsdB: number | null;
+  avgEntryPriceEstimate: number | null;
+  currentPrice: number | null;
+  totalSharesHeldUsd: number | null;
+  totalSharesHeld: number | null;
+  supportingFunds: InstitutionalSupportingFund[];
+  retailAttention: InstitutionalRetailAttention;
+  earningsNext: string | null;
+  thesis: string;
+  risks: string;
+};
+
+export const institutionalPosts = pgTable(
+  "institutional_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull(),
+    summary: text("summary").notNull().default(""),
+    methodology: text("methodology").notNull().default(""),
+    stocks: jsonb("stocks").$type<InstitutionalStock[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("institutional_posts_scan_day_idx").on(t.scanDay),
+  ],
+);
+
+export type InstitutionalPost = typeof institutionalPosts.$inferSelect;
+
+// Admin-editable list of funds the institutional scan should pull 13F
+// filings for. Seeded with the v1 list (Berkshire, Bridgewater, RenTech,
+// Citadel, Two Sigma); admin can add/disable through /admin/research/funds.
+export const institutionalFunds = pgTable(
+  "institutional_funds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    cik: text("cik").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("institutional_funds_cik_idx").on(t.cik),
+    index("institutional_funds_enabled_idx").on(t.enabled, t.sortOrder),
+  ],
+);
+
+export type InstitutionalFund = typeof institutionalFunds.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Earnings Whiplash Map — weekly scan that ranks the next ~2 weeks of S&P 500
+// earnings reports by historical post-earnings move magnitude, then flags the
+// names where the options-implied move is meaningfully BELOW the historical
+// realized move (asymmetric setup). ONE row per scan_day; same UPSERT pattern
+// as institutional_posts.
+// ----------------------------------------------------------------------------
+
+export type EarningsStock = {
+  ticker: string;
+  companyName: string;
+  sector: string | null;
+  marketCapUsdB: number | null;
+  earningsDate: string;                    // YYYY-MM-DD (next report)
+  earningsTime: "bmo" | "amc" | "unknown"; // before-market-open / after-market-close
+  currentPrice: number | null;
+  // Historical post-earnings realized move (absolute, %).
+  historicalAvgMovePct: number | null;     // avg |move| over lookback
+  historicalMaxMovePct: number | null;     // worst |move| over lookback
+  historicalMovesAbove8Pct: number | null; // count of moves ≥ 8% in lookback
+  lookbackQuarters: number | null;         // typically 8 (2 years)
+  // Current options-implied move (front-month straddle/strangle-derived %).
+  impliedMovePct: number | null;
+  // impliedMovePct − historicalAvgMovePct. Negative = IV cheap vs HV.
+  ivVsHvDeltaPct: number | null;
+  // Top-3 asymmetric setups flagged by the routine.
+  isFlagged: boolean;
+  flagReason: string | null;
+  thesis: string;
+  risks: string;
+};
+
+export const earningsPosts = pgTable(
+  "earnings_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull(),
+    summary: text("summary").notNull().default(""),
+    methodology: text("methodology").notNull().default(""),
+    stocks: jsonb("stocks").$type<EarningsStock[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("earnings_posts_scan_day_idx").on(t.scanDay),
+  ],
+);
+
+export type EarningsPost = typeof earningsPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Sector Rotation Detector — weekly scan that compares the last 30 days of
+// each S&P 500 sector's relative strength against the same period one year
+// ago. Identifies "rotation" — sectors where the relative-strength sign
+// has FLIPPED. For each rotating sector, ranks the top 5 highest-volume
+// sector ETFs by net money flow over the last 10 trading days.
+// ONE row per scan_day; same UPSERT pattern as institutional/earnings.
+// ----------------------------------------------------------------------------
+
+export type RotationDirection =
+  | "turning_positive"  // RS was negative a year ago, now positive
+  | "turning_negative"  // RS was positive a year ago, now negative
+  | "stable_positive"   // RS positive both windows
+  | "stable_negative";  // RS negative both windows
+
+export type SectorRotationEtf = {
+  ticker: string;
+  name: string;
+  aumUsdB: number | null;
+  avgDailyDollarVolumeUsd: number | null; // 10-day average
+  moneyFlowUsd: number | null;            // 10-day net money flow ($ in − $ out)
+  moneyFlowRank: number;                  // 1 = highest inflow within this sector
+  currentPrice: number | null;
+  thirtyDayReturnPct: number | null;
+  note: string | null;                    // optional 1-line on each ETF
+};
+
+export type SectorRotationSector = {
+  sectorName: string;                     // e.g. "Technology"
+  sectorEtf: string;                      // primary SPDR proxy, e.g. "XLK"
+  last30DayReturnPct: number | null;      // sector return last 30 days
+  spy30DayReturnPct: number | null;       // SPY return same window
+  relativeStrength: number | null;        // last30Day − spy30Day
+  priorYear30DayReturnPct: number | null; // sector return prior-year same window
+  spyPriorYear30DayReturnPct: number | null; // SPY return prior-year same window
+  relativeStrengthPriorYear: number | null; // priorYear values
+  rotationDirection: RotationDirection;
+  rotationMagnitudePct: number | null;    // |rs − rs_prior|; bigger = more decisive flip
+  isRotating: boolean;                    // true when direction is turning_*
+  topEtfs: SectorRotationEtf[];           // up to 5; only populated for rotating sectors
+  thesis: string;
+  risks: string;
+};
+
+export const sectorRotationPosts = pgTable(
+  "sector_rotation_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull(),
+    summary: text("summary").notNull().default(""),
+    methodology: text("methodology").notNull().default(""),
+    sectors: jsonb("sectors").$type<SectorRotationSector[]>().notNull().default([]),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("sector_rotation_posts_scan_day_idx").on(t.scanDay),
+  ],
+);
+
+export type SectorRotationPost = typeof sectorRotationPosts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Polymarket — wallet discovery + PnL scoring (Phase 2 of /polymarket).
+// One row per wallet ever observed in a whale-sized trade. Wallet history is
+// updated continuously by the /api/polymarket/ingest endpoint.
+// ----------------------------------------------------------------------------
+
+export const polymarketWallets = pgTable(
+  "polymarket_wallets",
+  {
+    /** Lowercase 0x address, primary key. */
+    address: text("address").primaryKey(),
+    pseudonym: text("pseudonym"),
+    displayName: text("display_name"),
+    /** First time we observed this wallet (any size). */
+    firstSeen: timestamp("first_seen", { withTimezone: true }).notNull().defaultNow(),
+    /** Most recent trade we observed from this wallet. */
+    lastSeen: timestamp("last_seen", { withTimezone: true }).notNull().defaultNow(),
+    /** Total trades this wallet has appeared in (in the trade firehose we've sampled). */
+    tradesSeen: integer("trades_seen").notNull().default(0),
+    /** Subset of tradesSeen at or above the whale threshold (default $500). */
+    whaleTradesSeen: integer("whale_trades_seen").notNull().default(0),
+    /** Cumulative USD volume across observed trades. */
+    totalVolumeUsd: numeric("total_volume_usd", { precision: 20, scale: 2 })
+      .notNull()
+      .default("0"),
+    /** When we last successfully scored this wallet (null = never). */
+    lastScoredAt: timestamp("last_scored_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("polymarket_wallets_last_seen_idx").on(t.lastSeen.desc()),
+    index("polymarket_wallets_volume_idx").on(t.totalVolumeUsd.desc()),
+    index("polymarket_wallets_last_scored_idx").on(t.lastScoredAt.asc().nullsFirst()),
+  ],
+);
+
+export type PolymarketWallet = typeof polymarketWallets.$inferSelect;
+
+// One row per scoring snapshot. Latest score per wallet via DISTINCT ON.
+// Historical scores are kept to track wallet performance over time.
+export const polymarketWalletScores = pgTable(
+  "polymarket_wallet_scores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    wallet: text("wallet")
+      .notNull()
+      .references(() => polymarketWallets.address, { onDelete: "cascade" }),
+    scoredAt: timestamp("scored_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Sum of cashPnl across resolved positions (positions Polymarket reports as resolved). */
+    realizedPnl: numeric("realized_pnl", { precision: 20, scale: 4 }).notNull().default("0"),
+    /** Sum of cashPnl across open (unresolved) positions — i.e. mark-to-market. */
+    unrealizedPnl: numeric("unrealized_pnl", { precision: 20, scale: 4 }).notNull().default("0"),
+    /** Total dollars deployed across positions returned by /positions. */
+    capitalDeployedUsd: numeric("capital_deployed_usd", { precision: 20, scale: 4 })
+      .notNull()
+      .default("0"),
+    /** Realized PnL / capital deployed, as a fraction (e.g. 0.21 = +21%). */
+    roi: numeric("roi", { precision: 12, scale: 6 }),
+    /** Number of positions returned by /positions at scoring time. */
+    positionCount: integer("position_count").notNull().default(0),
+    /** Composite score — see lib/polymarket.ts for the math. */
+    compositeScore: numeric("composite_score", { precision: 14, scale: 4 }),
+    /** Raw response sample for audit/debug. */
+    raw: jsonb("raw").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    index("polymarket_wallet_scores_wallet_idx").on(t.wallet, t.scoredAt.desc()),
+    index("polymarket_wallet_scores_composite_idx").on(t.compositeScore.desc()),
+  ],
+);
+
+export type PolymarketWalletScore = typeof polymarketWalletScores.$inferSelect;
+
+// Whale-sized trades persisted from the ingestion firehose. Phase 3 reads
+// from this table to detect convergence (≥2 top wallets, same market+side,
+// 24h window) and surface fresh signals from high-scorer wallets.
+//
+// Filtered to USD ≥ MIN_WHALE_USD at ingest time to keep storage sane.
+// Natural key (transaction_hash, asset) for dedupe.
+export const polymarketTrades = pgTable(
+  "polymarket_trades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    transactionHash: text("transaction_hash").notNull(),
+    asset: text("asset").notNull(),
+    /** Lowercase 0x — matches polymarket_wallets.address. */
+    wallet: text("wallet").notNull(),
+    conditionId: text("condition_id").notNull(),
+    side: text("side").notNull(), // BUY | SELL
+    size: numeric("size", { precision: 24, scale: 6 }).notNull(),
+    /** Implied probability in [0, 1] = USDC per share. */
+    price: numeric("price", { precision: 10, scale: 6 }).notNull(),
+    /** size × price, denormalized for fast filtering. */
+    usdValue: numeric("usd_value", { precision: 20, scale: 4 }).notNull(),
+    outcome: text("outcome"),
+    outcomeIndex: integer("outcome_index"),
+    title: text("title"),
+    slug: text("slug"),
+    eventSlug: text("event_slug"),
+    /** Trade time (Polymarket-reported, Unix→tz). */
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("polymarket_trades_uniq_idx").on(t.transactionHash, t.asset),
+    index("polymarket_trades_wallet_ts_idx").on(t.wallet, t.timestamp.desc()),
+    index("polymarket_trades_condition_ts_idx").on(t.conditionId, t.timestamp.desc()),
+    index("polymarket_trades_ts_idx").on(t.timestamp.desc()),
+  ],
+);
+
+export type PolymarketTrade = typeof polymarketTrades.$inferSelect;
+
+// Cached Gamma event metadata, keyed by event_slug. We use this to attach
+// a category (Sports / Politics / Crypto / Macro / etc.) to each trade for
+// filtering on the Signals page. Lazy-populated by the ingest endpoint.
+export const polymarketEvents = pgTable(
+  "polymarket_events",
+  {
+    eventSlug: text("event_slug").primaryKey(),
+    category: text("category"),
+    title: text("title"),
+    /** Tag slugs from Gamma (e.g. ["nfl", "all"]). Useful for sub-filters later. */
+    tagSlugs: text("tag_slugs").array().notNull().default(sql`ARRAY[]::text[]`),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("polymarket_events_category_idx").on(t.category)],
+);
+
+export type PolymarketEvent = typeof polymarketEvents.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// BotWick — automated options trading bot (Tradier-backed)
+// ---------------------------------------------------------------------------
+// The bot is intentionally OFF by default and requires an admin to enable it,
+// pick a mode (paper / live), and select which trade-plan grades it will act
+// on. The risk engine and OMS read from `bot_config` on every tick; UI reads
+// from `bot_actions` and `bot_trades` for status + journal.
+
+export type BotMode = "paper" | "live" | "off";
+export type BotGradeFilter = "A+" | "A" | "A-" | "B+" | "ALL";
+/** Active signal-generation strategy. New strategies plug in by adding to
+ *  this union AND to the registry in lib/botwick/strategies/index.ts. */
+export type SignalStrategy =
+  | "alma_vwap_cross"
+  | "plan_based"        // deprecated — kept in DB enum for back-compat
+  | "alma_plus_plan"    // deprecated — depends on plan_based
+  | "alma_9_39_rsi";    // ALMA 9/39 cross + RSI + Chop + VWAP + Session
+export type BotActionKind =
+  | "config_change"      // admin toggled enabled / mode / grade
+  | "plan_received"      // 0DTE plan ingested
+  | "plan_skipped"       // plan failed grade filter or risk check
+  | "plan_expired"       // pending/armed plan auto-cancelled (stale day, end-of-day sweep)
+  | "monitor_tick"       // monitoring pass started/finished
+  | "quote_refresh"      // live quote pulled from Tradier
+  | "signal_armed"       // entry condition met on underlying state
+  | "signal_fired"       // armed AND passed live re-risk-check (Phase 3b+)
+  | "order_submitted"    // OMS submitted to Tradier
+  | "order_filled"
+  | "order_partial"
+  | "order_rejected"
+  | "order_cancelled"
+  | "exit_target_hit"
+  | "exit_stop_hit"
+  | "exit_time_stop"
+  | "exit_alma_reversal"
+  | "exit_alma_break"    // price closed back through ALMA9 by > threshold
+  | "exit_alma_939"      // ALMA 9/39 RSI strategy exit (stop / TP / ALMA / VWAP)
+  | "force_exit"         // day-trade force-close fired (15:55 ET sweep)
+  | "risk_block"         // risk engine refused to place
+  | "kill_switch"        // emergency stop hit
+  | "error";
+
+export type BotTradeStatus =
+  | "pending"        // ingested, waiting for entry trigger
+  | "signal_armed"   // entry condition met on underlying data
+  | "signal_fired"   // armed AND passed live re-risk-check
+  | "submitting"     // claim taken — about to POST to Tradier (race-safe gate)
+  | "working"        // order submitted, not yet filled
+  | "open"           // filled, position live
+  | "closing"        // exit order submitted
+  | "closed"         // fully closed
+  | "rejected"
+  | "cancelled"
+  | "errored";
+
+/**
+ * Singleton-style bot configuration row. We enforce singleton via a CHECK in
+ * a follow-up migration; for now app code uses where(id = "default").
+ */
+export const botConfig = pgTable("bot_config", {
+  id: text("id").primaryKey().default("default"),
+  // Master switch. When false, the runner does NOT submit any orders even if
+  // mode is "live"/"paper". User dashboard reflects this immediately.
+  enabled: boolean("enabled").notNull().default(false),
+  // off | paper | live. Paper hits Tradier sandbox; live hits production.
+  mode: text("mode").$type<BotMode>().notNull().default("off"),
+  // Which trade-plan grades the bot will act on.
+  gradeFilter: text("grade_filter").$type<BotGradeFilter>().notNull().default("A+"),
+  // Hard cap on dollars at risk per trade (premium debit, or max-loss for spreads).
+  maxRiskPerTradeUsd: numeric("max_risk_per_trade_usd", { precision: 14, scale: 2 })
+    .notNull()
+    .default("250.00"),
+  // Hard cap on stock-mode notional exposure per trade ($shares × price). Used
+  // when a strategy is in instrument_mode=stock_long. Independent of
+  // maxRiskPerTradeUsd because $1k options budget ≠ $1k of shares (linear vs
+  // leveraged exposure).
+  maxStockNotionalUsd: numeric("max_stock_notional_usd", { precision: 14, scale: 2 })
+    .notNull()
+    .default("10000.00"),
+  // Hard cap on total realized + unrealized PnL drawdown for the trading day
+  // (in dollars, positive number). Hit → kill switch trips.
+  maxDailyLossUsd: numeric("max_daily_loss_usd", { precision: 14, scale: 2 })
+    .notNull()
+    .default("500.00"),
+  // Concurrent open positions cap.
+  maxOpenPositions: integer("max_open_positions").notNull().default(3),
+  // Plan-slippage guard for the live-mid re-check (Phase 3b+).
+  // If abs(liveMid - planMid) / planMid > this %, the live re-check blocks
+  // promotion of signal_armed → signal_fired. Catches overnight gaps and
+  // egregious option-price moves where the plan's premise may no longer hold.
+  // Stored as a percent: "50.00" = 50%.
+  maxPlanSlippagePct: numeric("max_plan_slippage_pct", { precision: 6, scale: 2 })
+    .notNull()
+    .default("50.00"),
+  // Day-trade force-exit. When true (default), at 15:55 ET the bot:
+  //   - cancels all pending / signal_armed / working entry orders
+  //   - submits MARKET sell_to_close orders for all open positions
+  // Keeps the bot honest as 0DTE-only — nothing rides overnight, no
+  // theta-decay-to-zero on options that didn't print intrinsic value, no
+  // pin risk near close. Disable only if you mean to swing trades manually.
+  dayTradeForceExit: boolean("day_trade_force_exit").notNull().default(true),
+  // Which signal-generation strategy is active. The bot honors exactly one
+  // at a time. See lib/botwick/strategies/index.ts for the catalog +
+  // semantics. Default keeps existing behavior (plan-based) so installs
+  // that predate the SIGNALS tab don't change behavior on upgrade.
+  activeSignalStrategy: text("active_signal_strategy")
+    .$type<SignalStrategy>()
+    .notNull()
+    .default("plan_based"),
+  // Dollar amount per trade — used by signal strategies that compute their
+  // own size (e.g. ALMA strategies select contracts by mid × 100 ≤ this).
+  // Independent from maxRiskPerTradeUsd which is the hard cap on max-loss
+  // for an individual contract; positionSizeUsd is the *intent* amount.
+  positionSizeUsd: numeric("position_size_usd", { precision: 14, scale: 2 })
+    .notNull()
+    .default("500.00"),
+  // Instrument: trade options (default), buy shares on long signals, short
+  // shares on short signals, or both. In stock_long/stock_short modes the
+  // signals on the other side get a warning + skip; stock_both fires both.
+  // Stock shorts require a margin account at Tradier.
+  almaInstrumentMode: text("alma_instrument_mode")
+    .$type<"options" | "stock_long" | "stock_short" | "stock_both">()
+    .notNull()
+    .default("options"),
+  // Tickers the ALMA × VWAP strategy scans (it has no plan-source to derive
+  // tickers from like plan_based does). Admin editable.
+  almaWatchlist: text("alma_watchlist")
+    .array()
+    .notNull()
+    .default(sql`ARRAY['SPY','QQQ']::text[]`),
+  // "Steep" threshold for the ALMA slope at cross-time, as % change per
+  // bar. Smaller = more permissive cross, more setups. Default 0.05%.
+  almaSteepSlopePct: numeric("alma_steep_slope_pct", { precision: 6, scale: 4 })
+    .notNull()
+    .default("0.05"),
+  // Cool-down window after a fresh ARM (in 5-min bars). During the cool-down,
+  // a close that crosses back through VWAP does NOT clear READY — we wait
+  // through whippy bars and only fire on the first pullback that matches
+  // the band. After cool-down expires, the standard close-still-holds guard
+  // resumes. Default 5 (≈25 min).
+  almaPullbackCoolDownBars: integer("alma_pullback_cool_down_bars")
+    .notNull()
+    .default(5),
+  // Pullback band: max depth (% of ALMA) the wick may go beyond ALMA9 and
+  // still count as a valid pullback. For LONG, bar.low must be in
+  // [ALMA × (1 − thresh/100), ALMA]. Wicks deeper than this are treated as
+  // real reversals, not pullbacks. Default 0.10% (typical 0DTE wick tolerance).
+  almaPullbackThresholdPct: numeric("alma_pullback_threshold_pct", { precision: 6, scale: 4 })
+    .notNull()
+    .default("0.10"),
+  // Smart re-pegging for entry orders. After an entry order sits unfilled
+  // for one monitor tick (~5 min), we cancel and re-submit at a slightly
+  // worsened limit. After `entryRepegMax` such attempts, we cross the
+  // spread with a MARKET order so the trade actually starts. Default 2 →
+  // mid → mid+1c → market. Set to 0 to disable re-pegging entirely.
+  entryRepegMax: integer("entry_repeg_max").notNull().default(2),
+  // Drift cap for re-pegs: if the live mid has moved MORE than this percent
+  // ABOVE the original signal mid (for buys), the re-peg abandons the trade
+  // instead of chasing. Protects against premium runs like
+  // $0.64 → $1.47 (130%) where the original sizing was correct but the price
+  // is no longer the setup we intended to enter. The check is asymmetric —
+  // a CHEAPER live mid is always allowed (better fill than expected).
+  // Default 10%. Set very high (e.g. 1000) to effectively disable.
+  entryRepegMaxDriftPct: numeric("entry_repeg_max_drift_pct", { precision: 6, scale: 2 })
+    .notNull()
+    .default("10.00"),
+  // Default exit policy — applied to any trade whose AST is missing the
+  // corresponding branch. ALMA × VWAP trades always use these (the strategy
+  // doesn't generate per-trade exits). Plan-based trades use their plan's
+  // exits when the parser recognised them, falling back to these defaults
+  // for any null branch. Without this safety net, an ALMA trade rides until
+  // 15:55 force-exit regardless of P&L.
+  //
+  // All percentages are positive magnitudes; sign is applied internally.
+  defaultTarget1Pct: numeric("default_target1_pct", { precision: 6, scale: 2 })
+    .notNull()
+    .default("50.00"),
+  defaultTarget2Pct: numeric("default_target2_pct", { precision: 6, scale: 2 })
+    .notNull()
+    .default("100.00"),
+  defaultStopLossPct: numeric("default_stop_loss_pct", { precision: 6, scale: 2 })
+    .notNull()
+    .default("30.00"),
+  defaultTimeStopMin: integer("default_time_stop_min").notNull().default(120),
+  // Optional ALMA-reversal exit filter. When true, in addition to the
+  // standard exit checks (target / stop / time_stop), each open position is
+  // checked on every tick for a "directional reversal":
+  //   - LONG  position → ALMA(9) crosses BELOW VWAP → market sell_to_close
+  //   - SHORT position → ALMA(9) crosses ABOVE VWAP → market sell_to_close
+  // Runs independently of which signal strategy spawned the trade, so a
+  // plan-based long-call benefits from the reversal exit the same way an
+  // ALMA × VWAP trade does. Priority: stop > reversal > target > time_stop.
+  // Default OFF — opt-in.
+  almaReversalExit: boolean("alma_reversal_exit").notNull().default(false),
+  // Optional Price-Reversal ALMA exit. Fires sooner than `almaReversalExit`
+  // (which waits for ALMA itself to cross VWAP). This one watches the price
+  // close vs the ALMA line directly:
+  //   LONG  → bar.close < ALMA × (1 − threshold/100)
+  //   SHORT → bar.close > ALMA × (1 + threshold/100)
+  // On match → MARKET sell_to_close. Independent of almaReversalExit; both
+  // can be on at the same time (this fires first because it's earlier).
+  // Default OFF; default threshold 0.05% (typical 0DTE noise band).
+  priceReversalAlmaExit: boolean("price_reversal_alma_exit").notNull().default(false),
+  priceReversalAlmaThresholdPct: numeric("price_reversal_alma_threshold_pct", {
+    precision: 6,
+    scale: 4,
+  })
+    .notNull()
+    .default("0.05"),
+  // Grace period (in 5-min bars after fill) during which the Price-Reversal
+  // ALMA exit is INACTIVE. Lets a fresh trade develop without getting kicked
+  // out on intra-bar noise. Default 5 → exit becomes active on the 6th bar
+  // after entry (~25 minutes). Setting to 0 disables the grace period.
+  priceReversalAlmaGraceBars: integer("price_reversal_alma_grace_bars")
+    .notNull()
+    .default(5),
+
+  // ──────────────────────────────────────────────────────────────────────
+  // ALMA 9/39 RSI strategy (Option 2)
+  // ──────────────────────────────────────────────────────────────────────
+  // Instrument: see almaInstrumentMode docs — same four modes.
+  alma939InstrumentMode: text("alma939_instrument_mode")
+    .$type<"options" | "stock_long" | "stock_short" | "stock_both">()
+    .notNull()
+    .default("options"),
+  // Per-strategy watchlist so Option 1's tickers don't bleed in.
+  alma939Watchlist: text("alma939_watchlist")
+    .array()
+    .notNull()
+    .default(sql`ARRAY['SPY','QQQ']::text[]`),
+  // ALMA indicator settings (mirror Pinescript defaults).
+  alma939FastLen: integer("alma939_fast_len").notNull().default(9),
+  alma939SlowLen: integer("alma939_slow_len").notNull().default(39),
+  alma939Offset: numeric("alma939_offset", { precision: 4, scale: 2 })
+    .notNull()
+    .default("0.85"),
+  alma939Sigma: numeric("alma939_sigma", { precision: 4, scale: 1 })
+    .notNull()
+    .default("6.0"),
+  // RSI filter.
+  alma939UseRsiFilter: boolean("alma939_use_rsi_filter").notNull().default(true),
+  alma939RsiLen: integer("alma939_rsi_len").notNull().default(14),
+  alma939LongRsiMin: numeric("alma939_long_rsi_min", { precision: 5, scale: 2 })
+    .notNull()
+    .default("50.00"),
+  alma939LongRsiMax: numeric("alma939_long_rsi_max", { precision: 5, scale: 2 })
+    .notNull()
+    .default("72.00"),
+  alma939ShortRsiMin: numeric("alma939_short_rsi_min", { precision: 5, scale: 2 })
+    .notNull()
+    .default("28.00"),
+  alma939ShortRsiMax: numeric("alma939_short_rsi_max", { precision: 5, scale: 2 })
+    .notNull()
+    .default("50.00"),
+  // Choppiness Index filter.
+  alma939UseChopFilter: boolean("alma939_use_chop_filter").notNull().default(true),
+  alma939ChopLen: integer("alma939_chop_len").notNull().default(14),
+  alma939ChopThreshold: numeric("alma939_chop_threshold", { precision: 5, scale: 2 })
+    .notNull()
+    .default("50.00"),
+  alma939ChopMode: text("alma939_chop_mode").$type<"below" | "above">().notNull().default("below"),
+  // VWAP entry filter.
+  alma939UseVwapEntryFilter: boolean("alma939_use_vwap_entry_filter").notNull().default(true),
+  alma939VwapLongMode: text("alma939_vwap_long_mode").$type<"close" | "hl2">().notNull().default("close"),
+  alma939VwapShortMode: text("alma939_vwap_short_mode").$type<"close" | "hl2">().notNull().default("close"),
+  // Session + force-close.
+  alma939UseSessionFilter: boolean("alma939_use_session_filter").notNull().default(true),
+  alma939SessionStart: text("alma939_session_start").notNull().default("09:30"),
+  alma939SessionEnd: text("alma939_session_end").notNull().default("16:00"),
+  alma939UseForceClose: boolean("alma939_use_force_close").notNull().default(true),
+  alma939ForceCloseHour: integer("alma939_force_close_hour").notNull().default(15),
+  alma939ForceCloseMinute: integer("alma939_force_close_minute").notNull().default(55),
+  // ALMA-based exits (close vs ALMA39, ALMA9 × ALMA39 cross).
+  alma939UseAlmaSignalExits: boolean("alma939_use_alma_signal_exits").notNull().default(false),
+  alma939UseLongCloseBelowAlma39Exit: boolean("alma939_use_long_close_below_alma39_exit").notNull().default(true),
+  alma939UseLongAlmaCrossDownExit: boolean("alma939_use_long_alma_cross_down_exit").notNull().default(true),
+  alma939UseShortCloseAboveAlma39Exit: boolean("alma939_use_short_close_above_alma39_exit").notNull().default(true),
+  alma939UseShortAlmaCrossUpExit: boolean("alma939_use_short_alma_cross_up_exit").notNull().default(true),
+  // VWAP-based exits (close vs VWAP, ALMA9 × VWAP cross + close confirms).
+  alma939UseVwapExitRules: boolean("alma939_use_vwap_exit_rules").notNull().default(true),
+  alma939UseLongCloseBelowVwapExit: boolean("alma939_use_long_close_below_vwap_exit").notNull().default(false),
+  alma939UseShortCloseAboveVwapExit: boolean("alma939_use_short_close_above_vwap_exit").notNull().default(false),
+  alma939UseLongAlma9CrossBelowVwapExit: boolean("alma939_use_long_alma9_cross_below_vwap_exit").notNull().default(true),
+  alma939UseShortAlma9CrossAboveVwapExit: boolean("alma939_use_short_alma9_cross_above_vwap_exit").notNull().default(true),
+  // Stop loss — fixed % or trailing % on underlying. Trailing source can be
+  // the previous bar's extreme (Pine "prev_extreme" semantic), current bar's
+  // extreme, or the close. Trailing stop only ever moves in the favorable
+  // direction (up for long, down for short).
+  alma939UseStopLoss: boolean("alma939_use_stop_loss").notNull().default(true),
+  alma939SlMode: text("alma939_sl_mode").$type<"fixed" | "trailing">().notNull().default("fixed"),
+  alma939FixedSlPct: numeric("alma939_fixed_sl_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("1.00"),
+  alma939TrailSlPct: numeric("alma939_trail_sl_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("1.00"),
+  alma939TrailUpdateMode: text("alma939_trail_update_mode")
+    .$type<"prev_extreme" | "curr_extreme" | "close">()
+    .notNull()
+    .default("prev_extreme"),
+  // Profit targets — up to 5 levels, each with its own scale-out % of the
+  // original position size. Levels are on the underlying price (% from entry
+  // underlying). Each fires once. After all selected TPs fire, any remaining
+  // qty rides the trailing/fixed stop or the ALMA/VWAP exit rules.
+  alma939UseProfitTargets: boolean("alma939_use_profit_targets").notNull().default(true),
+  alma939UseTp1: boolean("alma939_use_tp1").notNull().default(true),
+  alma939Tp1Pct: numeric("alma939_tp1_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("0.50"),
+  alma939Tp1Qty: numeric("alma939_tp1_qty", { precision: 5, scale: 2 })
+    .notNull()
+    .default("20.00"),
+  alma939UseTp2: boolean("alma939_use_tp2").notNull().default(true),
+  alma939Tp2Pct: numeric("alma939_tp2_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("1.00"),
+  alma939Tp2Qty: numeric("alma939_tp2_qty", { precision: 5, scale: 2 })
+    .notNull()
+    .default("20.00"),
+  alma939UseTp3: boolean("alma939_use_tp3").notNull().default(true),
+  alma939Tp3Pct: numeric("alma939_tp3_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("1.50"),
+  alma939Tp3Qty: numeric("alma939_tp3_qty", { precision: 5, scale: 2 })
+    .notNull()
+    .default("20.00"),
+  alma939UseTp4: boolean("alma939_use_tp4").notNull().default(true),
+  alma939Tp4Pct: numeric("alma939_tp4_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("2.00"),
+  alma939Tp4Qty: numeric("alma939_tp4_qty", { precision: 5, scale: 2 })
+    .notNull()
+    .default("20.00"),
+  alma939UseTp5: boolean("alma939_use_tp5").notNull().default(true),
+  alma939Tp5Pct: numeric("alma939_tp5_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("2.50"),
+  alma939Tp5Qty: numeric("alma939_tp5_qty", { precision: 5, scale: 2 })
+    .notNull()
+    .default("20.00"),
+
+  // Hard manual kill switch. When true, everything halts and exit orders fire
+  // on any open positions. Admin must clear it explicitly to resume.
+  killSwitchEngaged: boolean("kill_switch_engaged").notNull().default(false),
+  killSwitchReason: text("kill_switch_reason"),
+  // Independent safety rail for live trading. The OMS (Phase 4+) MUST refuse
+  // to submit live orders unless this is true AND mode=live AND enabled AND
+  // !killSwitchEngaged. Lets us safely run mode=live for real-time data
+  // monitoring today without risking that Phase 4 silently arms real trading
+  // the moment we deploy it. Defaults false; admin flips explicitly with
+  // full acknowledgment copy.
+  liveOrdersConfirmed: boolean("live_orders_confirmed").notNull().default(false),
+  // Tradier creds — stored encrypted at rest in a follow-up. For now plain
+  // env-driven; these columns let the admin UI surface that they're set
+  // without us roundtripping the secret.
+  tradierAccountId: text("tradier_account_id"),
+  tradierEnv: text("tradier_env"), // "sandbox" | "production"
+  // Free-form prefs for the risk engine + selector (jsonb so it's evolvable
+  // without migrations).
+  prefs: jsonb("prefs").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text("updated_by").references(() => users.id, { onDelete: "set null" }),
+});
+
+export type BotConfig = typeof botConfig.$inferSelect;
+
+/**
+ * Append-only audit / event log. The "Matrix" user view streams the most
+ * recent N rows so the user can watch the bot work in real time.
+ */
+export const botActions = pgTable(
+  "bot_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ts: timestamp("ts", { withTimezone: true }).notNull().defaultNow(),
+    kind: text("kind").$type<BotActionKind>().notNull(),
+    // Severity for color-coding in the UI: "info" | "warn" | "error" | "success".
+    severity: text("severity").notNull().default("info"),
+    // Human-readable line: "Signal fired — TSLA 437.5P @ $4.80 mid".
+    message: text("message").notNull(),
+    // Optional linkage to the trade this event belongs to.
+    tradeId: uuid("trade_id").references(() => botTrades.id, { onDelete: "set null" }),
+    // Structured payload for debugging / replay.
+    data: jsonb("data").$type<Record<string, unknown>>().notNull().default({}),
+    // Set by the Reset & Archive admin action. Activity tab filters
+    // archivedAt IS NULL; Archive tab shows archivedAt IS NOT NULL, grouped
+    // by archivedAt batch.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("bot_actions_ts_idx").on(t.ts.desc()),
+    index("bot_actions_kind_ts_idx").on(t.kind, t.ts.desc()),
+    index("bot_actions_trade_idx").on(t.tradeId),
+    index("bot_actions_archived_idx").on(t.archivedAt),
+  ],
+);
+
+export type BotAction = typeof botActions.$inferSelect;
+
+/**
+ * One row per trade intent. Lifecycle: pending → working → open → closing →
+ * closed (or rejected / cancelled / errored). Multi-leg orders store legs
+ * inside `legs` jsonb so we don't need a join table at this stage.
+ */
+export const botTrades = pgTable(
+  "bot_trades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Which trading-day post the trade was sourced from (FK kept loose with
+    // text so we don't break if the post is deleted).
+    sourcePostDay: date("source_post_day"),
+    sourceTicker: text("source_ticker").notNull(),
+    sourceGrade: text("source_grade"),
+    // Strategy taxonomy: "long_call" | "long_put" | "credit_put_spread" | ...
+    strategy: text("strategy").notNull(),
+    // Tradier-side identifiers, populated as the OMS progresses.
+    tradierOrderId: text("tradier_order_id"),
+    tradierPositionId: text("tradier_position_id"),
+    // Legs: each is { side, option_symbol, strike, expiry, qty, fill_price }
+    legs: jsonb("legs").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    // Plan inputs captured at signal time — so we can audit slippage later.
+    plan: jsonb("plan").$type<Record<string, unknown>>().notNull().default({}),
+    // Mode at time of placement: "paper" or "live". Important for journaling.
+    mode: text("mode").$type<BotMode>().notNull(),
+    status: text("status").$type<BotTradeStatus>().notNull().default("pending"),
+    // Money fields.
+    entryFillUsd: numeric("entry_fill_usd", { precision: 14, scale: 4 }),
+    exitFillUsd: numeric("exit_fill_usd", { precision: 14, scale: 4 }),
+    realizedPnlUsd: numeric("realized_pnl_usd", { precision: 14, scale: 2 }),
+    // Lifecycle timestamps.
+    signaledAt: timestamp("signaled_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // First time the entry condition matched on underlying data (Phase 3a+).
+    // Distinct from `signaledAt` (set at ingest) so we can measure
+    // ingest-to-armed latency.
+    entrySignaledAt: timestamp("entry_signaled_at", { withTimezone: true }),
+    // Set when status transitions signal_fired → submitting. Used by the
+    // broker-side reconcile job to detect rows that have been stuck in
+    // 'submitting' longer than the threshold (typically because the process
+    // died between Tradier POST and the commit UPDATE).
+    submittingAt: timestamp("submitting_at", { withTimezone: true }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    filledAt: timestamp("filled_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    // Set by the Reset & Archive admin action. Only terminal-state trades
+    // (closed/cancelled/rejected/errored) and non-actionable trades
+    // (pending/signal_armed/signal_fired) are archivable. Live trades
+    // (submitting/working/open/closing) are NEVER archived — they're real
+    // money in flight.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("bot_trades_status_idx").on(t.status),
+    index("bot_trades_signaled_idx").on(t.signaledAt.desc()),
+    index("bot_trades_ticker_idx").on(t.sourceTicker),
+    index("bot_trades_archived_idx").on(t.archivedAt),
+  ],
+);
+
+export type BotTrade = typeof botTrades.$inferSelect;
+
+/**
+ * ALMA × VWAP READY-state cache. One row per ticker currently in the
+ * "armed for pullback entry" state. On cross-detection we insert/upsert;
+ * on entry-fire we delete; on day-end (force-exit) we wipe. Primary key on
+ * ticker enforces "one READY per ticker at a time."
+ */
+export const botAlmaState = pgTable("bot_alma_state", {
+  ticker: text("ticker").primaryKey(),
+  /** Side of the trade the READY corresponds to. */
+  side: text("side").$type<"long" | "short">().notNull(),
+  /** When the cross was detected and we entered READY. */
+  readyAt: timestamp("ready_at", { withTimezone: true }).notNull().defaultNow(),
+  /** ALMA value at the bar of the cross. Stored for audit / debugging. */
+  almaAtCross: numeric("alma_at_cross", { precision: 14, scale: 4 }).notNull(),
+  /** VWAP value at the bar of the cross. Same. */
+  vwapAtCross: numeric("vwap_at_cross", { precision: 14, scale: 4 }).notNull(),
+  /** Slope (% per bar) at cross-time. */
+  slopePctAtCross: numeric("slope_pct_at_cross", { precision: 8, scale: 4 }).notNull(),
+});
+
+export type BotAlmaState = typeof botAlmaState.$inferSelect;
+
+/**
+ * BotWick backtest runs. One row per admin-triggered backtest. The row
+ * carries its full config snapshot, the list of synthetic signals it
+ * produced, and the aggregate metrics — so the UI can re-display past runs
+ * without re-running anything.
+ *
+ * `signals` shape (jsonb array):
+ *   [{ ticker, side, signalAt, almaAtCross, vwapAtCross, slopePct,
+ *      pullbackAt, underlyingAtSignal, otmStrike,
+ *      touched, maxFavorablePct, maxAdversePct, timeToTouchMin }]
+ *
+ * `summary` shape (jsonb):
+ *   { totalSignals, hitRate, avgFavorablePct, avgAdversePct, byTicker }
+ *
+ * `config` shape (jsonb):
+ *   { strategy, fromDay, toDay, watchlist, slopePct }
+ */
+export const botBacktestRuns = pgTable(
+  "bot_backtest_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    startedBy: text("started_by").references(() => users.id, { onDelete: "set null" }),
+    config: jsonb("config").$type<Record<string, unknown>>().notNull(),
+    signals: jsonb("signals").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    summary: jsonb("summary").$type<Record<string, unknown>>().notNull().default({}),
+    status: text("status").$type<"running" | "complete" | "failed">().notNull().default("running"),
+    error: text("error"),
+  },
+  (t) => [index("bot_backtest_runs_started_idx").on(t.startedAt.desc())],
+);
+
+export type BotBacktestRun = typeof botBacktestRuns.$inferSelect;

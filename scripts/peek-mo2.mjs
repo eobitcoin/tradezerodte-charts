@@ -1,0 +1,10 @@
+import postgres from "postgres";
+const sql = postgres(process.env.DATABASE_PUBLIC_URL, { ssl: "require" });
+const [row] = await sql`SELECT body_md FROM posts WHERE trading_day = '2026-05-14' AND scan_kind = 'market_open' LIMIT 1`;
+const idx = row.body_md.indexOf("Trade Plan");
+console.log(row.body_md.slice(Math.max(0, idx - 80), idx + 800));
+console.log("\n\n--- Compare premarket ---\n");
+const [pre] = await sql`SELECT body_md FROM posts WHERE trading_day = '2026-05-14' AND scan_kind = 'premarket' LIMIT 1`;
+const idx2 = pre.body_md.indexOf("Trade Plan");
+console.log(pre.body_md.slice(Math.max(0, idx2 - 80), idx2 + 800));
+await sql.end();

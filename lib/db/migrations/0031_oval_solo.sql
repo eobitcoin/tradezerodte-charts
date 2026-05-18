@@ -1,0 +1,2 @@
+ALTER TABLE "bot_config" ADD COLUMN "alma_pullback_cool_down_bars" integer DEFAULT 5 NOT NULL;--> statement-breakpoint
+ALTER TABLE "bot_config" ADD COLUMN "alma_pullback_threshold_pct" numeric(6, 4) DEFAULT '0.10' NOT NULL;

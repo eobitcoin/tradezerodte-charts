@@ -1,0 +1,1 @@
+ALTER TABLE "bot_trades" ADD COLUMN "entry_signaled_at" timestamp with time zone;

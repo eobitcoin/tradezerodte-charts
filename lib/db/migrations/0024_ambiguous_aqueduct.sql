@@ -1,0 +1,2 @@
+ALTER TABLE "bot_config" ADD COLUMN "active_signal_strategy" text DEFAULT 'plan_based' NOT NULL;--> statement-breakpoint
+ALTER TABLE "bot_config" ADD COLUMN "position_size_usd" numeric(14, 2) DEFAULT '500.00' NOT NULL;

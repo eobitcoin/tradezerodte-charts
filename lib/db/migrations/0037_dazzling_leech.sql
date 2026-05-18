@@ -1,0 +1,1 @@
+ALTER TABLE "bot_config" ADD COLUMN "price_reversal_alma_grace_bars" integer DEFAULT 5 NOT NULL;

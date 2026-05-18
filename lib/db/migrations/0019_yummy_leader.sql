@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "founding_admin_opt_out" boolean DEFAULT false NOT NULL;

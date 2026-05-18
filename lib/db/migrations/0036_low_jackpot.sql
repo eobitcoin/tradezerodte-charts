@@ -1,0 +1,2 @@
+ALTER TABLE "bot_config" ADD COLUMN "price_reversal_alma_exit" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "bot_config" ADD COLUMN "price_reversal_alma_threshold_pct" numeric(6, 4) DEFAULT '0.05' NOT NULL;

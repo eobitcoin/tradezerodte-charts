@@ -48,7 +48,7 @@ export async function GET(req: Request) {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+    start(controller) {
       let cancelled = false;
       const close = () => {
         if (cancelled) return;
@@ -59,12 +59,16 @@ export async function GET(req: Request) {
           /* already closed */
         }
       };
-      req.signal.addEventListener("abort", close);
+      // { once: true } so a stray abort after we've already closed cleanly
+      // can't double-fire and confuse the stream lifecycle.
+      req.signal.addEventListener("abort", close, { once: true });
 
       const send = (chunk: string) => {
+        if (cancelled) return;
         try {
           controller.enqueue(encoder.encode(chunk));
         } catch {
+          // Controller already closed by client disconnect; stop pumping.
           cancelled = true;
         }
       };
@@ -72,43 +76,56 @@ export async function GET(req: Request) {
       // Initial comment so the connection opens visibly on the client.
       send(`: connected ${new Date().toISOString()}\n\n`);
 
-      let lastKeepalive = Date.now();
-
-      while (!cancelled) {
-        if (Date.now() - startedAt > MAX_DURATION_MS) {
-          // Soft-close. EventSource will auto-reconnect; the client passes
-          // the latest seen `ts` so we resume cleanly.
-          send(`event: closing\ndata: {"reason":"max_duration"}\n\n`);
-          break;
-        }
-
-        try {
-          const rows = await db
-            .select()
-            .from(botActions)
-            .where(gt(botActions.ts, since))
-            .orderBy(asc(botActions.ts))
-            .limit(100);
-
-          for (const row of rows) {
-            send(`data: ${JSON.stringify(row)}\n\n`);
-            since = row.ts;
+      // Run the polling loop OUTSIDE start() so start() returns synchronously.
+      // Keeping the loop inside start() (as an async function) races with
+      // Next.js's stream-wrapper teardown on client disconnect — the framework
+      // sees start() still pending and attempts internal control-plane writes
+      // against a controller we may have already closed, producing uncaught
+      // "Invalid state: Controller is already closed" errors. A detached async
+      // worker with a top-level catch is the stable pattern.
+      (async () => {
+        let lastKeepalive = Date.now();
+        while (!cancelled) {
+          if (Date.now() - startedAt > MAX_DURATION_MS) {
+            // Soft-close. EventSource will auto-reconnect; the client passes
+            // the latest seen `ts` so we resume cleanly.
+            send(`event: closing\ndata: {"reason":"max_duration"}\n\n`);
+            break;
           }
-        } catch (e) {
-          // Log + surface to client so they know something's off.
-          send(
-            `event: error\ndata: ${JSON.stringify({ message: String(e).slice(0, 200) })}\n\n`,
-          );
+          try {
+            const rows = await db
+              .select()
+              .from(botActions)
+              .where(gt(botActions.ts, since))
+              .orderBy(asc(botActions.ts))
+              .limit(100);
+            for (const row of rows) {
+              send(`data: ${JSON.stringify(row)}\n\n`);
+              since = row.ts;
+            }
+          } catch (e) {
+            send(
+              `event: error\ndata: ${JSON.stringify({ message: String(e).slice(0, 200) })}\n\n`,
+            );
+          }
+          if (Date.now() - lastKeepalive > KEEPALIVE_MS) {
+            send(`: keepalive\n\n`);
+            lastKeepalive = Date.now();
+          }
+          await new Promise((r) => setTimeout(r, POLL_MS));
         }
-
-        if (Date.now() - lastKeepalive > KEEPALIVE_MS) {
-          send(`: keepalive\n\n`);
-          lastKeepalive = Date.now();
-        }
-
-        await new Promise((r) => setTimeout(r, POLL_MS));
-      }
-      close();
+        close();
+      })().catch((err) => {
+        // Last-resort guard so a programming error in the loop can't crash
+        // the Node process via unhandled rejection.
+        console.error("[botwick tape stream] loop crashed", err);
+        close();
+      });
+    },
+    cancel() {
+      // Consumer (Next runtime / client) cancelling the stream — our abort
+      // listener also handles this, but having the explicit hook means we
+      // don't depend on signal propagation order.
     },
   });
 

@@ -224,19 +224,30 @@ export async function reconcileWithBroker(cfg: BotConfig): Promise<ReconcileOutc
     }
   }
 
-  // --- 2. EXTERNALLY CLOSED POSITIONS -------------------------------------
-  // For every trade in `open` status, verify Tradier still has the underlying
-  // option position. If it's gone (admin closed manually at the broker), mark
-  // the trade closed locally and attach a P&L from gainloss when we can find
-  // a matching row.
+  // --- 2. POSITION-GONE TRADES (open + closing) ---------------------------
+  // For every trade we believe is live (`open` or `closing`), check whether
+  // Tradier still has the underlying option position. Two cases mark a
+  // trade closed:
+  //
+  //   - `open` trade, position gone: admin closed it manually at the broker,
+  //     OR (most commonly for 0DTE) the option expired and Tradier dropped it.
+  //
+  //   - `closing` trade, position gone: our exit order completed but the
+  //     normal order-status path (`reconcileWorkingOrders`) didn't catch it.
+  //     Typical reasons: 0DTE expired worthless before our limit was filled,
+  //     Tradier auto-cancelled the exit at EOD with the position already
+  //     gone, or the orderId went stale and order-fetch returns "missing".
+  //
+  // Both paths attach realized P&L from Tradier's gainloss when we can find
+  // a matching row. The race-safe update preserves whatever status we read.
   if (positionsRes.ok) {
-    const openTrades = await db
+    const liveTrades = await db
       .select()
       .from(botTrades)
-      .where(eq(botTrades.status, "open"));
+      .where(inArray(botTrades.status, ["open", "closing"]));
 
-    // Skip if no open trades — saves a Tradier gainloss call.
-    if (openTrades.length > 0) {
+    // Skip if nothing to check — saves a Tradier gainloss call.
+    if (liveTrades.length > 0) {
       const positionOccs = new Set<string>();
       for (const p of tradierPositions) {
         if (p.quantity !== 0) positionOccs.add(p.symbol);
@@ -251,10 +262,17 @@ export async function reconcileWithBroker(cfg: BotConfig): Promise<ReconcileOutc
       if (glRes.ok) gainlossRows = glRes.data;
       else out.errors.push(`gainloss (for external-close): ${glRes.reason}`);
 
-      for (const trade of openTrades) {
-        // Don't false-positive a freshly filled trade still propagating to
-        // Tradier's positions feed.
-        if (trade.filledAt && new Date(trade.filledAt).getTime() > settlingCutoff.getTime()) {
+      for (const trade of liveTrades) {
+        const priorStatus = trade.status; // "open" or "closing"
+
+        // For `open` trades, don't false-positive a freshly filled entry
+        // still propagating to Tradier's positions feed. `closing` trades
+        // have already been live for a tick, no settling guard needed.
+        if (
+          priorStatus === "open" &&
+          trade.filledAt &&
+          new Date(trade.filledAt).getTime() > settlingCutoff.getTime()
+        ) {
           continue;
         }
         const leg = (trade.legs as Array<Record<string, unknown>>)[0];
@@ -285,8 +303,9 @@ export async function reconcileWithBroker(cfg: BotConfig): Promise<ReconcileOutc
             : null;
         const closedAt = match?.close_date ? new Date(match.close_date) : new Date();
 
-        // Race-safe transition open → closed. If something else (force-exit,
-        // manual close API) won the race, leave it alone.
+        // Race-safe transition → closed. The WHERE clause guards against
+        // anything else (force-exit, reconcileWorkingOrders, manual close)
+        // winning the race; if it did, leave the new state alone.
         const updated = await db
           .update(botTrades)
           .set({
@@ -295,7 +314,7 @@ export async function reconcileWithBroker(cfg: BotConfig): Promise<ReconcileOutc
             realizedPnlUsd: realizedPnlUsd != null ? realizedPnlUsd.toFixed(2) : null,
             exitFillUsd: exitFillUsd != null ? exitFillUsd.toFixed(4) : null,
           })
-          .where(and(eq(botTrades.id, trade.id), eq(botTrades.status, "open")))
+          .where(and(eq(botTrades.id, trade.id), eq(botTrades.status, priorStatus)))
           .returning({ id: botTrades.id });
 
         if (updated.length === 0) continue;
@@ -307,18 +326,26 @@ export async function reconcileWithBroker(cfg: BotConfig): Promise<ReconcileOutc
           realizedPnlUsd,
           matchedGainloss: !!match,
         });
+        const sweptFromClosing = priorStatus === "closing";
         await logTape({
           kind: "force_exit",
           severity: realizedPnlUsd != null && realizedPnlUsd < 0 ? "warn" : "info",
-          message: `${trade.sourceTicker} ${occ} — position closed externally at Tradier${
-            match
-              ? `. Matched gainloss: P&L ${realizedPnlUsd! >= 0 ? "+" : ""}$${realizedPnlUsd!.toFixed(2)}.`
-              : ". No matching gainloss row found yet — P&L unknown; check Tradier."
-          }`,
+          message: sweptFromClosing
+            ? `${trade.sourceTicker} ${occ} — closing → closed via reconcile (exit completed; order-status path didn't catch it)${
+                match
+                  ? `. Matched gainloss: P&L ${realizedPnlUsd! >= 0 ? "+" : ""}$${realizedPnlUsd!.toFixed(2)}.`
+                  : ". No matching gainloss row found yet — P&L unknown."
+              }`
+            : `${trade.sourceTicker} ${occ} — position closed externally at Tradier${
+                match
+                  ? `. Matched gainloss: P&L ${realizedPnlUsd! >= 0 ? "+" : ""}$${realizedPnlUsd!.toFixed(2)}.`
+                  : ". No matching gainloss row found yet — P&L unknown; check Tradier."
+              }`,
           tradeId: trade.id,
           data: {
             occ,
-            externalClose: true,
+            externalClose: !sweptFromClosing,
+            sweptFromClosing,
             matchedGainloss: !!match,
             realizedPnlUsd,
             exitFillUsd,

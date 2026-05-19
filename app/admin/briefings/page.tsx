@@ -3,6 +3,7 @@ import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { briefings } from "@/lib/db/schema";
 import AdminBriefingCard from "@/components/AdminBriefingCard";
+import { ensureDisclaimer, YT_DISCLAIMER, TT_DISCLAIMER } from "@/lib/briefings-copy";
 
 export const dynamic = "force-dynamic";
 
@@ -34,20 +35,21 @@ function defaultYtTitle(day: string): string {
  */
 function defaultYtCaption(script: string | null): string {
   const body = script?.trim() || "Today's 0DTE setups from Olivia Trades.";
-  return (
+  const marketing =
     `${body}\n\n` +
     `More daily setups: https://www.tradezerodte.com/morning-brief\n\n` +
-    `#0DTE #Options #DayTrading #StockMarket #Trading`
-  );
+    `#0DTE #Options #DayTrading #StockMarket #Trading`;
+  return ensureDisclaimer(marketing, YT_DISCLAIMER);
 }
 
 /**
  * Default TikTok caption: tighter, hashtag-heavy. Cap is 2200 chars but TikTok
- * favors short.
+ * favors short. Disclaimer is appended for legal cover.
  */
 function defaultTtCaption(script: string | null): string {
   const hook = script?.trim().split(/[.!?]/)[0] || "Today's 0DTE picks.";
-  return `${hook}\n\n#0DTE #Options #DayTrading #StockMarket`;
+  const marketing = `${hook}\n\n#0DTE #Options #DayTrading #StockMarket`;
+  return ensureDisclaimer(marketing, TT_DISCLAIMER);
 }
 
 export default async function AdminBriefingsPage({ searchParams }: PageProps) {

@@ -4061,9 +4061,16 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const title =
           row.ytTitle?.trim() ||
           `0DTE Morning Brief — ${tradingDay}`;
-        const description =
+        const rawDescription =
           row.ytCaption?.trim() ||
           `${row.script ?? ""}\n\nMore daily setups: https://www.tradezerodte.com/morning-brief\n\n#0DTE #Options #DayTrading`;
+        // Defensively ensure the disclaimer is present even if the admin
+        // edited the caption to remove it. Idempotent — only appends if the
+        // marker phrase isn't already in the text.
+        const { ensureDisclaimer, YT_DISCLAIMER } = await import(
+          "@/lib/briefings-copy"
+        );
+        const description = ensureDisclaimer(rawDescription, YT_DISCLAIMER);
 
         try {
           const { uploadBriefingToYouTube } = await import("@/lib/youtube");

@@ -6,7 +6,7 @@
  * reads the same row plus the recent `bot_actions` event stream.
  */
 
-import { desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   botActions,
@@ -17,7 +17,20 @@ import {
   type BotAlmaState,
   type BotConfig,
   type BotTrade,
+  type BotTradeStatus,
 } from "@/lib/db/schema";
+
+/**
+ * Trade statuses that are TERMINAL — no further state transitions. These
+ * shouldn't show in the Activity tab even if they aren't archived yet, since
+ * "Activity" means in-flight or live positions, not history.
+ */
+const TERMINAL_BOT_TRADE_STATUSES: BotTradeStatus[] = [
+  "closed",
+  "rejected",
+  "cancelled",
+  "errored",
+];
 
 const SINGLETON_ID = "default";
 
@@ -79,7 +92,12 @@ export async function getActiveBotTrades(limit = 25): Promise<BotTrade[]> {
   return db
     .select()
     .from(botTrades)
-    .where(isNull(botTrades.archivedAt))
+    .where(
+      and(
+        isNull(botTrades.archivedAt),
+        notInArray(botTrades.status, TERMINAL_BOT_TRADE_STATUSES),
+      ),
+    )
     .orderBy(desc(botTrades.signaledAt))
     .limit(limit);
 }

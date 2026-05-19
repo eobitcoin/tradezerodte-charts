@@ -416,6 +416,21 @@ const TOOLS = [
     },
   },
   {
+    name: "publish_briefing_to_tiktok",
+    description:
+      "Push an approved briefing video into the connected TikTok account's inbox/drafts (Upload to Inbox mode — no auto-publish). Reads the briefing row for `trading_day`, validates `tt_status='approved'`, downloads the mirrored MP4 from our bucket, calls TikTok's `/v2/post/publish/inbox/video/init/` to get an upload URL, then PUTs the bytes. On success: writes `tt_publish_id`, `tt_status='posted'`, `tt_posted_at=now()`. The user opens the TikTok mobile app afterward and manually publishes from drafts. Idempotent on `tt_status='posted'`. Requires env vars `TT_CLIENT_KEY`, `TT_CLIENT_SECRET`, `TT_REFRESH_TOKEN`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        trading_day: {
+          type: "string",
+          description:
+            "Optional YYYY-MM-DD; defaults to today's date in America/New_York.",
+        },
+      },
+    },
+  },
+  {
     name: "upload_research_image",
     description:
       "Upload a single chart/image (PNG/JPEG/WebP) for a research post to the website's bucket. Call this BEFORE publish_research, once per image (typically 'weekly' and 'daily' charts).\n\n**MODE A — `source_url` (RECOMMENDED for routines that can host the image elsewhere):** Pass a public HTTPS URL where the image is hosted (e.g. raw.githubusercontent.com, S3, Imgur). Server fetches the bytes and uploads to the bucket. Tiny tool call — just the URL string. No base64 emission needed; bypasses stream-idle issues entirely.\n\n**MODE B — `data_base64` (single-call):** Pass raw base64 of the image bytes (no `data:` prefix). Best when the image is < 30 KB raw (< ~40 KB base64). Larger payloads risk hitting the model's per-turn output cap.\n\n**MODE C — `data_base64` chunked:** Reserved for legacy use only; `source_url` is preferred for large images. Pass `upload_id`, `chunk_total`, `chunk_index` with each call. See full description in `chunk_total` field.\n\nExactly one of `source_url` or `data_base64` must be set.",
@@ -4135,6 +4150,177 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             {
               type: "text",
               text: `publish_briefing_to_youtube failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "publish_briefing_to_tiktok") {
+      try {
+        const a = args as { trading_day?: string };
+        const tradingDay = a.trading_day || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDay)) {
+          return {
+            content: [{ type: "text", text: "trading_day must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        const { briefings } = await import("@/lib/db/schema");
+        const [row] = await db
+          .select()
+          .from(briefings)
+          .where(eq(briefings.tradingDay, tradingDay))
+          .limit(1);
+        if (!row) {
+          return {
+            content: [{ type: "text", text: `no briefing row for ${tradingDay}` }],
+            isError: true,
+          };
+        }
+        // Idempotency: already pushed → return existing publish_id.
+        if (row.ttStatus === "posted" && row.ttPublishId) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: true,
+                  trading_day: tradingDay,
+                  status: "already_posted",
+                  tt_publish_id: row.ttPublishId,
+                  note: "Already pushed to TikTok inbox. Open the TikTok app to finalize.",
+                }),
+              },
+            ],
+            isError: false,
+          };
+        }
+        if (row.ttStatus !== "approved") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `tt_status is "${row.ttStatus ?? "null"}" — must be "approved" to publish. Open /admin/briefings to approve.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        if (!row.videoS3Key) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `no video available for ${tradingDay} — video_s3_key is null`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // Mark posting, then pull the MP4 from our bucket.
+        await db
+          .update(briefings)
+          .set({ ttStatus: "posting", ttError: null, updatedAt: sql`now()` })
+          .where(eq(briefings.tradingDay, tradingDay));
+
+        const { getObjectStream } = await import("@/lib/s3");
+        const { buildBriefingVideoKey } = await import("@/lib/video-mux");
+        const videoKey = buildBriefingVideoKey(tradingDay);
+        const obj = await getObjectStream(videoKey);
+        if (!obj) {
+          await db
+            .update(briefings)
+            .set({
+              ttStatus: "failed",
+              ttError: `video not found in bucket at ${videoKey}`,
+              updatedAt: sql`now()`,
+            })
+            .where(eq(briefings.tradingDay, tradingDay));
+          return {
+            content: [
+              { type: "text", text: `video not found in bucket at ${videoKey}` },
+            ],
+            isError: true,
+          };
+        }
+        const chunks: Uint8Array[] = [];
+        const reader = obj.body.getReader();
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+        }
+        const videoBuffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+
+        // Defensively ensure disclaimer on the caption used for the inbox
+        // metadata. (TikTok inbox mode mostly relies on the user typing the
+        // final caption in the app, but we send what we have for completeness.)
+        const { ensureDisclaimer, TT_DISCLAIMER } = await import(
+          "@/lib/briefings-copy"
+        );
+        const captionRaw = row.ttCaption?.trim() || row.script || "";
+        const caption = ensureDisclaimer(captionRaw, TT_DISCLAIMER);
+
+        try {
+          const { uploadBriefingToTikTok } = await import("@/lib/tiktok");
+          const result = await uploadBriefingToTikTok({
+            videoBuffer,
+            caption,
+          });
+
+          await db
+            .update(briefings)
+            .set({
+              ttStatus: "posted",
+              ttPostedAt: new Date(),
+              ttPublishId: result.publishId,
+              ttError: null,
+              postedAt: row.postedAt ?? new Date(),
+              updatedAt: sql`now()`,
+            })
+            .where(eq(briefings.tradingDay, tradingDay));
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: true,
+                  trading_day: tradingDay,
+                  status: "posted",
+                  tt_publish_id: result.publishId,
+                  elapsed_ms: result.uploadElapsedMs,
+                  bytes_uploaded: result.bytes,
+                  note: "Video pushed to TikTok inbox/drafts. Open the TikTok mobile app to finalize and publish.",
+                }),
+              },
+            ],
+            isError: false,
+          };
+        } catch (uploadErr) {
+          const msg =
+            uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+          await db
+            .update(briefings)
+            .set({
+              ttStatus: "failed",
+              ttError: msg.slice(0, 1000),
+              updatedAt: sql`now()`,
+            })
+            .where(eq(briefings.tradingDay, tradingDay));
+          return {
+            content: [{ type: "text", text: `tiktok upload failed: ${msg}` }],
+            isError: true,
+          };
+        }
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `publish_briefing_to_tiktok failed: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,

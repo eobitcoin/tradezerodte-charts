@@ -87,12 +87,29 @@ export default function PublicFooter() {
             not investment advice. Options trading involves substantial risk of
             loss and is not suitable for every investor.
           </p>
+          <div className="flex gap-3 pt-1 text-[11px]">
+            <Link href="/privacy" className="text-white/65 hover:text-white">
+              Privacy
+            </Link>
+            <Link href="/terms" className="text-white/65 hover:text-white">
+              Terms
+            </Link>
+          </div>
         </div>
       </div>
       <div className="border-t border-white/5">
-        <div className="max-w-6xl mx-auto px-6 py-4 text-[11px] text-white/35 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 py-4 text-[11px] text-white/35 flex flex-wrap items-center justify-between gap-2">
           <span>© {new Date().getFullYear()} 0DTE Market Research</span>
-          <span>Not financial advice</span>
+          <div className="flex items-center gap-3">
+            <Link href="/privacy" className="hover:text-white/65">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-white/65">
+              Terms
+            </Link>
+            <span>·</span>
+            <span>Not financial advice</span>
+          </div>
         </div>
       </div>
     </footer>

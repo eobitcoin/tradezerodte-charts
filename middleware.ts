@@ -12,6 +12,8 @@ const PUBLIC_PATHS = new Set([
   "/learn",
   "/help",
   "/morning-brief",
+  "/privacy",
+  "/terms",
   "/robots.txt",
   "/sitemap.xml",
   // Google Search Console site-verification token. Must be reachable

@@ -29,8 +29,18 @@
 
 import { createServer } from "node:http";
 import { exec } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { buildAuthUrl, exchangeCodeForTokens } from "../lib/tiktok";
+
+/**
+ * PKCE verifier: 64 random bytes → base64url (the spec allows 43–128 chars
+ * URL-safe). We never persist it — it lives only inside this one auth dance.
+ */
+function generatePkce(): { verifier: string; challenge: string } {
+  const verifier = randomBytes(64).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
 
 const PORT = 53683;
 const REDIRECT_URI = `http://localhost:${PORT}/oauth/callback`;
@@ -61,7 +71,9 @@ async function main() {
 
   // CSRF guard — TikTok echoes this back; we verify it matches.
   const state = randomBytes(16).toString("hex");
-  const authUrl = buildAuthUrl(clientKey, REDIRECT_URI, state);
+  // PKCE pair — challenge goes in the auth URL, verifier in the token exchange.
+  const { verifier: codeVerifier, challenge: codeChallenge } = generatePkce();
+  const authUrl = buildAuthUrl(clientKey, REDIRECT_URI, state, codeChallenge);
 
   const code = await new Promise<string>((resolve, reject) => {
     const server = createServer(async (req, res) => {
@@ -107,7 +119,13 @@ async function main() {
     server.on("error", reject);
   });
 
-  const tokens = await exchangeCodeForTokens(clientKey, clientSecret, code, REDIRECT_URI);
+  const tokens = await exchangeCodeForTokens(
+    clientKey,
+    clientSecret,
+    code,
+    REDIRECT_URI,
+    codeVerifier,
+  );
   if (!tokens.refresh_token) {
     console.error(
       "No refresh_token returned. The connected TikTok account may have already granted consent — " +

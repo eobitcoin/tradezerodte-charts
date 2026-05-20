@@ -8,7 +8,7 @@ import {
   listPublicBriefingDays,
 } from "@/lib/briefings-public";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 interface PageProps {
   params: Promise<{ date: string }>;

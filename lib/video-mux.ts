@@ -133,7 +133,7 @@ export async function swapBriefingAudio(
       "video/mp4",
     );
 
-    const appUrl = process.env.APP_URL || "https://www.tradezerodte.com";
+    const appUrl = process.env.APP_URL || "https://www.oliviatrades.com";
     return {
       tradingDay,
       videoKey: upload.key,

@@ -1818,7 +1818,7 @@ async function fetchImageFromUrl(url: string): Promise<{ bytes: Uint8Array; cont
     res = await fetch(url, {
       signal: ac.signal,
       redirect: "follow",
-      headers: { "User-Agent": "tradezerodte-research-fetcher/1.0" },
+      headers: { "User-Agent": "oliviatrades-research-fetcher/1.0" },
     });
   } catch (err) {
     throw new Error(`failed to fetch source_url: ${err instanceof Error ? err.message : String(err)}`);
@@ -2938,7 +2938,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
   if (method === "initialize") {
     return {
       protocolVersion: PROTOCOL_VERSION,
-      serverInfo: { name: "tradezerodte-publisher", version: "1.0.0" },
+      serverInfo: { name: "oliviatrades-publisher", version: "1.0.0" },
       capabilities: { tools: { listChanged: false } },
     };
   }
@@ -3300,7 +3300,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const key = buildBriefingAudioKey(tradingDay);
         const upload = await putObject(key, tts.buffer, tts.mimeType);
 
-        const appUrl = process.env.APP_URL || "https://www.tradezerodte.com";
+        const appUrl = process.env.APP_URL || "https://www.oliviatrades.com";
         const audioUrl = `${appUrl}/api/briefings/audio/${tradingDay}`;
         const meta = {
           ...((row.meta as Record<string, unknown>) ?? {}),
@@ -3609,7 +3609,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           };
         }
 
-        const appUrl = process.env.APP_URL || "https://www.tradezerodte.com";
+        const appUrl = process.env.APP_URL || "https://www.oliviatrades.com";
         const meta = (row.meta as Record<string, unknown>) ?? {};
         const hedraMeta = (meta.hedra as Record<string, unknown>) ?? {};
         const generationId = hedraMeta.generation_id as string | undefined;
@@ -4078,7 +4078,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           `0DTE Morning Brief — ${tradingDay}`;
         const rawDescription =
           row.ytCaption?.trim() ||
-          `${row.script ?? ""}\n\nMore daily setups: https://www.tradezerodte.com/morning-brief\n\n#0DTE #Options #DayTrading`;
+          `${row.script ?? ""}\n\nMore daily setups: https://www.oliviatrades.com/morning-brief\n\n#0DTE #Options #DayTrading`;
         // Defensively ensure the disclaimer is present even if the admin
         // edited the caption to remove it. Idempotent — only appends if the
         // marker phrase isn't already in the text.

@@ -3,7 +3,7 @@ import Link from "next/link";
 import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 const EFFECTIVE_DATE = "May 18, 2026";
 
 export const dynamic = "force-static";

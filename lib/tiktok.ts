@@ -226,13 +226,23 @@ export async function fetchPublishStatus(publishId: string): Promise<PublishStat
 // Auth dance helpers — used only by scripts/tiktok-auth.ts
 // ---------------------------------------------------------------------------
 
-export function buildAuthUrl(clientKey: string, redirectUri: string, state: string): string {
+export function buildAuthUrl(
+  clientKey: string,
+  redirectUri: string,
+  state: string,
+  codeChallenge: string,
+): string {
   const params = new URLSearchParams({
     client_key: clientKey,
     response_type: "code",
     scope: TT_SCOPES.join(","),
     redirect_uri: redirectUri,
     state,
+    // PKCE — required by TikTok as of 2024+. We use the S256 method (SHA-256
+    // of the verifier, base64url-encoded). The verifier travels back to us
+    // in exchangeCodeForTokens so TikTok can verify the pair.
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
   return `${AUTH_BASE}?${params.toString()}`;
 }
@@ -242,6 +252,7 @@ export async function exchangeCodeForTokens(
   clientSecret: string,
   code: string,
   redirectUri: string,
+  codeVerifier: string,
 ): Promise<{ refresh_token: string | null; access_token: string | null; open_id: string | null }> {
   const body = new URLSearchParams({
     client_key: clientKey,
@@ -249,6 +260,7 @@ export async function exchangeCodeForTokens(
     code,
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
   });
   const res = await fetch(TOKEN_URL, {
     method: "POST",

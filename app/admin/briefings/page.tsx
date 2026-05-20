@@ -37,7 +37,7 @@ function defaultYtCaption(script: string | null): string {
   const body = script?.trim() || "Today's 0DTE setups from Olivia Trades.";
   const marketing =
     `${body}\n\n` +
-    `More daily setups: https://www.tradezerodte.com/morning-brief\n\n` +
+    `More daily setups: https://www.oliviatrades.com/morning-brief\n\n` +
     `#0DTE #Options #DayTrading #StockMarket #Trading`;
   return ensureDisclaimer(marketing, YT_DISCLAIMER);
 }

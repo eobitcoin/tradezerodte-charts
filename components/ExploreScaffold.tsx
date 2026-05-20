@@ -2,7 +2,7 @@ import Link from "next/link";
 import PublicHeader from "./PublicHeader";
 import PublicFooter from "./PublicFooter";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export interface ExplorePageProps {
   /** Slug used in the URL: institutional | earnings | sector-rotation | insider | daily */

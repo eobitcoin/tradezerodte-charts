@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { loadSectorRotationPreview, listSectorRotationScanDays } from "@/lib/explore-preview";
 import RotationPreviewView from "@/components/RotationPreviewView";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 interface PageProps {
   params: Promise<{ scanDay: string }>;
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     ? preview.summary.slice(0, 180).trim() + (preview.summary.length > 180 ? "…" : "")
     : "Weekly sector rotation scan.";
   return {
-    title: `Sector Rotation — ${scanDay} | tradezerodte.com`,
+    title: `Sector Rotation — ${scanDay} | oliviatrades.com`,
     description: desc,
     alternates: { canonical: `${APP_URL}/explore/sector-rotation/${scanDay}` },
   };

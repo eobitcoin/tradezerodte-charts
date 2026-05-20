@@ -3,7 +3,7 @@ import { loadEarningsPreview, listEarningsScanDays } from "@/lib/explore-preview
 import EarningsPreviewView from "@/components/EarningsPreviewView";
 import { renderEarningsLatestEmpty } from "@/components/ExploreEmptyStates";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Earnings Whiplash Map — Asymmetric Volatility Setups",

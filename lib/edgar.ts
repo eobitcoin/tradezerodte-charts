@@ -12,7 +12,7 @@
  * across multiple funds.
  */
 
-const SEC_DEFAULT_USER_AGENT = "tradezerodte.com institutional-scan admin@tradezerodte.com";
+const SEC_DEFAULT_USER_AGENT = "oliviatrades.com institutional-scan admin@oliviatrades.com";
 
 function userAgent(): string {
   return process.env.SEC_USER_AGENT?.trim() || SEC_DEFAULT_USER_AGENT;

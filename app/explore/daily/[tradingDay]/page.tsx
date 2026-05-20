@@ -6,7 +6,7 @@ import {
 } from "@/lib/explore-preview";
 import DailyAnalysisPreviewView from "@/components/DailyAnalysisPreviewView";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 interface PageProps {
   params: Promise<{ tradingDay: string }>;
@@ -22,7 +22,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       (preview.headlineTrade.rationale.length > 180 ? "…" : "")
     : `Daily 0DTE trading research for ${tradingDay}.`;
   return {
-    title: `Daily 0DTE Analysis — ${tradingDay} | tradezerodte.com`,
+    title: `Daily 0DTE Analysis — ${tradingDay} | oliviatrades.com`,
     description: desc,
     alternates: { canonical: `${APP_URL}/explore/daily/${tradingDay}` },
   };

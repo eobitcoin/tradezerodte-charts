@@ -1346,7 +1346,7 @@ export default function BotWickAdminView({ config, status, creds }: Props) {
           <ol className="mt-2 list-decimal pl-5 space-y-1">
             <li>Railway dashboard → your project → <strong>+ New</strong> → <strong>Empty service</strong> → name it <code>botwick-cron</code>.</li>
             <li>In the new service: <strong>Settings → Deploy → Custom Start Command</strong>:
-              <pre className="bg-black/[0.04] dark:bg-white/[0.04] rounded p-2 mt-1 overflow-x-auto">curl -fsS -X POST -H &quot;Authorization: Bearer $BOTWICK_CRON_TOKEN&quot; https://www.tradezerodte.com/api/cron/botwick/tick</pre>
+              <pre className="bg-black/[0.04] dark:bg-white/[0.04] rounded p-2 mt-1 overflow-x-auto">curl -fsS -X POST -H &quot;Authorization: Bearer $BOTWICK_CRON_TOKEN&quot; https://www.oliviatrades.com/api/cron/botwick/tick</pre>
             </li>
             <li><strong>Settings → Cron Schedule</strong>: <code>* 13-19 * * 1-5</code> &nbsp; (every minute, 09:30–16:00 ET ≈ 13:30–20:00 UTC year-round; pick whichever cron syntax Railway accepts).</li>
             <li>In <strong>Variables</strong>: paste the same <code>BOTWICK_CRON_TOKEN</code> value the main service has.</li>
@@ -1355,7 +1355,7 @@ export default function BotWickAdminView({ config, status, creds }: Props) {
           <p className="mt-2">
             Manual sanity-check command:
             <code className="block bg-black/[0.04] dark:bg-white/[0.04] rounded p-2 mt-1 overflow-x-auto">
-              curl -i -X POST -H &quot;Authorization: Bearer $TOKEN&quot; https://www.tradezerodte.com/api/cron/botwick/tick
+              curl -i -X POST -H &quot;Authorization: Bearer $TOKEN&quot; https://www.oliviatrades.com/api/cron/botwick/tick
             </code>
           </p>
         </details>

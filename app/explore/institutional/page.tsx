@@ -6,7 +6,7 @@ import {
 import InstitutionalPreviewView from "@/components/InstitutionalPreviewView";
 import { renderInstitutionalLatestEmpty } from "@/components/ExploreEmptyStates";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Institutional Flow — Where Smart Money Is Quietly Buying",

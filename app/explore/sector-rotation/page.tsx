@@ -3,7 +3,7 @@ import { loadSectorRotationPreview, listSectorRotationScanDays } from "@/lib/exp
 import RotationPreviewView from "@/components/RotationPreviewView";
 import { renderRotationLatestEmpty } from "@/components/ExploreEmptyStates";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Sector Rotation Detector — Where Capital Is Moving",

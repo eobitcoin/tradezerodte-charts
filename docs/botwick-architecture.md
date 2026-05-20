@@ -26,7 +26,7 @@ The schema and UI are deliberately a step ahead of the runner. The bot stays at 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ tradezerodte.com (Next.js — this repo)                           │
+│ oliviatrades.com (Next.js — this repo)                           │
 │                                                                  │
 │  ┌────────────────┐   ┌──────────────────┐   ┌────────────────┐  │
 │  │ /botwick UI    │   │ Admin API        │   │ Existing 0DTE  │  │
@@ -563,7 +563,7 @@ The monitor is meaningless without something pinging it. `/api/cron/botwick/tick
 
 **Setup (one-time)**:
 1. Generate a 32-byte token, set `BOTWICK_CRON_TOKEN` on the web service AND on a new "botwick-cron" Railway service.
-2. Cron service runs `curl -fsS -X POST -H "Authorization: Bearer $BOTWICK_CRON_TOKEN" https://www.tradezerodte.com/api/cron/botwick/tick` on schedule.
+2. Cron service runs `curl -fsS -X POST -H "Authorization: Bearer $BOTWICK_CRON_TOKEN" https://www.oliviatrades.com/api/cron/botwick/tick` on schedule.
 3. Schedule: `* 13-19 * * 1-5` (every minute weekdays 13:30–20:00 UTC — covers 9:30–16:00 ET year-round; DST handled by Tradier's clock, not ours).
 4. Admin UI's "Auto-tick (cron)" panel shows whether the token is set.
 

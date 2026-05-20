@@ -253,7 +253,7 @@ export async function sendDteResearchEmail(post: DteResearchEmailPost): Promise<
     </div>
 
     <p style="margin:28px 0 16px">
-      <a href="${url}" style="background:#dc2626;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-weight:600;font-size:13px">View on tradezerodte.com →</a>
+      <a href="${url}" style="background:#dc2626;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;display:inline-block;font-weight:600;font-size:13px">View on oliviatrades.com →</a>
     </p>
   `;
 

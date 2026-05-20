@@ -16,7 +16,7 @@ export interface LearnPageProps {
   children: React.ReactNode;
 }
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 /**
  * Reusable scaffold for /learn/* pages. Renders:

@@ -3,7 +3,7 @@ import { loadInsiderPreview, listInsiderScanDays } from "@/lib/explore-preview";
 import InsiderPreviewView from "@/components/InsiderPreviewView";
 import { renderInsiderLatestEmpty } from "@/components/ExploreEmptyStates";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Insider Buys (SEC Form 4) — Daily Scan",

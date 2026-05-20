@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { loadInsiderPreview, listInsiderScanDays } from "@/lib/explore-preview";
 import InsiderPreviewView from "@/components/InsiderPreviewView";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 interface PageProps {
   params: Promise<{ scanDay: string }>;
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const preview = await loadInsiderPreview(scanDay);
   if (!preview) return {};
   return {
-    title: `${preview.title} | tradezerodte.com`,
+    title: `${preview.title} | oliviatrades.com`,
     description: `Daily insider-buy scan for ${scanDay}. The headline pick is fully revealed; ${preview.buyCount - 1} other qualifying buys are members-only.`,
     alternates: { canonical: `${APP_URL}/explore/insider/${scanDay}` },
   };

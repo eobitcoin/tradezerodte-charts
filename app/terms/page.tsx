@@ -3,7 +3,7 @@ import Link from "next/link";
 import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 const EFFECTIVE_DATE = "May 18, 2026";
 
 export const dynamic = "force-static";
@@ -51,7 +51,7 @@ export default function TermsPage() {
           <p>
             These Terms of Service (&ldquo;Terms&rdquo;) govern your access to
             and use of 0DTE Market Research (the &ldquo;Service&rdquo;), the
-            website at <code>tradezerodte.com</code>, our daily briefing
+            website at <code>oliviatrades.com</code>, our daily briefing
             videos, and any related content we publish on third-party
             platforms (YouTube, TikTok, etc.). By creating an account or
             otherwise using the Service, you agree to be bound by these

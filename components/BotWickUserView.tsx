@@ -201,7 +201,7 @@ export default function BotWickUserView({ status, config, actions, trades, almaS
       </div>
 
       <p className="text-[10px] uppercase tracking-[0.25em] text-emerald-500/40 font-mono">
-        // botwick reads research from tradezerodte.com · routes through tradier · risk-gated
+        // botwick reads research from oliviatrades.com · routes through tradier · risk-gated
       </p>
     </div>
   );

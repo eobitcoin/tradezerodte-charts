@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { loadEarningsPreview, listEarningsScanDays } from "@/lib/explore-preview";
 import EarningsPreviewView from "@/components/EarningsPreviewView";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 interface PageProps {
   params: Promise<{ scanDay: string }>;
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     ? preview.summary.slice(0, 180).trim() + (preview.summary.length > 180 ? "…" : "")
     : "Weekly earnings whiplash scan — implied vs realized volatility.";
   return {
-    title: `Earnings Whiplash — ${scanDay} | tradezerodte.com`,
+    title: `Earnings Whiplash — ${scanDay} | oliviatrades.com`,
     description: desc,
     alternates: { canonical: `${APP_URL}/explore/earnings/${scanDay}` },
   };

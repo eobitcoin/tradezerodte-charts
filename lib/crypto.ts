@@ -165,7 +165,7 @@ export async function fetchCryptoQuotes(): Promise<CryptoQuote[]> {
   let data: CoingeckoSimplePriceResponse = {};
   try {
     const res = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": "tradezerodte-crypto-radar/1.0" },
+      headers: { Accept: "application/json", "User-Agent": "oliviatrades-crypto-radar/1.0" },
       // Cache 60s on the Next side; Coingecko itself caches ~30s.
       next: { revalidate: 60 },
     });

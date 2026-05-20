@@ -6,7 +6,7 @@ import {
 } from "@/lib/explore-preview";
 import InstitutionalPreviewView from "@/components/InstitutionalPreviewView";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 interface PageProps {
   params: Promise<{ scanDay: string }>;
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     ? preview.summary.slice(0, 180).trim() + (preview.summary.length > 180 ? "…" : "")
     : "Weekly 13F-driven institutional flow scan.";
   return {
-    title: `Institutional Flow — ${scanDay} | tradezerodte.com`,
+    title: `Institutional Flow — ${scanDay} | oliviatrades.com`,
     description: desc,
     alternates: { canonical: `${APP_URL}/explore/institutional/${scanDay}` },
   };

@@ -4,7 +4,7 @@ import PublicHeader from "@/components/PublicHeader";
 import PublicFooter from "@/components/PublicFooter";
 import WaitlistForm from "@/components/WaitlistForm";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "0DTE Market Research — Invite-Only Private Research",

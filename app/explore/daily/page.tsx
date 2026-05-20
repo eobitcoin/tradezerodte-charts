@@ -6,7 +6,7 @@ import {
 import DailyAnalysisPreviewView from "@/components/DailyAnalysisPreviewView";
 import { renderDailyAnalysisLatestEmpty } from "@/components/ExploreEmptyStates";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Daily 0DTE Analysis — Today's Top-Ranked Trade",

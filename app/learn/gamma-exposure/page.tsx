@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import LearnPageScaffold from "@/components/LearnPageScaffold";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Gamma Exposure (GEX) Explained",

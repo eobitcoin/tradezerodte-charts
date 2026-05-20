@@ -10,7 +10,7 @@ import {
   loadDailyAnalysisPreview,
 } from "@/lib/explore-preview";
 
-const APP_URL = process.env.APP_URL || "https://www.tradezerodte.com";
+const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export const metadata: Metadata = {
   title: "Explore What's Inside — Public Research Previews",
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     url: `${APP_URL}/explore`,
-    title: "Explore What's Inside — tradezerodte.com",
+    title: "Explore What's Inside — oliviatrades.com",
     description:
       "Public previews of the weekly + daily scans that drive our members' research.",
   },

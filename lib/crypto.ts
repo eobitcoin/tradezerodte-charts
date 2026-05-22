@@ -1,16 +1,17 @@
 /**
- * Crypto Radar configuration — watchlist, Coingecko id mapping, and live
+ * Crypto Radar configuration — watchlist, exchange id mapping, and live
  * spot-price fetcher.
  *
- * Why Coingecko (not Binance directly):
- *   - Binance public API blocks several geos (US, etc.) — Coingecko is universal.
- *   - Coingecko aggregates across exchanges → more robust price reference.
- *   - Free public endpoint, ~30 requests/min on free tier (we cache 30s).
+ * Price source: OKX `/api/v5/market/ticker` (per ticker, fetched in parallel).
+ * We originally used CoinGecko's `/simple/price` batch endpoint but their
+ * free tier rate-limits cloud IPs and returns empty bodies from Railway's
+ * egress, so prices stayed null in production. OKX has no such restriction,
+ * returns the same data (last + 24h change + 24h volume), and is what
+ * `fetchCryptoSpotPrice` (the radar webhook fallback) already uses.
  *
- * If/when we need true exchange-precision pricing or kline depth (Phase 2),
- * we can layer Binance for users in non-blocked regions and fall back to
- * Coingecko OHLC. For Phase 1 (Radar with current price column) Coingecko is
- * more than sufficient.
+ * The CoinGecko id table is preserved below — it's still surfaced as a
+ * `cgId` field on each quote for backwards compatibility, but no downstream
+ * code reads it today.
  */
 
 export const CRYPTO_TICKERS = [
@@ -92,13 +93,6 @@ export interface CryptoQuote {
   vol24h: number | null;
 }
 
-interface CoingeckoSimplePriceResponse {
-  [cgId: string]: {
-    usd?: number;
-    usd_24h_change?: number;
-    usd_24h_vol?: number;
-  };
-}
 
 /**
  * Fetch live USD prices for all 12 watchlist tickers in one Coingecko call.
@@ -156,37 +150,113 @@ export async function fetchCryptoSpotPrice(ticker: string): Promise<number | nul
   }
 }
 
-export async function fetchCryptoQuotes(): Promise<CryptoQuote[]> {
-  const ids = CRYPTO_TICKERS.map((t) => COINGECKO_ID[t]).join(",");
-  const url =
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}` +
-    `&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
+/** Common shape returned by both OKX and MEXC fetch helpers. */
+interface RawQuote {
+  last: number | null;
+  open24h: number | null;
+  volUsd: number | null;
+}
 
-  let data: CoingeckoSimplePriceResponse = {};
+/** OKX per-ticker fetch. Returns null prices on miss (e.g. unlisted symbol). */
+async function fetchFromOkx(ticker: CryptoTicker): Promise<RawQuote> {
+  const okxSym = toOkxSymbol(ticker);
   try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json", "User-Agent": "oliviatrades-crypto-radar/1.0" },
-      // Cache 60s on the Next side; Coingecko itself caches ~30s.
-      next: { revalidate: 60 },
-    });
-    if (res.ok) {
-      data = (await res.json()) as CoingeckoSimplePriceResponse;
-    }
-  } catch {
-    // Swallow errors — return empty quotes; UI shows "—".
-  }
-
-  return CRYPTO_TICKERS.map<CryptoQuote>((ticker) => {
-    const cgId = COINGECKO_ID[ticker];
-    const row = data[cgId];
-    return {
-      ticker,
-      cgId,
-      usd: row?.usd ?? null,
-      change24h: row?.usd_24h_change ?? null,
-      vol24h: row?.usd_24h_vol ?? null,
+    const res = await fetch(
+      `https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(okxSym)}`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "oliviatrades-crypto-radar/1.0",
+        },
+        next: { revalidate: 60 },
+      },
+    );
+    if (!res.ok) return { last: null, open24h: null, volUsd: null };
+    const j = (await res.json()) as {
+      code?: string;
+      data?: Array<{ last?: string; open24h?: string; volCcy24h?: string }>;
     };
-  });
+    if (j.code !== "0") return { last: null, open24h: null, volUsd: null };
+    const row = j.data?.[0];
+    const last = row?.last !== undefined ? Number(row.last) : NaN;
+    const open24h = row?.open24h !== undefined ? Number(row.open24h) : NaN;
+    const volCcy24h = row?.volCcy24h !== undefined ? Number(row.volCcy24h) : NaN;
+    return {
+      last: Number.isFinite(last) ? last : null,
+      open24h: Number.isFinite(open24h) ? open24h : null,
+      volUsd: Number.isFinite(volCcy24h) ? volCcy24h : null,
+    };
+  } catch {
+    return { last: null, open24h: null, volUsd: null };
+  }
+}
+
+/**
+ * MEXC per-ticker fetch — used as a fallback when OKX doesn't list a symbol
+ * (e.g. TAOUSDT). MEXC is Binance-compatible: tickers are concatenated
+ * (`TAOUSDT`, no dash), and the response includes `lastPrice`, `openPrice`,
+ * and `quoteVolume` (USDT-denominated 24h volume).
+ */
+async function fetchFromMexc(ticker: CryptoTicker): Promise<RawQuote> {
+  try {
+    const res = await fetch(
+      `https://api.mexc.com/api/v3/ticker/24hr?symbol=${encodeURIComponent(ticker)}`,
+      {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "oliviatrades-crypto-radar/1.0",
+        },
+        next: { revalidate: 60 },
+      },
+    );
+    if (!res.ok) return { last: null, open24h: null, volUsd: null };
+    const j = (await res.json()) as {
+      lastPrice?: string;
+      openPrice?: string;
+      quoteVolume?: string;
+    };
+    const last = j.lastPrice !== undefined ? Number(j.lastPrice) : NaN;
+    const open = j.openPrice !== undefined ? Number(j.openPrice) : NaN;
+    const vol = j.quoteVolume !== undefined ? Number(j.quoteVolume) : NaN;
+    return {
+      last: Number.isFinite(last) ? last : null,
+      open24h: Number.isFinite(open) ? open : null,
+      volUsd: Number.isFinite(vol) ? vol : null,
+    };
+  } catch {
+    return { last: null, open24h: null, volUsd: null };
+  }
+}
+
+/**
+ * Fetch live USD prices for all watchlist tickers in parallel.
+ *
+ * Source: OKX first, MEXC as a fallback when OKX doesn't list a symbol
+ * (e.g. TAOUSDT). Per-ticker errors are swallowed individually — a symbol
+ * missing on both exchanges returns nulls rather than breaking the batch.
+ * Cached 60s at the Next.js fetch layer so the page doesn't hammer either
+ * endpoint.
+ */
+export async function fetchCryptoQuotes(): Promise<CryptoQuote[]> {
+  return Promise.all(
+    CRYPTO_TICKERS.map(async (ticker): Promise<CryptoQuote> => {
+      let raw = await fetchFromOkx(ticker);
+      if (raw.last === null) {
+        raw = await fetchFromMexc(ticker);
+      }
+      const change24h =
+        raw.last !== null && raw.open24h !== null && raw.open24h !== 0
+          ? ((raw.last - raw.open24h) / raw.open24h) * 100
+          : null;
+      return {
+        ticker,
+        cgId: COINGECKO_ID[ticker],
+        usd: raw.last,
+        change24h,
+        vol24h: raw.volUsd,
+      };
+    }),
+  );
 }
 
 // ----------------------------------------------------------------------------

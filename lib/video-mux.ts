@@ -212,24 +212,24 @@ function runFfprobe(file: string): Promise<MediaInfo> {
 const CARD_HOLD_SEC = 2.5;
 /** Crossfade duration from Olivia → card. */
 const CARD_XFADE_SEC = 0.25;
-/** Breath after the last spoken word before the card crossfade begins. */
-const CARD_BREATH_SEC = 0.4;
 
 /**
- * Trim the idle tail off a briefing clip and append a branded end card.
+ * Cut a briefing clip at the exact moment narration ends and append a
+ * branded end card.
  *
  * Hedra renders to a fixed 20s but the narration length varies (~13-20s).
- * Rather than overlay a card only when idle exists, this guarantees a
- * consistent outro on *every* video:
- *   1. Probe the ElevenLabs MP3 → exact moment narration ends.
- *   2. Cut the Hedra clip at `narration end + 0.4s` (drops any idle tail;
- *      if narration fills the clip, nothing is trimmed).
- *   3. Crossfade (0.25s) into the static `OliviaTrades.com` card and hold
- *      it for 2.5s.
- *   4. Audio fades out into the card and the tail is padded with silence.
+ * This guarantees a consistent, idle-free outro on *every* video:
+ *   1. Probe the ElevenLabs MP3 → exact moment Olivia stops talking.
+ *   2. Cut the Hedra clip there. The only footage kept past that point is
+ *      the 0.25s the crossfade needs to dissolve from — there is no idle
+ *      tail of her sitting silent.
+ *   3. Crossfade (0.25s, starting the instant narration ends) into the
+ *      static `OliviaTrades.com` card and hold it for 2.5s.
+ *   4. Audio is trimmed to narration end and the card tail padded with
+ *      silence.
  *
- * Output duration = `trimPoint + 2.5s` — varies day to day with narration
- * length, which is fine for a Short.
+ * Output duration = `narration end + ~2.75s` — varies day to day with
+ * narration length, which is fine for a Short.
  *
  * Returns a new MP4 Buffer. Original buffer is not mutated.
  */
@@ -268,14 +268,15 @@ export async function applyOutroCard(
     );
     const audio = await runFfprobe(audioFile);
 
-    // Where to cut the Hedra clip: just after the last word, capped at the
-    // actual video length (so a narration that fills the clip trims nothing).
-    const rawTrim = audio.durationSec + CARD_BREATH_SEC;
-    const trimPoint = Math.min(
-      Number.isFinite(rawTrim) && rawTrim > 1 ? rawTrim : vidDur,
-      vidDur,
-    );
-    // xfade offset must sit inside stream A.
+    // The crossfade to the card begins the EXACT instant narration ends.
+    const narrationEnd =
+      Number.isFinite(audio.durationSec) && audio.durationSec > 1
+        ? audio.durationSec
+        : vidDur - CARD_XFADE_SEC;
+    // Cut the Hedra clip just CARD_XFADE_SEC past narration end — only the
+    // footage the crossfade dissolves from is kept, never an idle tail.
+    const trimPoint = Math.min(narrationEnd + CARD_XFADE_SEC, vidDur);
+    // xfade offset = where the transition starts = exactly narration end.
     const xfadeOffset = Math.max(0, trimPoint - CARD_XFADE_SEC);
     // Card input runs hold + xfade so 2.5s of solid card survives the fade.
     const cardInputDur = CARD_HOLD_SEC + CARD_XFADE_SEC;

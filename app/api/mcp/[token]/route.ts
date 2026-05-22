@@ -3737,19 +3737,19 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const videoBuf = Buffer.from(await videoRes.arrayBuffer());
 
         const { putObject } = await import("@/lib/s3");
-        const { buildBriefingVideoKey, applyFadeToBlack } = await import(
+        const { buildBriefingVideoKey, applyOutroCard } = await import(
           "@/lib/video-mux"
         );
-        // Fade-to-black over the last 2s. Hedra clips run 20s by config; if
-        // Olivia finishes speaking earlier, the tail is hidden behind the fade
-        // instead of showing her idling at the camera. Failure to fade
-        // (ffmpeg crash, etc.) should not block publication — fall back to
-        // the original buffer.
+        // Replace the idle tail with the branded OliviaTrades.com end card.
+        // Hedra renders a fixed 20s; once the narration ends we cross-fade to
+        // the card so the clip never shows Olivia idling at camera. Failure
+        // (ffmpeg crash, missing audio, etc.) must not block publication —
+        // fall back to mirroring the raw clip.
         let outputBuf: Buffer = videoBuf;
         try {
-          outputBuf = await applyFadeToBlack(videoBuf, 18, 2);
-        } catch (fadeErr) {
-          console.error("[hedra-poll] fade-to-black failed, mirroring raw clip", fadeErr);
+          outputBuf = await applyOutroCard(videoBuf, tradingDay);
+        } catch (outroErr) {
+          console.error("[hedra-poll] outro card failed, mirroring raw clip", outroErr);
         }
         const videoKey = buildBriefingVideoKey(tradingDay);
         const upload = await putObject(

@@ -26,8 +26,15 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 import { getObjectStream, putObject } from "@/lib/s3";
 import { buildBriefingAudioKey } from "@/lib/elevenlabs";
+
+/** Static branded end-card overlaid once the narration finishes. */
+const OUTRO_CARD_PATH = path.join(
+  process.cwd(),
+  "public/assets/briefing-outro.png",
+);
 
 export function buildBriefingVideoKey(tradingDay: string): string {
   return `briefings/${tradingDay}/video.mp4`;
@@ -150,38 +157,128 @@ export async function swapBriefingAudio(
   }
 }
 
+interface MediaInfo {
+  durationSec: number;
+  width?: number;
+  height?: number;
+}
+
+/** Probe a media file for duration + (if present) the first video stream's dimensions. */
+function runFfprobe(file: string): Promise<MediaInfo> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-v", "error",
+      "-show_entries", "format=duration:stream=width,height,codec_type",
+      "-of", "json",
+      file,
+    ];
+    const proc = spawn(ffprobeStatic.path, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (c) => {
+      stdout += c.toString();
+    });
+    proc.stderr.on("data", (c) => {
+      stderr += c.toString();
+    });
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe exited ${code}: ${stderr.slice(-300)}`));
+        return;
+      }
+      try {
+        const j = JSON.parse(stdout) as {
+          format?: { duration?: string };
+          streams?: { codec_type?: string; width?: number; height?: number }[];
+        };
+        const dur = parseFloat(j.format?.duration ?? "0");
+        const vstream = (j.streams ?? []).find((s) => s.codec_type === "video");
+        resolve({
+          durationSec: Number.isFinite(dur) ? dur : 0,
+          width: vstream?.width,
+          height: vstream?.height,
+        });
+      } catch (e) {
+        reject(new Error(`ffprobe parse failed: ${String(e)}`));
+      }
+    });
+  });
+}
+
 /**
- * Apply a fade-to-black (video + audio) over the trailing portion of an MP4.
+ * Replace the idle tail of a briefing clip with a branded end card.
  *
- * Why: Hedra clips render to a fixed duration (20s). If Olivia finishes
- * speaking at ~18s, the remaining seconds show her idling — visually awkward.
- * A fade in the last `fadeDurSec` seconds masks the tail without changing the
- * narrative or duration.
+ * Hedra renders to a fixed 20s, but Olivia's narration only runs ~12-18s —
+ * the remainder is her idling at camera. This:
+ *   1. Probes the ElevenLabs MP3 to find exactly when the narration ends.
+ *   2. From `narration end + 0.4s`, cross-fades (0.25s) to the static
+ *      `OliviaTrades.com` card and holds it through the end of the clip.
+ *   3. Fades the audio out at the same point.
  *
- * The fade filter uses fixed `st`/`d` parameters: any clip shorter than
- * `fadeStartSec + fadeDurSec` ends mid-fade (dim rather than fully black),
- * which still looks clean.
+ * Total duration is unchanged (still 20s) — only the idle tail is replaced.
+ * If the narration runs (nearly) the whole clip there's no tail to replace,
+ * so the original buffer is returned untouched.
  *
- * Returns a new MP4 Buffer. Original buffer is untouched.
+ * Returns a new MP4 Buffer. Original buffer is not mutated.
  */
-export async function applyFadeToBlack(
+export async function applyOutroCard(
   input: Buffer,
-  fadeStartSec = 18,
-  fadeDurSec = 2,
+  tradingDay: string,
 ): Promise<Buffer> {
   if (!ffmpegPath) {
     throw new Error("ffmpeg-static did not resolve a binary path");
   }
-  const work = await mkdtemp(path.join(tmpdir(), "briefing-fade-"));
+  const work = await mkdtemp(path.join(tmpdir(), "briefing-outro-"));
   try {
     const inFile = path.join(work, "in.mp4");
+    const audioFile = path.join(work, "narration.mp3");
     const outFile = path.join(work, "out.mp4");
     await writeFile(inFile, new Uint8Array(input));
+
+    // Probe the rendered video for dimensions + duration.
+    const video = await runFfprobe(inFile);
+    const vidW = video.width ?? 720;
+    const vidH = video.height ?? 1280;
+    const vidDur = video.durationSec || 20;
+
+    // Narration length = the ElevenLabs MP3 duration. Pull it from the bucket
+    // and probe it — this is the exact moment Olivia stops speaking.
+    const audioKey = buildBriefingAudioKey(tradingDay);
+    const audioObj = await getObjectStream(audioKey);
+    if (!audioObj) {
+      throw new Error(
+        `no audio in bucket for ${tradingDay} — cannot time the outro card`,
+      );
+    }
+    await writeFile(
+      audioFile,
+      new Uint8Array(await streamToBuffer(audioObj.body)),
+    );
+    const audio = await runFfprobe(audioFile);
+
+    // Card starts 0.4s after the last word so it rings out cleanly.
+    const cardStart = audio.durationSec + 0.4;
+    const fadeDur = 0.25;
+    // Narration fills (almost) the whole clip → no idle tail to replace.
+    if (!Number.isFinite(cardStart) || cardStart >= vidDur - 0.3) {
+      return input;
+    }
+    const st = cardStart.toFixed(2);
+
     const args = [
       "-y",
       "-i", inFile,
-      "-vf", `fade=t=out:st=${fadeStartSec}:d=${fadeDurSec}`,
-      "-af", `afade=t=out:st=${fadeStartSec}:d=${fadeDurSec}`,
+      "-loop", "1", "-i", OUTRO_CARD_PATH,
+      "-filter_complex",
+      `[1:v]scale=${vidW}:${vidH},format=yuva420p,` +
+        `fade=t=in:st=${st}:d=${fadeDur}:alpha=1[card];` +
+        `[0:v][card]overlay=enable='gte(t,${st})':shortest=1[v];` +
+        `[0:a]afade=t=out:st=${st}:d=${fadeDur}[a]`,
+      "-map", "[v]",
+      "-map", "[a]",
       "-c:v", "libx264",
       "-preset", "veryfast",
       "-crf", "20",

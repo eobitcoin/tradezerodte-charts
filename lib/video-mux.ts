@@ -208,19 +208,28 @@ function runFfprobe(file: string): Promise<MediaInfo> {
   });
 }
 
+/** Seconds of solid OliviaTrades.com card held after the crossfade. */
+const CARD_HOLD_SEC = 2.5;
+/** Crossfade duration from Olivia → card. */
+const CARD_XFADE_SEC = 0.25;
+/** Breath after the last spoken word before the card crossfade begins. */
+const CARD_BREATH_SEC = 0.4;
+
 /**
- * Replace the idle tail of a briefing clip with a branded end card.
+ * Trim the idle tail off a briefing clip and append a branded end card.
  *
- * Hedra renders to a fixed 20s, but Olivia's narration only runs ~12-18s —
- * the remainder is her idling at camera. This:
- *   1. Probes the ElevenLabs MP3 to find exactly when the narration ends.
- *   2. From `narration end + 0.4s`, cross-fades (0.25s) to the static
- *      `OliviaTrades.com` card and holds it through the end of the clip.
- *   3. Fades the audio out at the same point.
+ * Hedra renders to a fixed 20s but the narration length varies (~13-20s).
+ * Rather than overlay a card only when idle exists, this guarantees a
+ * consistent outro on *every* video:
+ *   1. Probe the ElevenLabs MP3 → exact moment narration ends.
+ *   2. Cut the Hedra clip at `narration end + 0.4s` (drops any idle tail;
+ *      if narration fills the clip, nothing is trimmed).
+ *   3. Crossfade (0.25s) into the static `OliviaTrades.com` card and hold
+ *      it for 2.5s.
+ *   4. Audio fades out into the card and the tail is padded with silence.
  *
- * Total duration is unchanged (still 20s) — only the idle tail is replaced.
- * If the narration runs (nearly) the whole clip there's no tail to replace,
- * so the original buffer is returned untouched.
+ * Output duration = `trimPoint + 2.5s` — varies day to day with narration
+ * length, which is fine for a Short.
  *
  * Returns a new MP4 Buffer. Original buffer is not mutated.
  */
@@ -259,24 +268,39 @@ export async function applyOutroCard(
     );
     const audio = await runFfprobe(audioFile);
 
-    // Card starts 0.4s after the last word so it rings out cleanly.
-    const cardStart = audio.durationSec + 0.4;
-    const fadeDur = 0.25;
-    // Narration fills (almost) the whole clip → no idle tail to replace.
-    if (!Number.isFinite(cardStart) || cardStart >= vidDur - 0.3) {
-      return input;
-    }
-    const st = cardStart.toFixed(2);
+    // Where to cut the Hedra clip: just after the last word, capped at the
+    // actual video length (so a narration that fills the clip trims nothing).
+    const rawTrim = audio.durationSec + CARD_BREATH_SEC;
+    const trimPoint = Math.min(
+      Number.isFinite(rawTrim) && rawTrim > 1 ? rawTrim : vidDur,
+      vidDur,
+    );
+    // xfade offset must sit inside stream A.
+    const xfadeOffset = Math.max(0, trimPoint - CARD_XFADE_SEC);
+    // Card input runs hold + xfade so 2.5s of solid card survives the fade.
+    const cardInputDur = CARD_HOLD_SEC + CARD_XFADE_SEC;
+    const totalDur = trimPoint + CARD_HOLD_SEC;
+
+    const t = trimPoint.toFixed(3);
+    const off = xfadeOffset.toFixed(3);
+    const total = totalDur.toFixed(3);
 
     const args = [
       "-y",
       "-i", inFile,
-      "-loop", "1", "-i", OUTRO_CARD_PATH,
+      "-loop", "1", "-t", cardInputDur.toFixed(3), "-i", OUTRO_CARD_PATH,
       "-filter_complex",
-      `[1:v]scale=${vidW}:${vidH},format=yuva420p,` +
-        `fade=t=in:st=${st}:d=${fadeDur}:alpha=1[card];` +
-        `[0:v][card]overlay=enable='gte(t,${st})':shortest=1[v];` +
-        `[0:a]afade=t=out:st=${st}:d=${fadeDur}[a]`,
+      // Stream A: Hedra clip trimmed to narration end, normalized.
+      `[0:v]trim=0:${t},setpts=PTS-STARTPTS,scale=${vidW}:${vidH},fps=30,format=yuv420p[va];` +
+        // Stream B: the card, normalized to match A for xfade.
+        `[1:v]scale=${vidW}:${vidH},fps=30,format=yuv420p[vb];` +
+        // Crossfade A → card.
+        `[va][vb]xfade=transition=fade:duration=${CARD_XFADE_SEC}:offset=${off}[v];` +
+        // Audio: trim to narration end, fade out into the card, pad the
+        // 2.5s card tail with silence so audio length == video length.
+        `[0:a]atrim=0:${t},asetpts=PTS-STARTPTS,` +
+        `afade=t=out:st=${off}:d=${CARD_XFADE_SEC},` +
+        `apad=whole_dur=${total}[a]`,
       "-map", "[v]",
       "-map", "[a]",
       "-c:v", "libx264",

@@ -3979,171 +3979,34 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             isError: true,
           };
         }
-        const { briefings } = await import("@/lib/db/schema");
-        const [row] = await db
-          .select()
-          .from(briefings)
-          .where(eq(briefings.tradingDay, tradingDay))
-          .limit(1);
-        if (!row) {
-          return {
-            content: [
-              { type: "text", text: `no briefing row for ${tradingDay}` },
-            ],
-            isError: true,
-          };
+        const { publishBriefingToYouTube } = await import("@/lib/briefing-publish");
+        // Cron path → requireApproved true: only publish admin-approved rows.
+        const r = await publishBriefingToYouTube(tradingDay, {
+          privacy: a.privacy ?? "public",
+          isShort: a.is_short ?? true,
+          requireApproved: true,
+        });
+        if (!r.ok) {
+          return { content: [{ type: "text", text: r.error ?? "publish failed" }], isError: true };
         }
-        // Idempotency: already posted → return existing id without re-upload.
-        if (row.ytStatus === "posted" && row.youtubeVideoId) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  ok: true,
-                  trading_day: tradingDay,
-                  status: "already_posted",
-                  youtube_video_id: row.youtubeVideoId,
-                  watch_url: `https://www.youtube.com/watch?v=${row.youtubeVideoId}`,
-                }),
-              },
-            ],
-            isError: false,
-          };
-        }
-        if (row.ytStatus !== "approved") {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `yt_status is "${row.ytStatus ?? "null"}" — must be "approved" to publish. Open /admin/briefings to approve.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-        if (!row.videoS3Key) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `no video available for ${tradingDay} — video_s3_key is null`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        // Mark posting + read MP4 from bucket.
-        await db
-          .update(briefings)
-          .set({ ytStatus: "posting", ytError: null, updatedAt: sql`now()` })
-          .where(eq(briefings.tradingDay, tradingDay));
-
-        const { getObjectStream } = await import("@/lib/s3");
-        const { buildBriefingVideoKey } = await import("@/lib/video-mux");
-        const videoKey = buildBriefingVideoKey(tradingDay);
-        const obj = await getObjectStream(videoKey);
-        if (!obj) {
-          await db
-            .update(briefings)
-            .set({
-              ytStatus: "failed",
-              ytError: `video not found in bucket at ${videoKey}`,
-              updatedAt: sql`now()`,
-            })
-            .where(eq(briefings.tradingDay, tradingDay));
-          return {
-            content: [
-              { type: "text", text: `video not found in bucket at ${videoKey}` },
-            ],
-            isError: true,
-          };
-        }
-        // Buffer the stream — YouTube SDK accepts a Node Readable, but to
-        // surface bucket errors deterministically (and to track size) we
-        // materialize first. A 20s 720p MP4 is ~10-30MB; well within memory.
-        const chunks: Uint8Array[] = [];
-        const reader = obj.body.getReader();
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) chunks.push(value);
-        }
-        const videoBuffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-
-        // Derive title + description: admin-edited values win, defaults fill gaps.
-        const title =
-          row.ytTitle?.trim() ||
-          `0DTE Morning Brief — ${tradingDay}`;
-        const rawDescription =
-          row.ytCaption?.trim() ||
-          `${row.script ?? ""}\n\nMore daily setups: https://www.oliviatrades.com/morning-brief\n\n#0DTE #Options #DayTrading`;
-        // Defensively ensure the disclaimer is present even if the admin
-        // edited the caption to remove it. Idempotent — only appends if the
-        // marker phrase isn't already in the text.
-        const { ensureDisclaimer, YT_DISCLAIMER } = await import(
-          "@/lib/briefings-copy"
-        );
-        const description = ensureDisclaimer(rawDescription, YT_DISCLAIMER);
-
-        try {
-          const { uploadBriefingToYouTube } = await import("@/lib/youtube");
-          const result = await uploadBriefingToYouTube({
-            videoBuffer,
-            title,
-            description,
-            privacyStatus: a.privacy ?? "public",
-            isShort: a.is_short ?? true,
-          });
-
-          await db
-            .update(briefings)
-            .set({
-              ytStatus: "posted",
-              ytPostedAt: new Date(),
-              youtubeVideoId: result.videoId,
-              ytError: null,
-              postedAt: row.postedAt ?? new Date(),
-              status: "posted",
-              updatedAt: sql`now()`,
-            })
-            .where(eq(briefings.tradingDay, tradingDay));
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  ok: true,
-                  trading_day: tradingDay,
-                  status: "posted",
-                  youtube_video_id: result.videoId,
-                  watch_url: result.watchUrl,
-                  privacy_status: result.privacyStatus,
-                  elapsed_ms: result.elapsedMs,
-                  bytes_uploaded: videoBuffer.length,
-                }),
-              },
-            ],
-            isError: false,
-          };
-        } catch (uploadErr) {
-          const msg =
-            uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-          await db
-            .update(briefings)
-            .set({
-              ytStatus: "failed",
-              ytError: msg.slice(0, 1000),
-              updatedAt: sql`now()`,
-            })
-            .where(eq(briefings.tradingDay, tradingDay));
-          return {
-            content: [{ type: "text", text: `youtube upload failed: ${msg}` }],
-            isError: true,
-          };
-        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                trading_day: r.tradingDay,
+                status: r.status,
+                youtube_video_id: r.youtubeVideoId,
+                watch_url: r.watchUrl,
+                privacy_status: r.privacyStatus,
+                elapsed_ms: r.elapsedMs,
+                bytes_uploaded: r.bytesUploaded,
+              }),
+            },
+          ],
+          isError: false,
+        };
       } catch (err) {
         return {
           content: [
@@ -4166,155 +4029,28 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             isError: true,
           };
         }
-        const { briefings } = await import("@/lib/db/schema");
-        const [row] = await db
-          .select()
-          .from(briefings)
-          .where(eq(briefings.tradingDay, tradingDay))
-          .limit(1);
-        if (!row) {
-          return {
-            content: [{ type: "text", text: `no briefing row for ${tradingDay}` }],
-            isError: true,
-          };
+        const { publishBriefingToTikTok } = await import("@/lib/briefing-publish");
+        const r = await publishBriefingToTikTok(tradingDay, { requireApproved: true });
+        if (!r.ok) {
+          return { content: [{ type: "text", text: r.error ?? "publish failed" }], isError: true };
         }
-        // Idempotency: already pushed → return existing publish_id.
-        if (row.ttStatus === "posted" && row.ttPublishId) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  ok: true,
-                  trading_day: tradingDay,
-                  status: "already_posted",
-                  tt_publish_id: row.ttPublishId,
-                  note: "Already pushed to TikTok inbox. Open the TikTok app to finalize.",
-                }),
-              },
-            ],
-            isError: false,
-          };
-        }
-        if (row.ttStatus !== "approved") {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `tt_status is "${row.ttStatus ?? "null"}" — must be "approved" to publish. Open /admin/briefings to approve.`,
-              },
-            ],
-            isError: true,
-          };
-        }
-        if (!row.videoS3Key) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `no video available for ${tradingDay} — video_s3_key is null`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        // Mark posting, then pull the MP4 from our bucket.
-        await db
-          .update(briefings)
-          .set({ ttStatus: "posting", ttError: null, updatedAt: sql`now()` })
-          .where(eq(briefings.tradingDay, tradingDay));
-
-        const { getObjectStream } = await import("@/lib/s3");
-        const { buildBriefingVideoKey } = await import("@/lib/video-mux");
-        const videoKey = buildBriefingVideoKey(tradingDay);
-        const obj = await getObjectStream(videoKey);
-        if (!obj) {
-          await db
-            .update(briefings)
-            .set({
-              ttStatus: "failed",
-              ttError: `video not found in bucket at ${videoKey}`,
-              updatedAt: sql`now()`,
-            })
-            .where(eq(briefings.tradingDay, tradingDay));
-          return {
-            content: [
-              { type: "text", text: `video not found in bucket at ${videoKey}` },
-            ],
-            isError: true,
-          };
-        }
-        const chunks: Uint8Array[] = [];
-        const reader = obj.body.getReader();
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) chunks.push(value);
-        }
-        const videoBuffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-
-        // Defensively ensure disclaimer on the caption used for the inbox
-        // metadata. (TikTok inbox mode mostly relies on the user typing the
-        // final caption in the app, but we send what we have for completeness.)
-        const { ensureDisclaimer, TT_DISCLAIMER } = await import(
-          "@/lib/briefings-copy"
-        );
-        const captionRaw = row.ttCaption?.trim() || row.script || "";
-        const caption = ensureDisclaimer(captionRaw, TT_DISCLAIMER);
-
-        try {
-          const { uploadBriefingToTikTok } = await import("@/lib/tiktok");
-          const result = await uploadBriefingToTikTok({
-            videoBuffer,
-            caption,
-          });
-
-          await db
-            .update(briefings)
-            .set({
-              ttStatus: "posted",
-              ttPostedAt: new Date(),
-              ttPublishId: result.publishId,
-              ttError: null,
-              postedAt: row.postedAt ?? new Date(),
-              updatedAt: sql`now()`,
-            })
-            .where(eq(briefings.tradingDay, tradingDay));
-
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  ok: true,
-                  trading_day: tradingDay,
-                  status: "posted",
-                  tt_publish_id: result.publishId,
-                  elapsed_ms: result.uploadElapsedMs,
-                  bytes_uploaded: result.bytes,
-                  note: "Video pushed to TikTok inbox/drafts. Open the TikTok mobile app to finalize and publish.",
-                }),
-              },
-            ],
-            isError: false,
-          };
-        } catch (uploadErr) {
-          const msg =
-            uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-          await db
-            .update(briefings)
-            .set({
-              ttStatus: "failed",
-              ttError: msg.slice(0, 1000),
-              updatedAt: sql`now()`,
-            })
-            .where(eq(briefings.tradingDay, tradingDay));
-          return {
-            content: [{ type: "text", text: `tiktok upload failed: ${msg}` }],
-            isError: true,
-          };
-        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                trading_day: r.tradingDay,
+                status: r.status,
+                tt_publish_id: r.ttPublishId,
+                elapsed_ms: r.elapsedMs,
+                bytes_uploaded: r.bytesUploaded,
+                note: r.note,
+              }),
+            },
+          ],
+          isError: false,
+        };
       } catch (err) {
         return {
           content: [

@@ -109,6 +109,7 @@ function actionLabel(action: string, tense: "in_progress" | "past"): string {
     skip: ["Skipping…", "Skipped"],
     reset: ["Resetting…", "Reset"],
     update_caption: ["Saving…", "Saved"],
+    publish: ["Publishing…", "Published"],
   };
   const pair = map[action];
   if (!pair) return tense === "in_progress" ? "Working…" : "Done";
@@ -398,6 +399,48 @@ function PlatformPanel(props: PlatformPanelProps) {
       void call("update_caption", body);
     });
   }
+  // "Publish Now" — hits a separate endpoint that uploads immediately, with
+  // requireApproved=false (the click is the authorization). Save any caption
+  // edits first so the upload uses the latest copy.
+  function onPublishNow() {
+    const verb =
+      props.platform === "yt"
+        ? "Publish to YouTube now (public)"
+        : "Push to TikTok drafts now";
+    if (!confirm(`${verb} for ${props.tradingDay}?\n\nThis uploads the video immediately.`))
+      return;
+    startTransition(() => {
+      void (async () => {
+        setServerError(null);
+        setActiveAction("publish");
+        setLastSuccess(null);
+        try {
+          // Persist caption/title edits before the upload reads them.
+          const body: Record<string, unknown> = { caption };
+          if (props.platform === "yt" && title) body.title = title;
+          await fetch(`/api/admin/briefings/${props.tradingDay}/${props.platform}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "update_caption", ...body }),
+          }).catch(() => undefined);
+
+          const res = await fetch(
+            `/api/admin/briefings/${props.tradingDay}/${props.platform}/publish`,
+            { method: "POST" },
+          );
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            setServerError(j.error || `HTTP ${res.status}`);
+            return;
+          }
+          setLastSuccess("Published");
+          router.refresh();
+        } finally {
+          setActiveAction(null);
+        }
+      })();
+    });
+  }
 
   const busyLabel = (defaultLabel: string, forAction: string): string =>
     pending && activeAction === forAction
@@ -529,6 +572,26 @@ function PlatformPanel(props: PlatformPanelProps) {
           </button>
         )}
       </div>
+
+      {/* PUBLISH NOW — uploads immediately. Hidden once posting/posted. */}
+      {!isLocked && (
+        <button
+          type="button"
+          onClick={onPublishNow}
+          disabled={isDisabled}
+          className="w-full px-3 py-2 text-[10px] uppercase tracking-widest font-bold rounded bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {busyLabel(
+            props.platform === "yt" ? "▶ Publish to YouTube now" : "▶ Push to TikTok now",
+            "publish",
+          )}
+        </button>
+      )}
+      {props.currentStatus === "posting" && (
+        <div className="text-[10px] text-sky-300 text-center py-1 animate-pulse">
+          Uploading…
+        </div>
+      )}
     </div>
   );
 }

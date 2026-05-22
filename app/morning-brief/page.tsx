@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import PublicHeader from "@/components/PublicHeader";
+import AdaptiveHeader from "@/components/AdaptiveHeader";
 import PublicFooter from "@/components/PublicFooter";
 import BriefDayView from "@/components/BriefDayView";
 import {
@@ -36,7 +36,7 @@ export default async function MorningBriefIndexPage() {
   if (!latest) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col lining-nums">
-        <PublicHeader />
+        <AdaptiveHeader />
         <main className="flex-1 max-w-3xl mx-auto px-6 py-16 font-sans w-full">
           <header className="space-y-3 mb-8">
             <div className="text-[10px] uppercase tracking-widest text-red-400">
@@ -91,7 +91,7 @@ export default async function MorningBriefIndexPage() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col lining-nums">
-      <PublicHeader />
+      <AdaptiveHeader />
       <BriefDayView brief={withCalls} otherDays={otherDays} showBreadcrumb={false} />
       <PublicFooter />
     </div>

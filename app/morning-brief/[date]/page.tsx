@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import PublicHeader from "@/components/PublicHeader";
+import AdaptiveHeader from "@/components/AdaptiveHeader";
 import PublicFooter from "@/components/PublicFooter";
 import BriefDayView from "@/components/BriefDayView";
 import {
@@ -85,7 +85,7 @@ export default async function MorningBriefDayPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(videoLd) }}
       />
-      <PublicHeader />
+      <AdaptiveHeader />
       <BriefDayView brief={brief} otherDays={otherDays} showBreadcrumb />
       <PublicFooter />
     </div>

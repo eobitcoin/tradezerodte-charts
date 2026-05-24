@@ -40,6 +40,12 @@ export function buildBriefingVideoKey(tradingDay: string): string {
   return `briefings/${tradingDay}/video.mp4`;
 }
 
+/** Bucket key for a weekly earnings brief's MP4.
+ *  Keyed on `weekAnchor` (Sunday-of-the-week date). */
+export function buildWeeklyEarningsVideoKey(weekAnchor: string): string {
+  return `weekly-earnings-briefings/${weekAnchor}/video.mp4`;
+}
+
 export interface MuxResult {
   tradingDay: string;
   videoKey: string;
@@ -235,7 +241,7 @@ const CARD_XFADE_SEC = 0.25;
  */
 export async function applyOutroCard(
   input: Buffer,
-  tradingDay: string,
+  audioKey: string,
 ): Promise<Buffer> {
   if (!ffmpegPath) {
     throw new Error("ffmpeg-static did not resolve a binary path");
@@ -255,11 +261,10 @@ export async function applyOutroCard(
 
     // Narration length = the ElevenLabs MP3 duration. Pull it from the bucket
     // and probe it — this is the exact moment Olivia stops speaking.
-    const audioKey = buildBriefingAudioKey(tradingDay);
     const audioObj = await getObjectStream(audioKey);
     if (!audioObj) {
       throw new Error(
-        `no audio in bucket for ${tradingDay} — cannot time the outro card`,
+        `no audio in bucket at ${audioKey} — cannot time the outro card`,
       );
     }
     await writeFile(

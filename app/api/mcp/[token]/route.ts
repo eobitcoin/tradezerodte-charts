@@ -389,6 +389,103 @@ const TOOLS = [
       required: ["video_url"],
     },
   },
+  // -------- Weekly Earnings Brief (Sunday-morning ~45-50s parallel chain) --------
+  {
+    name: "publish_weekly_earnings_script",
+    description:
+      "Persist the script + setting prompt for the Sunday Weekly Earnings Brief. Mirrors `publish_briefing_script` but writes to the `weekly_earnings_briefings` table keyed on `week_anchor` (Sunday-of-the-week date). Word budget is 80-130 (hard bounds 60-180) — aimed at ~45s narration vs the daily ~15s. UPSERTs on week_anchor; safe to re-run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description: "YYYY-MM-DD; the Sunday this brief publishes for. Defaults to today's NY date.",
+        },
+        script: {
+          type: "string",
+          description: "Voiceover text. 80-130 words. First-person Olivia voice. End with the signature tagline.",
+        },
+        setting_prompt: {
+          type: "string",
+          description: "One-line scene/wardrobe/mood description for Higgsfield Soul. Use one of the weekly rotation variants (rooftop / Manhattan / golden hour / casual-sexy editorial).",
+        },
+      },
+      required: ["script", "setting_prompt"],
+    },
+  },
+  {
+    name: "fetch_weekly_earnings_brief",
+    description:
+      "Read the Weekly Earnings Brief row for a given week_anchor. Returns { found, script, setting_prompt, status, video_s3_key, ... } or { found: false }.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description: "YYYY-MM-DD. Defaults to today's NY date.",
+        },
+      },
+    },
+  },
+  {
+    name: "generate_voiceover_for_weekly_earnings_brief",
+    description:
+      "ElevenLabs TTS for a Weekly Earnings Brief. Reads the row's script, generates the MP3, uploads it to the weekly-earnings-briefings bucket prefix, and updates row status to 'generating'. Returns the public audio URL for handing to Hedra.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description: "YYYY-MM-DD. Defaults to today's NY date.",
+        },
+        voice_id: {
+          type: "string",
+          description: "Optional ElevenLabs voice_id override. Defaults to BRIEFING_VOICE_ID env var.",
+        },
+      },
+    },
+  },
+  {
+    name: "submit_weekly_earnings_video_via_hedra",
+    description:
+      "STEP 1 of 2 for the weekly video — submit a Hedra Avatar generation. Reads our voiceover MP3 + the Soul still, kicks off the Hedra job, persists generation_id to the briefing row. Default duration 55000ms (55s) since weekly scripts run ~45s; the poll-handler outro pipeline trims at narration end before mirroring. Returns immediately with the generation ID (~10-20s).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description: "YYYY-MM-DD. Defaults to today's NY date.",
+        },
+        soul_image_url: {
+          type: "string",
+          description: "Public https URL to the Higgsfield Soul portrait (PNG). Required.",
+        },
+        text_prompt: {
+          type: "string",
+          description: "Short scene/mood description for Hedra. Optional but improves output.",
+        },
+        duration_ms: {
+          type: "number",
+          description: "Optional. Default 55000 (55s). Weekly scripts run ~45s; the outro pipeline trims at narration end so final landed length is `narration + 2.5s card`.",
+        },
+      },
+      required: ["soul_image_url"],
+    },
+  },
+  {
+    name: "poll_weekly_earnings_video_hedra",
+    description:
+      "STEP 2 of 2 — poll Hedra for the weekly earnings video generation. When complete, downloads the MP4, runs the outro-card pipeline (trim at narration end + crossfade to OliviaTrades.com card), mirrors to our bucket, and updates the row to pending_upload with yt_status/tt_status set to pending_review. Idempotent — safe to call repeatedly; returns cached URL after the first mirror until a re-submit invalidates.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description: "YYYY-MM-DD. Defaults to today's NY date.",
+        },
+      },
+    },
+  },
   {
     name: "publish_briefing_to_youtube",
     description:
@@ -1225,6 +1322,20 @@ const TOOLS = [
         },
       },
       required: ["summary", "methodology", "stocks"],
+    },
+  },
+  {
+    name: "fetch_earnings_whiplash",
+    description:
+      "Read the most-recent published Earnings Whiplash scan (or a specific scan_day). Returns the structured stocks[] array + summary + methodology + run_at so downstream routines (e.g. the Sunday Weekly Earnings Brief script writer) can build on the flagged setups without re-running the analysis.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scan_day: {
+          type: "string",
+          description: "Optional YYYY-MM-DD. If omitted, returns the most recent scan (typically the prior Saturday's run).",
+        },
+      },
     },
   },
   {
@@ -3740,6 +3851,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const { buildBriefingVideoKey, applyOutroCard } = await import(
           "@/lib/video-mux"
         );
+        const { buildBriefingAudioKey } = await import("@/lib/elevenlabs");
         // Replace the idle tail with the branded OliviaTrades.com end card.
         // Hedra renders a fixed 20s; once the narration ends we cross-fade to
         // the card so the clip never shows Olivia idling at camera. Failure
@@ -3747,7 +3859,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         // fall back to mirroring the raw clip.
         let outputBuf: Buffer = videoBuf;
         try {
-          outputBuf = await applyOutroCard(videoBuf, tradingDay);
+          outputBuf = await applyOutroCard(videoBuf, buildBriefingAudioKey(tradingDay));
         } catch (outroErr) {
           console.error("[hedra-poll] outro card failed, mirroring raw clip", outroErr);
         }
@@ -3959,6 +4071,574 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             {
               type: "text",
               text: `attach_briefing_video failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    // -----------------------------------------------------------------------
+    // Weekly Earnings Brief — Sunday-morning 45-50s video (parallel pipeline
+    // to the daily brief; writes to the `weekly_earnings_briefings` table).
+    // -----------------------------------------------------------------------
+    if (name === "publish_weekly_earnings_script") {
+      try {
+        const a = args as {
+          week_anchor?: string;
+          script?: string;
+          setting_prompt?: string;
+        };
+        const weekAnchor = a.week_anchor || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        const script = (a.script ?? "").trim();
+        const settingPrompt = (a.setting_prompt ?? "").trim();
+        if (!script) {
+          return {
+            content: [{ type: "text", text: "script is required" }],
+            isError: true,
+          };
+        }
+        if (!settingPrompt) {
+          return {
+            content: [{ type: "text", text: "setting_prompt is required" }],
+            isError: true,
+          };
+        }
+        // Wider budget than daily — weekly is targeted at ~45s narration.
+        const wordCount = script.split(/\s+/).filter(Boolean).length;
+        if (wordCount < 60 || wordCount > 180) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `script word count is ${wordCount}; budget is 80-130 (hard bounds 60-180). Tighten or expand and retry.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
+        const meta = {
+          routine_name: "Weekly Earnings Brief — Script Writer",
+          agent: "claude-mcp",
+          word_count: wordCount,
+        };
+        const [row] = await db
+          .insert(weeklyEarningsBriefings)
+          .values({
+            weekAnchor,
+            script,
+            settingPrompt,
+            status: "scripted",
+            meta,
+          })
+          .onConflictDoUpdate({
+            target: weeklyEarningsBriefings.weekAnchor,
+            set: {
+              script,
+              settingPrompt,
+              status: "scripted",
+              meta,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning({
+            id: weeklyEarningsBriefings.id,
+            weekAnchor: weeklyEarningsBriefings.weekAnchor,
+            status: weeklyEarningsBriefings.status,
+          });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                id: row.id,
+                week_anchor: row.weekAnchor,
+                status: row.status,
+                word_count: wordCount,
+                admin_url: "/admin/briefings",
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `publish_weekly_earnings_script failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "fetch_weekly_earnings_brief") {
+      try {
+        const a = args as { week_anchor?: string };
+        const weekAnchor = a.week_anchor || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
+        const [row] = await db
+          .select()
+          .from(weeklyEarningsBriefings)
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor))
+          .limit(1);
+        const payload = row
+          ? {
+              found: true,
+              week_anchor: row.weekAnchor,
+              script: row.script,
+              setting_prompt: row.settingPrompt,
+              status: row.status,
+              youtube_video_id: row.youtubeVideoId,
+              video_s3_key: row.videoS3Key,
+              error_log: row.errorLog,
+              posted_at: row.postedAt ? row.postedAt.toISOString() : null,
+              created_at: row.createdAt.toISOString(),
+            }
+          : { found: false, week_anchor: weekAnchor };
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `fetch_weekly_earnings_brief failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "generate_voiceover_for_weekly_earnings_brief") {
+      try {
+        const a = args as { week_anchor?: string; voice_id?: string };
+        const weekAnchor = a.week_anchor || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        const voiceId = a.voice_id || process.env.BRIEFING_VOICE_ID;
+        if (!voiceId) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "voice_id not provided and BRIEFING_VOICE_ID env var not set.",
+              },
+            ],
+            isError: true,
+          };
+        }
+        const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
+        const [row] = await db
+          .select()
+          .from(weeklyEarningsBriefings)
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor))
+          .limit(1);
+        if (!row || !row.script) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `no scripted weekly earnings brief for ${weekAnchor} — run publish_weekly_earnings_script first`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        const { generateVoiceover, buildWeeklyEarningsAudioKey } = await import(
+          "@/lib/elevenlabs"
+        );
+        const { putObject } = await import("@/lib/s3");
+        const tts = await generateVoiceover(row.script, { voiceId });
+        const key = buildWeeklyEarningsAudioKey(weekAnchor);
+        const upload = await putObject(key, tts.buffer, tts.mimeType);
+        const appUrl = process.env.APP_URL || "https://www.oliviatrades.com";
+        const audioUrl = `${appUrl}/api/weekly-briefings/audio/${weekAnchor}`;
+        const meta = {
+          ...((row.meta as Record<string, unknown>) ?? {}),
+          voiceover: {
+            voice_id: voiceId,
+            model_id: tts.modelId,
+            char_count: tts.charCount,
+            byte_size: upload.size,
+            generated_at: new Date().toISOString(),
+          },
+        };
+        await db
+          .update(weeklyEarningsBriefings)
+          .set({ status: "generating", meta, updatedAt: sql`now()` })
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor));
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                week_anchor: weekAnchor,
+                audio_url: audioUrl,
+                voice_id: voiceId,
+                model_id: tts.modelId,
+                char_count: tts.charCount,
+                byte_size: upload.size,
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `generate_voiceover_for_weekly_earnings_brief failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "submit_weekly_earnings_video_via_hedra") {
+      try {
+        const a = args as {
+          week_anchor?: string;
+          soul_image_url?: string;
+          text_prompt?: string;
+          duration_ms?: number;
+        };
+        const weekAnchor = a.week_anchor || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        if (!a.soul_image_url || !/^https:\/\//i.test(a.soul_image_url)) {
+          return {
+            content: [
+              { type: "text", text: "soul_image_url is required and must be an https URL" },
+            ],
+            isError: true,
+          };
+        }
+        const { getObjectStream } = await import("@/lib/s3");
+        const { buildWeeklyEarningsAudioKey } = await import("@/lib/elevenlabs");
+        const audioObj = await getObjectStream(buildWeeklyEarningsAudioKey(weekAnchor));
+        if (!audioObj) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `no audio in bucket for ${weekAnchor} — run generate_voiceover_for_weekly_earnings_brief first`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        const audioChunks: Uint8Array[] = [];
+        const audioReader = audioObj.body.getReader();
+        for (;;) {
+          const { value, done } = await audioReader.read();
+          if (done) break;
+          if (value) audioChunks.push(value);
+        }
+        const audioBytes = Buffer.concat(audioChunks.map((c) => Buffer.from(c)));
+
+        const imgRes = await fetch(a.soul_image_url);
+        if (!imgRes.ok) {
+          return {
+            content: [
+              { type: "text", text: `Failed to fetch Soul image: ${imgRes.status}` },
+            ],
+            isError: true,
+          };
+        }
+        const imageBytes = Buffer.from(await imgRes.arrayBuffer());
+        const imageContentType = imgRes.headers.get("content-type") || "image/png";
+
+        const { submitHedraGeneration } = await import("@/lib/hedra");
+        // 55s default — weekly script lands ~45s, gives Hedra runway before
+        // the outro pipeline trims at narration end + appends the card.
+        const submission = await submitHedraGeneration({
+          imageBytes,
+          imageContentType,
+          audioBytes,
+          audioContentType: audioObj.contentType || "audio/mpeg",
+          textPrompt: a.text_prompt,
+          durationMs: a.duration_ms ?? 55000,
+          aspectRatio: "9:16",
+          resolution: "720p",
+        });
+
+        const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
+        const [existing] = await db
+          .select()
+          .from(weeklyEarningsBriefings)
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor))
+          .limit(1);
+        const meta = {
+          ...((existing?.meta as Record<string, unknown>) ?? {}),
+          hedra: {
+            generation_id: submission.generationId,
+            image_asset_id: submission.imageAssetId,
+            audio_asset_id: submission.audioAssetId,
+            submitted_at: new Date().toISOString(),
+            submit_elapsed_ms: submission.elapsedMs,
+          },
+        };
+        await db
+          .update(weeklyEarningsBriefings)
+          .set({
+            status: "generating",
+            videoS3Key: null,
+            meta,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor));
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                week_anchor: weekAnchor,
+                hedra_generation_id: submission.generationId,
+                submit_elapsed_ms: submission.elapsedMs,
+                next_step: "Call poll_weekly_earnings_video_hedra every ~30s until complete.",
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `submit_weekly_earnings_video_via_hedra failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "poll_weekly_earnings_video_hedra") {
+      try {
+        const a = args as { week_anchor?: string };
+        const weekAnchor = a.week_anchor || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
+        const [row] = await db
+          .select()
+          .from(weeklyEarningsBriefings)
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor))
+          .limit(1);
+        if (!row) {
+          return {
+            content: [{ type: "text", text: `no weekly earnings brief row for ${weekAnchor}` }],
+            isError: true,
+          };
+        }
+        const appUrl = process.env.APP_URL || "https://www.oliviatrades.com";
+        const meta = (row.meta as Record<string, unknown>) ?? {};
+        const hedraMeta = (meta.hedra as Record<string, unknown>) ?? {};
+        const generationId = hedraMeta.generation_id as string | undefined;
+        const mirroredGenerationId = hedraMeta.mirrored_generation_id as string | undefined;
+        // Cache hit: serve mirrored URL when it matches the current generation.
+        if (
+          row.videoS3Key &&
+          row.videoS3Key.startsWith(appUrl) &&
+          generationId &&
+          mirroredGenerationId === generationId
+        ) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: true,
+                  week_anchor: weekAnchor,
+                  status: "complete",
+                  video_url: row.videoS3Key,
+                  cached: true,
+                  hedra_generation_id: generationId,
+                }),
+              },
+            ],
+            isError: false,
+          };
+        }
+        if (!generationId) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `no hedra.generation_id on weekly earnings brief ${weekAnchor} — run submit_weekly_earnings_video_via_hedra first`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        const { checkHedraStatus } = await import("@/lib/hedra");
+        const status = await checkHedraStatus(generationId);
+        if (status.status === "in_progress") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: true,
+                  week_anchor: weekAnchor,
+                  status: "in_progress",
+                  raw_status: status.rawStatus,
+                  progress: status.progress,
+                  eta_sec: status.etaSec,
+                  hedra_generation_id: generationId,
+                  next_step: "Call again in ~15-30 seconds.",
+                }),
+              },
+            ],
+            isError: false,
+          };
+        }
+        if (status.status === "failed") {
+          const errorLog = Array.isArray(row.errorLog) ? row.errorLog : [];
+          errorLog.push({
+            at: new Date().toISOString(),
+            step: "generating",
+            message: `Hedra generation failed: ${status.errorMessage ?? status.rawStatus}`,
+            detail: { hedra_generation_id: generationId, raw_status: status.rawStatus },
+          });
+          await db
+            .update(weeklyEarningsBriefings)
+            .set({ status: "failed", errorLog, updatedAt: sql`now()` })
+            .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor));
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  ok: false,
+                  week_anchor: weekAnchor,
+                  status: "failed",
+                  raw_status: status.rawStatus,
+                  error_message: status.errorMessage,
+                  hedra_generation_id: generationId,
+                }),
+              },
+            ],
+            isError: false,
+          };
+        }
+        if (!status.videoUrl) {
+          return {
+            content: [{ type: "text", text: "Hedra reports complete but no video URL" }],
+            isError: true,
+          };
+        }
+        const videoRes = await fetch(status.videoUrl);
+        if (!videoRes.ok) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Failed to fetch finished Hedra video: ${videoRes.status}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        const videoBuf = Buffer.from(await videoRes.arrayBuffer());
+
+        const { putObject } = await import("@/lib/s3");
+        const { buildWeeklyEarningsVideoKey, applyOutroCard } = await import(
+          "@/lib/video-mux"
+        );
+        const { buildWeeklyEarningsAudioKey } = await import("@/lib/elevenlabs");
+        // Same outro pipeline as daily — trims at narration end, crossfades
+        // to the OliviaTrades.com card. Works identically for weekly because
+        // the helper is keyed on an explicit audio bucket path.
+        let outputBuf: Buffer = videoBuf;
+        try {
+          outputBuf = await applyOutroCard(
+            videoBuf,
+            buildWeeklyEarningsAudioKey(weekAnchor),
+          );
+        } catch (outroErr) {
+          console.error("[hedra-poll-weekly] outro failed, mirroring raw clip", outroErr);
+        }
+        const videoKey = buildWeeklyEarningsVideoKey(weekAnchor);
+        const upload = await putObject(videoKey, new Uint8Array(outputBuf), "video/mp4");
+        const finalVideoUrl = `${appUrl}/api/weekly-briefings/video/${weekAnchor}`;
+        const updatedMeta = {
+          ...meta,
+          hedra: {
+            ...hedraMeta,
+            mirrored_generation_id: generationId,
+            mirrored_at: new Date().toISOString(),
+            mirrored_bytes: upload.size,
+          },
+        };
+        const platformInit: Record<string, unknown> = {};
+        if (row.ytStatus == null) platformInit.ytStatus = "pending_review";
+        if (row.ttStatus == null) platformInit.ttStatus = "pending_review";
+        await db
+          .update(weeklyEarningsBriefings)
+          .set({
+            status: "pending_upload",
+            videoS3Key: finalVideoUrl,
+            higgsfieldJobId: generationId,
+            meta: updatedMeta,
+            ...platformInit,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor));
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                week_anchor: weekAnchor,
+                status: "complete",
+                video_url: finalVideoUrl,
+                hedra_generation_id: generationId,
+                bytes: upload.size,
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `poll_weekly_earnings_video_hedra failed: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,
@@ -4379,6 +5059,58 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         return {
           content: [
             { type: "text", text: `publish_institutional_research failed: ${err instanceof Error ? err.message : String(err)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "fetch_earnings_whiplash") {
+      try {
+        const a = args as { scan_day?: string };
+        const { earningsPosts } = await import("@/lib/db/schema");
+        const { desc } = await import("drizzle-orm");
+        let row;
+        if (a.scan_day) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(a.scan_day)) {
+            return {
+              content: [{ type: "text", text: "scan_day must be YYYY-MM-DD" }],
+              isError: true,
+            };
+          }
+          [row] = await db
+            .select()
+            .from(earningsPosts)
+            .where(eq(earningsPosts.scanDay, a.scan_day))
+            .limit(1);
+        } else {
+          [row] = await db
+            .select()
+            .from(earningsPosts)
+            .orderBy(desc(earningsPosts.scanDay))
+            .limit(1);
+        }
+        const payload = row
+          ? {
+              found: true,
+              scan_day: row.scanDay,
+              summary: row.summary,
+              methodology: row.methodology,
+              stocks: row.stocks,
+              run_at: row.runAt ? row.runAt.toISOString() : null,
+              created_at: row.createdAt.toISOString(),
+            }
+          : { found: false };
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `fetch_earnings_whiplash failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
           ],
           isError: true,
         };

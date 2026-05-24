@@ -84,7 +84,13 @@ export async function generateVoiceover(
   };
 }
 
-/** Build the bucket key for a briefing's voiceover MP3. */
+/** Build the bucket key for a daily briefing's voiceover MP3. */
 export function buildBriefingAudioKey(tradingDay: string): string {
   return `briefings/${tradingDay}/voiceover.mp3`;
+}
+
+/** Build the bucket key for a weekly earnings brief's voiceover MP3.
+ *  Keyed on `weekAnchor` (the Sunday-of-the-week date the brief publishes). */
+export function buildWeeklyEarningsAudioKey(weekAnchor: string): string {
+  return `weekly-earnings-briefings/${weekAnchor}/voiceover.mp3`;
 }

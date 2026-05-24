@@ -337,6 +337,13 @@
       "when": 1779117220205,
       "tag": "0047_overjoyed_otto_octavius",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1779651577904,
+      "tag": "0048_silent_paladin",
+      "breakpoints": true
     }
   ]
 }

@@ -3,20 +3,18 @@ import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { weeklyEarningsBriefings } from "@/lib/db/schema";
 import AdminWeeklyEarningsCard from "@/components/AdminWeeklyEarningsCard";
+import { weeklyDefaults } from "@/lib/weekly-earnings-publish";
+import { ensureDisclaimer, YT_DISCLAIMER, TT_DISCLAIMER } from "@/lib/briefings-copy";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Admin list of Sunday Weekly Earnings Briefs.
  *
- * Parallel to /admin/briefings (daily) but reads the separate
- * `weeklyEarningsBriefings` table. Phase 4a is preview-only — see
- * AdminWeeklyEarningsCard for the explanation. Approve / publish UI lands
- * with the corresponding /api/admin/weekly-briefings routes in Phase 4b.
- *
- * The video bucket key in `videoS3Key` is a fully-formed public URL
- * (https://www.oliviatrades.com/api/weekly-briefings/video/YYYY-MM-DD) so
- * the video element can use it directly.
+ * Reads `weeklyEarningsBriefings` and renders one card per row with full
+ * YouTube + TikTok approval / publish controls (Phase 4b). The default
+ * title/caption renderers live in `lib/weekly-earnings-publish.ts` so the
+ * admin pre-fills and the publish-path fallbacks can never drift apart.
  */
 export default async function AdminWeeklyEarningsBriefingsPage() {
   const rows = await db
@@ -41,15 +39,16 @@ export default async function AdminWeeklyEarningsBriefingsPage() {
         </div>
         <p className="text-sm text-black/60 dark:text-white/60">
           Sunday-morning ~50s briefs covering the coming week&apos;s earnings
-          calendar + unusual IV setups. Published by the Olivia narrator on
-          the public{" "}
+          calendar + unusual IV setups. Review and approve each video for
+          YouTube and TikTok independently — approved rows are picked up by
+          the publish routines on their next run. Public:{" "}
           <Link
             href="/morning-brief?kind=earnings"
             className="underline hover:text-white"
           >
             /morning-brief?kind=earnings
-          </Link>{" "}
-          tab.
+          </Link>
+          .
         </p>
       </header>
 
@@ -70,7 +69,33 @@ export default async function AdminWeeklyEarningsBriefingsPage() {
               videoUrl={b.videoS3Key}
               thumbnailUrl={b.thumbnailUrl}
               higgsfieldJobId={b.higgsfieldJobId}
+              youtubeVideoId={b.youtubeVideoId}
               errorLog={b.errorLog}
+              yt={{
+                status: b.ytStatus,
+                title: b.ytTitle,
+                caption: b.ytCaption,
+                postedAt: b.ytPostedAt?.toISOString() ?? null,
+                error: b.ytError,
+              }}
+              tt={{
+                status: b.ttStatus,
+                caption: b.ttCaption,
+                publishId: b.ttPublishId,
+                postedAt: b.ttPostedAt?.toISOString() ?? null,
+                error: b.ttError,
+              }}
+              defaults={{
+                ytTitle: weeklyDefaults.ytTitle(b.weekAnchor),
+                ytCaption: ensureDisclaimer(
+                  weeklyDefaults.ytDescription(b.script),
+                  YT_DISCLAIMER,
+                ),
+                ttCaption: ensureDisclaimer(
+                  weeklyDefaults.ttCaption(b.script),
+                  TT_DISCLAIMER,
+                ),
+              }}
             />
           ))}
         </ul>

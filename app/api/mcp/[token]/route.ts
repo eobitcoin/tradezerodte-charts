@@ -538,6 +538,48 @@ const TOOLS = [
     },
   },
   {
+    name: "publish_weekly_to_youtube",
+    description:
+      "Sunday Weekly Earnings Brief version of `publish_briefing_to_youtube`. Reads the row in `weekly_earnings_briefings` keyed on `week_anchor` (Sunday-of-the-week date), validates `yt_status='approved'`, downloads the mirrored MP4 from the bucket, and uploads via the YouTube Data API. On success: writes `youtube_video_id`, `yt_status='posted'`, `yt_posted_at=now()`. Idempotent on `yt_status='posted'`. Same env-var requirements as the daily tool.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description:
+            "Sunday-of-the-week date as YYYY-MM-DD. REQUIRED. Pass the same value used when the script was published.",
+        },
+        privacy: {
+          type: "string",
+          enum: ["public", "unlisted", "private"],
+          description: "Privacy status. Default 'public'.",
+        },
+        is_short: {
+          type: "boolean",
+          description:
+            "True (default) to tag as a YouTube Short. The clip's 9:16 aspect + ~55s duration make this the right call.",
+        },
+      },
+      required: ["week_anchor"],
+    },
+  },
+  {
+    name: "publish_weekly_to_tiktok",
+    description:
+      "Sunday Weekly Earnings Brief version of `publish_briefing_to_tiktok`. Pushes the approved weekly MP4 into TikTok's inbox/drafts (no auto-publish). Reads the row in `weekly_earnings_briefings` keyed on `week_anchor`, validates `tt_status='approved'`, uploads, writes `tt_publish_id` + `tt_status='posted'`. The user finalizes on the TikTok mobile app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        week_anchor: {
+          type: "string",
+          description:
+            "Sunday-of-the-week date as YYYY-MM-DD. REQUIRED.",
+        },
+      },
+      required: ["week_anchor"],
+    },
+  },
+  {
     name: "upload_research_image",
     description:
       "Upload a single chart/image (PNG/JPEG/WebP) for a research post to the website's bucket. Call this BEFORE publish_research, once per image (typically 'weekly' and 'daily' charts).\n\n**MODE A — `source_url` (RECOMMENDED for routines that can host the image elsewhere):** Pass a public HTTPS URL where the image is hosted (e.g. raw.githubusercontent.com, S3, Imgur). Server fetches the bytes and uploads to the bucket. Tiny tool call — just the URL string. No base64 emission needed; bypasses stream-idle issues entirely.\n\n**MODE B — `data_base64` (single-call):** Pass raw base64 of the image bytes (no `data:` prefix). Best when the image is < 30 KB raw (< ~40 KB base64). Larger payloads risk hitting the model's per-turn output cap.\n\n**MODE C — `data_base64` chunked:** Reserved for legacy use only; `source_url` is preferred for large images. Pass `upload_id`, `chunk_total`, `chunk_index` with each call. See full description in `chunk_total` field.\n\nExactly one of `source_url` or `data_base64` must be set.",
@@ -4756,6 +4798,108 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             {
               type: "text",
               text: `publish_briefing_to_tiktok failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "publish_weekly_to_youtube") {
+      try {
+        const a = args as {
+          week_anchor?: string;
+          privacy?: "public" | "unlisted" | "private";
+          is_short?: boolean;
+        };
+        const weekAnchor = a.week_anchor;
+        if (!weekAnchor || !/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor (YYYY-MM-DD) is required" }],
+            isError: true,
+          };
+        }
+        const { publishWeeklyEarningsToYouTube } = await import(
+          "@/lib/weekly-earnings-publish"
+        );
+        // Cron path → requireApproved true: only publish admin-approved rows.
+        const r = await publishWeeklyEarningsToYouTube(weekAnchor, {
+          privacy: a.privacy ?? "public",
+          isShort: a.is_short ?? true,
+          requireApproved: true,
+        });
+        if (!r.ok) {
+          return { content: [{ type: "text", text: r.error ?? "publish failed" }], isError: true };
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                week_anchor: r.weekAnchor,
+                status: r.status,
+                youtube_video_id: r.youtubeVideoId,
+                watch_url: r.watchUrl,
+                privacy_status: r.privacyStatus,
+                elapsed_ms: r.elapsedMs,
+                bytes_uploaded: r.bytesUploaded,
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `publish_weekly_to_youtube failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "publish_weekly_to_tiktok") {
+      try {
+        const a = args as { week_anchor?: string };
+        const weekAnchor = a.week_anchor;
+        if (!weekAnchor || !/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+          return {
+            content: [{ type: "text", text: "week_anchor (YYYY-MM-DD) is required" }],
+            isError: true,
+          };
+        }
+        const { publishWeeklyEarningsToTikTok } = await import(
+          "@/lib/weekly-earnings-publish"
+        );
+        const r = await publishWeeklyEarningsToTikTok(weekAnchor, { requireApproved: true });
+        if (!r.ok) {
+          return { content: [{ type: "text", text: r.error ?? "publish failed" }], isError: true };
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: true,
+                week_anchor: r.weekAnchor,
+                status: r.status,
+                tt_publish_id: r.ttPublishId,
+                elapsed_ms: r.elapsedMs,
+                bytes_uploaded: r.bytesUploaded,
+                note: r.note,
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `publish_weekly_to_tiktok failed: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,

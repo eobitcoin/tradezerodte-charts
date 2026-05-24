@@ -17,17 +17,54 @@
  *   4. Upload muxed MP4 back to the bucket
  *   5. Return the bucket key + public URL
  *
- * ffmpeg-static bundles a platform-appropriate ffmpeg binary in node_modules,
- * so this works in Railway's container without a separate install step.
+ * ffmpeg is resolved at call time via getFfmpegPath() — prefers the system
+ * binary (installed on Railway via railpack.json's deploy.aptPackages, or
+ * Homebrew locally), falls back to ffmpeg-static's vendored binary if present.
+ * The vendored binary is unreliable under Railway's RAILPACK builder because
+ * `npm ci` skips its postinstall download step.
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ffmpegPath from "ffmpeg-static";
 import { getObjectStream, putObject } from "@/lib/s3";
 import { buildBriefingAudioKey } from "@/lib/elevenlabs";
+
+/**
+ * Resolve a usable `ffmpeg` binary.
+ *
+ * `ffmpeg-static`'s vendored Linux binary is downloaded by its postinstall
+ * script — and Railway's RAILPACK builder uses `npm ci`, which skips
+ * postinstall scripts. The package directory exists in `node_modules` but the
+ * binary is missing, so `spawn(ffmpegPath, ...)` throws `ENOENT` at runtime.
+ *
+ * Prefer system `ffmpeg` (installed via `railpack.json`'s `deploy.aptPackages`
+ * on Railway, or Homebrew locally), then fall back to the vendored binary if
+ * it actually exists on disk. Cached after first resolution.
+ */
+let resolvedFfmpeg: string | undefined;
+function getFfmpegPath(): string {
+  if (resolvedFfmpeg) return resolvedFfmpeg;
+  const candidates = [
+    process.env.FFMPEG_PATH,
+    "/usr/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/opt/homebrew/bin/ffmpeg",
+    ffmpegPath ?? undefined,
+  ].filter((p): p is string => Boolean(p));
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      resolvedFfmpeg = p;
+      return p;
+    }
+  }
+  throw new Error(
+    `no ffmpeg binary found (checked: ${candidates.join(", ") || "<none>"})`,
+  );
+}
 
 /** Static branded end-card overlaid once the narration finishes. */
 const OUTRO_CARD_PATH = path.join(
@@ -92,9 +129,7 @@ export async function swapBriefingAudio(
   tradingDay: string,
   higgsfieldVideoUrl: string,
 ): Promise<MuxResult> {
-  if (!ffmpegPath) {
-    throw new Error("ffmpeg-static did not resolve a binary path");
-  }
+  const ffmpegBin = getFfmpegPath();
   const t0 = Date.now();
   const work = await mkdtemp(path.join(tmpdir(), "briefing-mux-"));
   try {
@@ -133,7 +168,7 @@ export async function swapBriefingAudio(
       videoOut,
     ];
 
-    await runFfmpeg(ffmpegPath, args);
+    await runFfmpeg(ffmpegBin, args);
 
     const muxedBytes = await readFile(videoOut);
 
@@ -181,12 +216,15 @@ interface MediaInfo {
  */
 function runFfprobe(file: string): Promise<MediaInfo> {
   return new Promise((resolve, reject) => {
-    if (!ffmpegPath) {
-      reject(new Error("ffmpeg-static did not resolve a binary path"));
+    let ffmpegBin: string;
+    try {
+      ffmpegBin = getFfmpegPath();
+    } catch (e) {
+      reject(e as Error);
       return;
     }
     const proc = spawn(
-      ffmpegPath,
+      ffmpegBin,
       ["-hide_banner", "-i", file],
       { stdio: ["ignore", "ignore", "pipe"] },
     );
@@ -243,9 +281,7 @@ export async function applyOutroCard(
   input: Buffer,
   audioKey: string,
 ): Promise<Buffer> {
-  if (!ffmpegPath) {
-    throw new Error("ffmpeg-static did not resolve a binary path");
-  }
+  const ffmpegBin = getFfmpegPath();
   const work = await mkdtemp(path.join(tmpdir(), "briefing-outro-"));
   try {
     const inFile = path.join(work, "in.mp4");
@@ -317,7 +353,7 @@ export async function applyOutroCard(
       "-movflags", "+faststart",
       outFile,
     ];
-    await runFfmpeg(ffmpegPath, args);
+    await runFfmpeg(ffmpegBin, args);
     return await readFile(outFile);
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => undefined);

@@ -334,6 +334,11 @@ const TOOLS = [
           description:
             "Optional YYYY-MM-DD; defaults to today's NY date. Identifies which briefing's Hedra job to poll.",
         },
+        force_remirror: {
+          type: "boolean",
+          description:
+            "Optional. When true, skips the mirrored-URL cache short-circuit and re-pulls the existing Hedra generation through the outro pipeline. Use after a server-side outro/mux bug to re-mirror without incurring new Hedra/ElevenLabs/Higgsfield credits.",
+        },
       },
     },
   },
@@ -482,6 +487,11 @@ const TOOLS = [
         week_anchor: {
           type: "string",
           description: "YYYY-MM-DD. Defaults to today's NY date.",
+        },
+        force_remirror: {
+          type: "boolean",
+          description:
+            "Optional. When true, skips the cache short-circuit and re-pulls the existing Hedra generation through the outro pipeline — use to recover from a server-side outro/mux bug without re-billing generation credits.",
         },
       },
     },
@@ -3697,8 +3707,9 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
     }
     if (name === "poll_briefing_video_hedra") {
       try {
-        const a = args as { trading_day?: string };
+        const a = args as { trading_day?: string; force_remirror?: boolean };
         const tradingDay = a.trading_day || nyTradingDay();
+        const forceRemirror = a.force_remirror === true;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDay)) {
           return {
             content: [{ type: "text", text: "trading_day must be YYYY-MM-DD" }],
@@ -3731,7 +3742,11 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         // Cache hit: only short-circuit when the row's stored video came from
         // the CURRENT generation_id. A re-submit changes generation_id and
         // invalidates the cache so we poll Hedra for the new one.
+        // `force_remirror` bypasses the cache so we can re-pull the existing
+        // Hedra generation (no new generation cost) when the outro pipeline
+        // had a bug last time and needs to re-run on the same source clip.
         if (
+          !forceRemirror &&
           row.videoS3Key &&
           row.videoS3Key.startsWith(appUrl) &&
           generationId &&
@@ -4443,8 +4458,9 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
     }
     if (name === "poll_weekly_earnings_video_hedra") {
       try {
-        const a = args as { week_anchor?: string };
+        const a = args as { week_anchor?: string; force_remirror?: boolean };
         const weekAnchor = a.week_anchor || nyTradingDay();
+        const forceRemirror = a.force_remirror === true;
         if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
           return {
             content: [{ type: "text", text: "week_anchor must be YYYY-MM-DD" }],
@@ -4469,7 +4485,10 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const generationId = hedraMeta.generation_id as string | undefined;
         const mirroredGenerationId = hedraMeta.mirrored_generation_id as string | undefined;
         // Cache hit: serve mirrored URL when it matches the current generation.
+        // `force_remirror=true` bypasses to re-pull the existing Hedra
+        // generation through the outro pipeline (no new generation cost).
         if (
+          !forceRemirror &&
           row.videoS3Key &&
           row.videoS3Key.startsWith(appUrl) &&
           generationId &&

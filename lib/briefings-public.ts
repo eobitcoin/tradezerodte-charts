@@ -22,7 +22,7 @@
 
 import { and, desc, eq, isNotNull, or } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { briefings, posts } from "@/lib/db/schema";
+import { briefings, posts, weeklyEarningsBriefings } from "@/lib/db/schema";
 
 export interface PublicBriefing {
   tradingDay: string;
@@ -173,5 +173,95 @@ export async function listPublicBriefingDays(limit = 60): Promise<string[]> {
     .orderBy(desc(briefings.tradingDay))
     .limit(limit);
   return rows.map((r) => r.tradingDay);
+}
+
+// ---------------------------------------------------------------------------
+// Weekly Earnings Brief — Sunday morning video. Parallel structure to the
+// daily helpers above; the same projection-at-query-layer security model
+// applies. No `calls` panel — the weekly script narrates earnings setups
+// inline rather than referencing a structured calls list.
+// ---------------------------------------------------------------------------
+
+export interface PublicWeeklyEarningsBrief {
+  /** Sunday-of-the-week date used as the row's natural key. */
+  weekAnchor: string;
+  script: string;
+  /** Public URL to the muxed MP4 (our bucket). */
+  videoUrl: string;
+  thumbnailUrl: string | null;
+  postedAt: Date | null;
+}
+
+/** Mirror of hasVideoFilter() for the weekly table. */
+function hasWeeklyVideoFilter() {
+  return and(
+    isNotNull(weeklyEarningsBriefings.videoS3Key),
+    or(
+      eq(weeklyEarningsBriefings.status, "pending_upload"),
+      eq(weeklyEarningsBriefings.status, "uploading"),
+      eq(weeklyEarningsBriefings.status, "posted"),
+    ),
+  );
+}
+
+export async function loadLatestWeeklyEarnings(): Promise<PublicWeeklyEarningsBrief | null> {
+  const [row] = await db
+    .select({
+      weekAnchor: weeklyEarningsBriefings.weekAnchor,
+      script: weeklyEarningsBriefings.script,
+      videoS3Key: weeklyEarningsBriefings.videoS3Key,
+      thumbnailUrl: weeklyEarningsBriefings.thumbnailUrl,
+      postedAt: weeklyEarningsBriefings.postedAt,
+      updatedAt: weeklyEarningsBriefings.updatedAt,
+    })
+    .from(weeklyEarningsBriefings)
+    .where(hasWeeklyVideoFilter())
+    .orderBy(desc(weeklyEarningsBriefings.weekAnchor))
+    .limit(1);
+  if (!row || !row.script || !row.videoS3Key) return null;
+  return {
+    weekAnchor: row.weekAnchor,
+    script: row.script,
+    videoUrl: row.videoS3Key,
+    thumbnailUrl: row.thumbnailUrl,
+    postedAt: row.postedAt ?? row.updatedAt,
+  };
+}
+
+export async function loadWeeklyEarningsByAnchor(
+  weekAnchor: string,
+): Promise<PublicWeeklyEarningsBrief | null> {
+  const [row] = await db
+    .select({
+      weekAnchor: weeklyEarningsBriefings.weekAnchor,
+      script: weeklyEarningsBriefings.script,
+      videoS3Key: weeklyEarningsBriefings.videoS3Key,
+      thumbnailUrl: weeklyEarningsBriefings.thumbnailUrl,
+      postedAt: weeklyEarningsBriefings.postedAt,
+      updatedAt: weeklyEarningsBriefings.updatedAt,
+    })
+    .from(weeklyEarningsBriefings)
+    .where(
+      and(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor), hasWeeklyVideoFilter()),
+    )
+    .limit(1);
+  if (!row || !row.script || !row.videoS3Key) return null;
+  return {
+    weekAnchor: row.weekAnchor,
+    script: row.script,
+    videoUrl: row.videoS3Key,
+    thumbnailUrl: row.thumbnailUrl,
+    postedAt: row.postedAt ?? row.updatedAt,
+  };
+}
+
+export async function listPublicWeeklyEarningsAnchors(limit = 26): Promise<string[]> {
+  const rows = await db
+    .select({ weekAnchor: weeklyEarningsBriefings.weekAnchor })
+    .from(weeklyEarningsBriefings)
+    .where(hasWeeklyVideoFilter())
+    .orderBy(desc(weeklyEarningsBriefings.weekAnchor))
+    .limit(limit);
+  return rows.map((r) => r.weekAnchor);
 }
 

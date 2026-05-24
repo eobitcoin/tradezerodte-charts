@@ -104,7 +104,15 @@ export default async function AdminBriefingsPage({ searchParams }: PageProps) {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Daily Briefings</h1>
+        <div className="flex items-baseline justify-between flex-wrap gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">Daily Briefings</h1>
+          <Link
+            href="/admin/briefings/weekly"
+            className="text-xs text-sky-300 hover:underline"
+          >
+            Weekly Earnings Briefs →
+          </Link>
+        </div>
         <p className="text-sm text-black/60 dark:text-white/60">
           Olivia Trades 20-second briefs. Review and approve each video for
           YouTube and TikTok independently. Approved rows are picked up by the

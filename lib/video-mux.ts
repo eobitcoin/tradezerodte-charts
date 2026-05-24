@@ -26,7 +26,6 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import ffmpegPath from "ffmpeg-static";
-import ffprobeStatic from "ffprobe-static";
 import { getObjectStream, putObject } from "@/lib/s3";
 import { buildBriefingAudioKey } from "@/lib/elevenlabs";
 
@@ -169,47 +168,48 @@ interface MediaInfo {
   height?: number;
 }
 
-/** Probe a media file for duration + (if present) the first video stream's dimensions. */
+/**
+ * Probe a media file for duration + (if present) the first video stream's
+ * dimensions. Uses `ffmpeg -i` and parses its stderr instead of a dedicated
+ * ffprobe binary — Railway's RAILPACK install doesn't reliably ship the
+ * `ffprobe-static` vendored binaries (we saw `ENOENT` on linux/x64 in prod),
+ * but `ffmpeg-static` always works because the audio mux path already depends
+ * on it.
+ *
+ * ffmpeg exits non-zero when no output is specified, which is what we want —
+ * we just need the parseable stderr.
+ */
 function runFfprobe(file: string): Promise<MediaInfo> {
   return new Promise((resolve, reject) => {
-    const args = [
-      "-v", "error",
-      "-show_entries", "format=duration:stream=width,height,codec_type",
-      "-of", "json",
-      file,
-    ];
-    const proc = spawn(ffprobeStatic.path, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let stdout = "";
+    if (!ffmpegPath) {
+      reject(new Error("ffmpeg-static did not resolve a binary path"));
+      return;
+    }
+    const proc = spawn(
+      ffmpegPath,
+      ["-hide_banner", "-i", file],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
     let stderr = "";
-    proc.stdout.on("data", (c) => {
-      stdout += c.toString();
-    });
     proc.stderr.on("data", (c) => {
       stderr += c.toString();
     });
     proc.on("error", reject);
-    proc.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`ffprobe exited ${code}: ${stderr.slice(-300)}`));
-        return;
-      }
-      try {
-        const j = JSON.parse(stdout) as {
-          format?: { duration?: string };
-          streams?: { codec_type?: string; width?: number; height?: number }[];
-        };
-        const dur = parseFloat(j.format?.duration ?? "0");
-        const vstream = (j.streams ?? []).find((s) => s.codec_type === "video");
-        resolve({
-          durationSec: Number.isFinite(dur) ? dur : 0,
-          width: vstream?.width,
-          height: vstream?.height,
-        });
-      } catch (e) {
-        reject(new Error(`ffprobe parse failed: ${String(e)}`));
-      }
+    proc.on("close", () => {
+      // Parse: "Duration: HH:MM:SS.xx, start: …, bitrate: …"
+      const dm = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+      const durationSec = dm
+        ? Number(dm[1]) * 3600 + Number(dm[2]) * 60 + Number(dm[3])
+        : 0;
+      // Parse: "...: Video: <codec>, <pix_fmt>, WIDTHxHEIGHT [extras]"
+      // Anchor on "Video:" then find the first WxH on the same line — keeps
+      // working as ffmpeg-static evolves its stream-prefix formatting.
+      const vm = stderr.match(/Video:[^\n]*?(\d{2,5})x(\d{2,5})/);
+      resolve({
+        durationSec,
+        width: vm ? Number(vm[1]) : undefined,
+        height: vm ? Number(vm[2]) : undefined,
+      });
     });
   });
 }

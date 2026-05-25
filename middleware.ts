@@ -12,6 +12,7 @@ const PUBLIC_PATHS = new Set([
   "/learn",
   "/help",
   "/morning-brief",
+  "/tickers",
   "/privacy",
   "/terms",
   "/robots.txt",
@@ -22,11 +23,14 @@ const PUBLIC_PATHS = new Set([
 ]);
 
 /** Public route prefixes — any path starting with these is unauthenticated.
- *  /learn/   — long-form SEO explainers
- *  /explore/ — public teaser pages with server-side-trimmed previews of
- *              authenticated research. Hidden fields are stripped at the
- *              DB-query layer, never sent to the client. */
-const PUBLIC_PREFIXES = ["/learn/", "/explore/", "/morning-brief/"];
+ *  /learn/    — long-form SEO explainers
+ *  /explore/  — public teaser pages with server-side-trimmed previews of
+ *               authenticated research. Hidden fields are stripped at the
+ *               DB-query layer, never sent to the client.
+ *  /tickers/  — per-ticker hub pages (free briefs + locked research teasers).
+ *               Members-only content links from here go through the existing
+ *               /explore/ paywall, not bypassed by the public hub. */
+const PUBLIC_PREFIXES = ["/learn/", "/explore/", "/morning-brief/", "/tickers/"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

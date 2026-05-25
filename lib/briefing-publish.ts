@@ -129,7 +129,7 @@ export async function publishBriefingToYouTube(
   const title = row.ytTitle?.trim() || `0DTE Morning Brief — ${tradingDay}`;
   const rawDescription =
     row.ytCaption?.trim() ||
-    `${row.script ?? ""}\n\nMore daily setups: https://www.oliviatrades.com/morning-brief\n\n#0DTE #Options #DayTrading`;
+    `${row.script ?? ""}\n\nFull brief: https://www.oliviatrades.com/morning-brief/${tradingDay}\n\n#0DTE #Options #DayTrading`;
   const { ensureDisclaimer, YT_DISCLAIMER } = await import("@/lib/briefings-copy");
   const description = ensureDisclaimer(rawDescription, YT_DISCLAIMER);
 

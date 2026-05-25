@@ -8,6 +8,11 @@ interface Props {
   otherDays: string[];
   /** When true (per-day route), show breadcrumb back to /morning-brief. */
   showBreadcrumb?: boolean;
+  /** Optional tab bar rendered above the header. Used by the canonical
+   *  daily route (/morning-brief/[date]) so the Daily/Earnings tab pair
+   *  is visible after the landing redirects users to the dated URL.
+   *  Left unset by archive-only routes that don't need tabs. */
+  tabBar?: React.ReactNode;
 }
 
 function fmtDate(day: string): string {
@@ -49,9 +54,15 @@ function directionTone(d: string | null): string {
  * Shared layout for the Brief page. Used by both `/morning-brief` (renders
  * the latest day) and `/morning-brief/[date]` (renders the specified day).
  */
-export default function BriefDayView({ brief, otherDays, showBreadcrumb = false }: Props) {
+export default function BriefDayView({
+  brief,
+  otherDays,
+  showBreadcrumb = false,
+  tabBar,
+}: Props) {
   return (
     <main className="flex-1 max-w-5xl mx-auto px-6 py-10 lg:py-14 font-sans w-full">
+      {tabBar}
       {showBreadcrumb && (
         <nav className="mb-6 text-xs text-white/45">
           <Link href="/welcome" className="hover:text-white">Home</Link>

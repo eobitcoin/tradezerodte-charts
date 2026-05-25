@@ -398,7 +398,7 @@ const TOOLS = [
   {
     name: "publish_weekly_earnings_script",
     description:
-      "Persist the script + setting prompt for the Sunday Weekly Earnings Brief. Mirrors `publish_briefing_script` but writes to the `weekly_earnings_briefings` table keyed on `week_anchor` (Sunday-of-the-week date). Word budget is 80-130 (hard bounds 60-180) — aimed at ~45s narration vs the daily ~15s. UPSERTs on week_anchor; safe to re-run.",
+      "Persist the script + setting prompt for the Sunday Weekly Earnings Brief. Mirrors `publish_briefing_script` but writes to the `weekly_earnings_briefings` table keyed on `week_anchor` (Sunday-of-the-week date). Word budget is 80-130 (hard bounds 60-180) — aimed at ~45s narration vs the daily ~15s. UPSERTs on week_anchor; safe to re-run.\n\n**ALWAYS pass `tickers`** — the public earnings-brief page and the admin card render those as chips next to the video. Use the actual ticker symbols even if the script uses company names (e.g. Marvell → MRVL, Salesforce → CRM). 3-8 symbols typical; cap 12. Order by narration order, not alphabetical.",
     inputSchema: {
       type: "object",
       properties: {
@@ -414,8 +414,14 @@ const TOOLS = [
           type: "string",
           description: "One-line scene/wardrobe/mood description for Higgsfield Soul. Use one of the weekly rotation variants (rooftop / Manhattan / golden hour / casual-sexy editorial).",
         },
+        tickers: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Uppercased ticker symbols mentioned in the script, in narration order (e.g. ['MRVL','DELL','AVGO','CRM','LULU']). Server uppercases + dedupes; rejects anything that isn't 1-6 uppercase letters/digits. Pass [] only when the script genuinely covers no specific names (rare).",
+        },
       },
-      required: ["script", "setting_prompt"],
+      required: ["script", "setting_prompt", "tickers"],
     },
   },
   {
@@ -4144,6 +4150,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           week_anchor?: string;
           script?: string;
           setting_prompt?: string;
+          tickers?: unknown;
         };
         const weekAnchor = a.week_anchor || nyTradingDay();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
@@ -4179,11 +4186,58 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             isError: true,
           };
         }
+        // Normalize tickers: uppercase, trim, dedupe (case-insensitive), keep
+        // first-occurrence order. Reject anything that isn't 1-6 alphanumeric
+        // characters — protects against the writer pasting prose by mistake.
+        if (!Array.isArray(a.tickers)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "tickers must be an array of uppercase ticker symbols (e.g. ['MRVL','DELL','AVGO'])",
+              },
+            ],
+            isError: true,
+          };
+        }
+        const seen = new Set<string>();
+        const tickers: string[] = [];
+        for (const raw of a.tickers) {
+          if (typeof raw !== "string") continue;
+          const t = raw.trim().toUpperCase();
+          if (!/^[A-Z0-9.\-]{1,6}$/.test(t)) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `invalid ticker "${raw}" — must be 1-6 uppercase letters/digits (dots and dashes allowed for things like BRK.B)`,
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (!seen.has(t)) {
+            seen.add(t);
+            tickers.push(t);
+          }
+        }
+        if (tickers.length > 12) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `${tickers.length} tickers — cap is 12. Trim to the symbols actually narrated.`,
+              },
+            ],
+            isError: true,
+          };
+        }
         const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
         const meta = {
           routine_name: "Weekly Earnings Brief — Script Writer",
           agent: "claude-mcp",
           word_count: wordCount,
+          ticker_count: tickers.length,
         };
         const [row] = await db
           .insert(weeklyEarningsBriefings)
@@ -4191,6 +4245,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             weekAnchor,
             script,
             settingPrompt,
+            tickers,
             status: "scripted",
             meta,
           })
@@ -4199,6 +4254,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             set: {
               script,
               settingPrompt,
+              tickers,
               status: "scripted",
               meta,
               updatedAt: sql`now()`,
@@ -4219,7 +4275,8 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
                 week_anchor: row.weekAnchor,
                 status: row.status,
                 word_count: wordCount,
-                admin_url: "/admin/briefings",
+                tickers,
+                admin_url: "/admin/briefings/weekly",
               }),
             },
           ],
@@ -4259,6 +4316,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
               week_anchor: row.weekAnchor,
               script: row.script,
               setting_prompt: row.settingPrompt,
+              tickers: row.tickers,
               status: row.status,
               youtube_video_id: row.youtubeVideoId,
               video_s3_key: row.videoS3Key,

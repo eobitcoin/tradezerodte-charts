@@ -474,6 +474,13 @@ export const weeklyEarningsBriefings = pgTable(
     weekAnchor: date("week_anchor").notNull().unique(),
     /** 100-130 word voiceover script. First-person Olivia voice. */
     script: text("script"),
+    /** Uppercased ticker symbols mentioned in the script, in narration order
+     *  (e.g. ["MRVL", "DELL", "AVGO"]). Surfaced as chips next to the video
+     *  on both /morning-brief?kind=earnings and /admin/briefings/weekly. The
+     *  script writer emits this alongside the script; we don't try to parse
+     *  it back out because the script uses company names rather than
+     *  symbols. Empty array when the writer didn't populate it. */
+    tickers: text("tickers").array().notNull().default(sql`'{}'::text[]`),
     /** One-line scene/wardrobe/mood prompt for Higgsfield Soul. */
     settingPrompt: text("setting_prompt"),
     status: text("status").$type<BriefingStatus>().notNull().default("pending"),

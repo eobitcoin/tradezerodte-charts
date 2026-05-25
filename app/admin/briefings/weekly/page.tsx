@@ -71,6 +71,7 @@ export default async function AdminWeeklyEarningsBriefingsPage() {
               higgsfieldJobId={b.higgsfieldJobId}
               youtubeVideoId={b.youtubeVideoId}
               errorLog={b.errorLog}
+              tickers={b.tickers ?? []}
               yt={{
                 status: b.ytStatus,
                 title: b.ytTitle,

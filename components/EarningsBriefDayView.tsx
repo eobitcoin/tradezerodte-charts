@@ -75,9 +75,9 @@ export default function EarningsBriefDayView({ brief, otherWeeks, tabBar }: Prop
         </div>
       </header>
 
-      {/* VIDEO */}
-      <div className="flex justify-center mb-12">
-        <div className="w-full max-w-md">
+      {/* VIDEO + TICKERS PANEL */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start mb-12">
+        <div className="lg:col-span-3 max-w-md mx-auto lg:max-w-none w-full">
           <div className="rounded-2xl overflow-hidden border border-white/10 bg-black shadow-2xl shadow-black/60">
             <video
               controls
@@ -94,6 +94,30 @@ export default function EarningsBriefDayView({ brief, otherWeeks, tabBar }: Prop
               .
             </video>
           </div>
+        </div>
+
+        {/* TICKERS COVERED — chips list, in narration order. Parallel to the
+            daily brief's "Today's Top 3" panel but plain symbols (the weekly
+            covers IV/earnings setups rather than directional 0DTE calls). */}
+        <div className="lg:col-span-2 space-y-4">
+          <h2 className="text-xs uppercase tracking-widest text-white/55">
+            Tickers covered
+          </h2>
+          {brief.tickers.length > 0 ? (
+            <ul className="flex flex-wrap gap-2">
+              {brief.tickers.map((t) => (
+                <li key={t}>
+                  <span className="inline-flex items-center px-3 py-1.5 rounded-md border border-white/15 bg-white/[0.04] font-bold tracking-tight text-base">
+                    ${t}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-white/45 italic">
+              No specific names flagged this week.
+            </p>
+          )}
         </div>
       </div>
 

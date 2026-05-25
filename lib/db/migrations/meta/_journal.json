@@ -344,6 +344,13 @@
       "when": 1779651577904,
       "tag": "0048_silent_paladin",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1779666499358,
+      "tag": "0049_square_the_hunter",
+      "breakpoints": true
     }
   ]
 }

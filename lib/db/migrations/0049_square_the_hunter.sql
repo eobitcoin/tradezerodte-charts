@@ -1,0 +1,1 @@
+ALTER TABLE "weekly_earnings_briefings" ADD COLUMN "tickers" text[] DEFAULT '{}'::text[] NOT NULL;

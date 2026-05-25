@@ -190,6 +190,9 @@ export interface PublicWeeklyEarningsBrief {
   videoUrl: string;
   thumbnailUrl: string | null;
   postedAt: Date | null;
+  /** Uppercased ticker symbols the script covers, in narration order
+   *  (e.g. ["MRVL","DELL","AVGO"]). Rendered as chips next to the video. */
+  tickers: string[];
 }
 
 /** Mirror of hasVideoFilter() for the weekly table. */
@@ -213,6 +216,7 @@ export async function loadLatestWeeklyEarnings(): Promise<PublicWeeklyEarningsBr
       thumbnailUrl: weeklyEarningsBriefings.thumbnailUrl,
       postedAt: weeklyEarningsBriefings.postedAt,
       updatedAt: weeklyEarningsBriefings.updatedAt,
+      tickers: weeklyEarningsBriefings.tickers,
     })
     .from(weeklyEarningsBriefings)
     .where(hasWeeklyVideoFilter())
@@ -225,6 +229,7 @@ export async function loadLatestWeeklyEarnings(): Promise<PublicWeeklyEarningsBr
     videoUrl: row.videoS3Key,
     thumbnailUrl: row.thumbnailUrl,
     postedAt: row.postedAt ?? row.updatedAt,
+    tickers: row.tickers ?? [],
   };
 }
 
@@ -239,6 +244,7 @@ export async function loadWeeklyEarningsByAnchor(
       thumbnailUrl: weeklyEarningsBriefings.thumbnailUrl,
       postedAt: weeklyEarningsBriefings.postedAt,
       updatedAt: weeklyEarningsBriefings.updatedAt,
+      tickers: weeklyEarningsBriefings.tickers,
     })
     .from(weeklyEarningsBriefings)
     .where(
@@ -252,6 +258,7 @@ export async function loadWeeklyEarningsByAnchor(
     videoUrl: row.videoS3Key,
     thumbnailUrl: row.thumbnailUrl,
     postedAt: row.postedAt ?? row.updatedAt,
+    tickers: row.tickers ?? [],
   };
 }
 

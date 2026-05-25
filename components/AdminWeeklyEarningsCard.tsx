@@ -15,6 +15,7 @@ interface CardProps {
   higgsfieldJobId: string | null;
   youtubeVideoId: string | null;
   errorLog: BriefingErrorEvent[];
+  tickers: string[];
   yt: {
     status: PlatformPublishStatus | null;
     title: string | null;
@@ -105,6 +106,7 @@ export default function AdminWeeklyEarningsCard(props: CardProps) {
     higgsfieldJobId,
     youtubeVideoId,
     errorLog,
+    tickers,
     yt,
     tt,
     defaults,
@@ -158,6 +160,24 @@ export default function AdminWeeklyEarningsCard(props: CardProps) {
           Public page →
         </a>
       </div>
+
+      {/* TICKERS COVERED — chip list, in narration order. Empty when the
+          script-writer routine didn't populate the field. */}
+      {tickers.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-widest text-black/45 dark:text-white/45">
+            Tickers
+          </span>
+          {tickers.map((t) => (
+            <span
+              key={t}
+              className="text-[11px] font-mono font-bold tracking-tight px-2 py-0.5 rounded border border-white/15 bg-white/[0.04] text-white/85"
+            >
+              ${t}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* MAIN GRID: video preview + per-platform panels */}
       <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">

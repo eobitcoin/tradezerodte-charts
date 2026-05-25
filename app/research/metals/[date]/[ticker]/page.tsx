@@ -7,12 +7,20 @@ import SiteHeader from "@/components/SiteHeader";
 import ResearchView from "@/components/ResearchView";
 import ResearchSidebar, { type ResearchSidebarItem } from "@/components/ResearchSidebar";
 
+/**
+ * Member-only detail page for a single metals research post.
+ *
+ * Mirror of /research/[date]/[ticker] but filters research_posts to
+ * asset_class='metals'. Sidebar is metals-only so users navigate
+ * within the metals stream without bouncing into equity.
+ */
+
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TICKER_RE = /^[A-Z][A-Z0-9.\-^]{0,15}$/;
 
-export default async function ResearchDetailPage({
+export default async function MetalsResearchDetailPage({
   params,
 }: {
   params: Promise<{ date: string; ticker: string }>;
@@ -22,8 +30,6 @@ export default async function ResearchDetailPage({
   const ticker = rawTicker.toUpperCase();
   if (!TICKER_RE.test(ticker)) notFound();
 
-  // Equity-stream only — match on asset_class so a metals ticker that
-  // shadows an equity symbol can never silently leak across streams here.
   const [post] = await db
     .select()
     .from(researchPosts)
@@ -31,7 +37,7 @@ export default async function ResearchDetailPage({
       and(
         eq(researchPosts.scanDay, date),
         eq(researchPosts.ticker, ticker),
-        eq(researchPosts.assetClass, "equity"),
+        eq(researchPosts.assetClass, "metals"),
       ),
     )
     .limit(1);
@@ -45,7 +51,7 @@ export default async function ResearchDetailPage({
       imageCount: sql<number>`jsonb_array_length(${researchPosts.images})`,
     })
     .from(researchPosts)
-    .where(eq(researchPosts.assetClass, "equity"))
+    .where(eq(researchPosts.assetClass, "metals"))
     .orderBy(desc(researchPosts.scanDay), researchPosts.ticker)
     .limit(60);
 
@@ -60,8 +66,8 @@ export default async function ResearchDetailPage({
     <>
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 pt-4">
-        <Link href="/research" className="text-sm underline">
-          ← Back to latest research
+        <Link href="/research/metals" className="text-sm underline">
+          ← Back to latest metals research
         </Link>
       </div>
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:gap-10">
@@ -72,6 +78,7 @@ export default async function ResearchDetailPage({
           items={sidebarItems}
           currentScanDay={date}
           currentTicker={ticker}
+          hrefFor={(item) => `/research/metals/${item.scanDay}/${item.ticker}`}
         />
       </div>
     </>

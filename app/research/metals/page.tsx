@@ -7,18 +7,26 @@ import ResearchView from "@/components/ResearchView";
 import ResearchSidebar, { type ResearchSidebarItem } from "@/components/ResearchSidebar";
 import ResearchTabs from "@/components/ResearchTabs";
 
+/**
+ * Member-only landing for the weekly metals research stream.
+ *
+ * Mirror of /research (equity) but filters research_posts to
+ * asset_class='metals'. Same components, same layout — only the data
+ * source differs. Sidebar shows recent metals-only entries so users can
+ * jump between covered tickers (GLD, SLV, GDX, …) without leaving the
+ * metals view.
+ */
+
 export const dynamic = "force-dynamic";
 
-export default async function ResearchTodayPage() {
-  // Equity stream only — metals rows live under /research/metals.
+export default async function MetalsResearchTodayPage() {
   const [latest] = await db
     .select()
     .from(researchPosts)
-    .where(eq(researchPosts.assetClass, "equity"))
+    .where(eq(researchPosts.assetClass, "metals"))
     .orderBy(desc(researchPosts.scanDay), researchPosts.ticker)
     .limit(1);
 
-  // Sidebar: up to 60 most recent equity (ticker, scan_day) entries.
   const recentRows = await db
     .select({
       ticker: researchPosts.ticker,
@@ -27,7 +35,7 @@ export default async function ResearchTodayPage() {
       imageCount: sql<number>`jsonb_array_length(${researchPosts.images})`,
     })
     .from(researchPosts)
-    .where(eq(researchPosts.assetClass, "equity"))
+    .where(eq(researchPosts.assetClass, "metals"))
     .orderBy(desc(researchPosts.scanDay), researchPosts.ticker)
     .limit(60);
 
@@ -43,15 +51,16 @@ export default async function ResearchTodayPage() {
       <>
         <SiteHeader />
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-          <ResearchTabs active="weekly" />
+          <ResearchTabs active="metals" />
           <div className="text-center space-y-3 max-w-md mx-auto pt-12">
-            <h1 className="text-xl font-semibold">No research posts yet</h1>
+            <h1 className="text-xl font-semibold">No metals research yet</h1>
             <p className="text-sm text-black/60 dark:text-white/60">
-              The Wicked Research routine publishes per-ticker writeups daily.
-              Once it runs for the first time, the latest will appear here.
+              The metals research routine publishes every Sunday — GLD,
+              SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX. The first batch will
+              appear here once it runs.
             </p>
-            <Link href="/" className="inline-block underline text-sm">
-              Back to today&apos;s 0DTE research →
+            <Link href="/research" className="inline-block underline text-sm">
+              See weekly equity research →
             </Link>
           </div>
         </main>
@@ -64,13 +73,14 @@ export default async function ResearchTodayPage() {
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:gap-10">
         <main className="min-w-0 space-y-4">
-          <ResearchTabs active="weekly" />
+          <ResearchTabs active="metals" />
           <ResearchView post={latest} />
         </main>
         <ResearchSidebar
           items={sidebarItems}
           currentScanDay={latest.scanDay}
           currentTicker={latest.ticker}
+          hrefFor={(item) => `/research/metals/${item.scanDay}/${item.ticker}`}
         />
       </div>
     </>

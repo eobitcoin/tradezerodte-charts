@@ -26,6 +26,7 @@ export type ResearchKind =
   | "daily"
   | "insider"
   | "wicked_stocks"
+  | "metals"
   | "institutional"
   | "earnings"
   | "max_pain";
@@ -35,6 +36,7 @@ export const RESEARCH_KIND_LABEL: Record<ResearchKind, string> = {
   daily: "Daily 0DTE Analysis",
   insider: "Insider Buys",
   wicked_stocks: "Wicked Stocks",
+  metals: "Metals Research",
   institutional: "Institutional Flow",
   earnings: "Earnings Whiplash",
   max_pain: "Max Pain + GEX",
@@ -85,7 +87,7 @@ export async function loadResearchForTicker(
   // ticker is regex-validated upstream.
   const arrayObjContains = sql`jsonb_build_array(jsonb_build_object('ticker', ${t}::text))`;
 
-  const [daily, insider, wicked, institutional, earnings, maxPain] = await Promise.all([
+  const [daily, insider, wicked, metals, institutional, earnings, maxPain] = await Promise.all([
     db.execute<{ trading_day: string }>(sql`
       SELECT trading_day::text AS trading_day
       FROM posts
@@ -103,10 +105,26 @@ export async function loadResearchForTicker(
       ORDER BY scan_day DESC
       LIMIT ${limit}
     `),
+    // Equity stream of research_posts. Filters out asset_class='metals'
+    // so the Wicked Stocks chip never shadows the dedicated Metals chip
+    // below for the same scan_day on a metal ticker hub.
     db.execute<{ scan_day: string; ticker: string }>(sql`
       SELECT scan_day::text AS scan_day, ticker
       FROM research_posts
       WHERE ticker = ${t}
+        AND asset_class = 'equity'
+        AND scan_day >= ${SIXTY_DAYS}
+      ORDER BY scan_day DESC
+      LIMIT ${limit}
+    `),
+    // Metals stream of research_posts. Surfaces only on metal-ticker hubs
+    // (GLD, SLV, GDX, …) since asset_class='metals' rows only exist for
+    // those symbols anyway.
+    db.execute<{ scan_day: string; ticker: string }>(sql`
+      SELECT scan_day::text AS scan_day, ticker
+      FROM research_posts
+      WHERE ticker = ${t}
+        AND asset_class = 'metals'
         AND scan_day >= ${SIXTY_DAYS}
       ORDER BY scan_day DESC
       LIMIT ${limit}
@@ -165,6 +183,19 @@ export async function loadResearchForTicker(
       // Wicked Stocks doesn't have a public preview — link directly to
       // the member URL; middleware redirects unauth visitors to /login.
       url: `/research/${r.scan_day}/${r.ticker}`,
+      isFree: false,
+    });
+  }
+  for (const r of metals) {
+    items.push({
+      kind: "metals",
+      date: r.scan_day,
+      title: `${RESEARCH_KIND_LABEL.metals}: ${r.ticker} — ${fmtDate(r.scan_day)}`,
+      // Metals HAS a public preview (/explore/metals/[scanDay]) showing
+      // one headline ticker fully revealed + locked cards for the rest.
+      // Link to the preview rather than the member URL so curious
+      // visitors get a free peek before the signup gate fires.
+      url: `/explore/metals/${r.scan_day}`,
       isFree: false,
     });
   }

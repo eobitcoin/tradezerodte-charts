@@ -28,11 +28,18 @@ export default function ResearchSidebar({
   items,
   currentScanDay,
   currentTicker,
+  hrefFor,
 }: {
   items: ResearchSidebarItem[];
   currentScanDay?: string;
   currentTicker?: string;
+  /** Build the link for a sidebar row. Defaults to the equity research
+   *  URL pattern; metals pages override with /research/metals/... so
+   *  navigating between rows stays inside the metals stream. */
+  hrefFor?: (item: ResearchSidebarItem) => string;
 }) {
+  const buildHref =
+    hrefFor ?? ((item: ResearchSidebarItem) => `/research/${item.scanDay}/${item.ticker}`);
   // Group by date desc; within each date list tickers alpha asc.
   const groups = new Map<string, ResearchSidebarItem[]>();
   for (const it of items) {
@@ -78,7 +85,7 @@ export default function ResearchSidebar({
                         </div>
                       ) : (
                         <Link
-                          href={`/research/${item.scanDay}/${item.ticker}`}
+                          href={buildHref(item)}
                           className="block rounded-lg border border-black/10 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/20 dark:hover:border-white/20 px-3 py-2.5 transition-colors"
                         >
                           <RowContent item={item} active={false} />

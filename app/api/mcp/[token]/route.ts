@@ -684,6 +684,59 @@ const TOOLS = [
     },
   },
   {
+    name: "publish_metals_research",
+    description:
+      "Publish (or replace) one metals ticker's weekly long-form research writeup. Same shape as `publish_research` but writes to the metals stream (`asset_class='metals'`) and surfaces at /research/metals/[scan_day]/[ticker]. Allowed tickers (server-enforced): GLD, SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX. Pass charts via the `images` array after uploading them with upload_research_image.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticker: {
+          type: "string",
+          description:
+            "Uppercase ticker. Must be one of: GLD, SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX.",
+        },
+        scan_day: {
+          type: "string",
+          description:
+            "Optional YYYY-MM-DD; defaults to today's date in America/New_York. Sunday is the canonical metals publish day.",
+        },
+        title: {
+          type: "string",
+          description:
+            "Post title. Recommended format: '<TICKER> Metals Research — <Month Day, Year>'.",
+        },
+        headline: {
+          type: "string",
+          description:
+            "One-line summary shown in the right-pane index (e.g. 'GLD $241.50 — bullish above $245, bearish below $238'). Keep under 160 chars.",
+        },
+        body_md: {
+          type: "string",
+          description:
+            "Full markdown analysis — narrative, key levels, structure, target projections. Same Wicked Stocks style. Do NOT include image references; charts render separately from the images array.",
+        },
+        images: {
+          type: "array",
+          description:
+            "Charts to attach. Each entry should reference an upload_research_image result. Page renders in slot order (weekly → daily → others) under the prose.",
+          items: {
+            type: "object",
+            properties: {
+              slot: { type: "string", description: "e.g. 'weekly', 'daily'." },
+              key: { type: "string", description: "Bucket key returned by upload_research_image." },
+              url: { type: "string", description: "URL returned by upload_research_image." },
+              alt: { type: "string" },
+              width: { type: "integer" },
+              height: { type: "integer" },
+            },
+            required: ["slot", "key", "url"],
+          },
+        },
+      },
+      required: ["ticker", "title", "body_md"],
+    },
+  },
+  {
     name: "publish_insider_scan",
     description:
       "Publish the daily SEC Form 4 Insider Buy Scan to the user's website. Call this exactly once at the end of the routine.",
@@ -2161,6 +2214,60 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
   images_count: number;
   body_chars: number;
 }> {
+  return publishResearchInternal(args, "equity");
+}
+
+/** Allowlist of metals tickers. Keep tight — the metals routine should
+ *  cover this universe and no other names. Rejecting unknown tickers
+ *  here is a guardrail against a misconfigured routine accidentally
+ *  publishing an equity into the metals stream. */
+const METALS_ALLOWLIST = new Set([
+  "GLD",   // SPDR Gold Trust
+  "SLV",   // iShares Silver Trust
+  "GDX",   // VanEck Gold Miners
+  "GDXJ",  // VanEck Junior Gold Miners
+  "CPER",  // US Copper Index Fund
+  "PPLT",  // Aberdeen Platinum
+  "NEM",   // Newmont
+  "FCX",   // Freeport-McMoRan
+]);
+
+async function publishMetalsResearch(args: PublishResearchArgs): Promise<{
+  url: string;
+  ticker: string;
+  scan_day: string;
+  images_count: number;
+  body_chars: number;
+}> {
+  const ticker = String(args.ticker || "").trim().toUpperCase();
+  if (!METALS_ALLOWLIST.has(ticker)) {
+    throw new Error(
+      `ticker "${ticker}" is not in the metals allowlist (${Array.from(METALS_ALLOWLIST).join(", ")})`,
+    );
+  }
+  return publishResearchInternal(args, "metals");
+}
+
+/**
+ * Shared upsert path for equity + metals research. Sets asset_class
+ * explicitly on both insert and on conflict so re-running an existing
+ * ticker can't accidentally flip its stream (an equity post will always
+ * stay equity unless a manual SQL change moves it).
+ *
+ * URL shape:
+ *   equity → /research/<scan_day>/<ticker>
+ *   metals → /research/metals/<scan_day>/<ticker>
+ */
+async function publishResearchInternal(
+  args: PublishResearchArgs,
+  assetClass: "equity" | "metals",
+): Promise<{
+  url: string;
+  ticker: string;
+  scan_day: string;
+  images_count: number;
+  body_chars: number;
+}> {
   const ticker = String(args.ticker || "").trim().toUpperCase();
   if (!ticker) throw new Error("ticker required");
   const scanDay = args.scan_day || nyTradingDay();
@@ -2176,7 +2283,12 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
     height: img.height,
     content_type: img.content_type,
   }));
-  const meta = { routine_name: "Wicked Research", agent: "claude-mcp" };
+  const meta = {
+    routine_name:
+      assetClass === "metals" ? "Metals Research" : "Wicked Research",
+    agent: "claude-mcp",
+    asset_class: assetClass,
+  };
   const runAt = new Date();
 
   // Upsert by composite (ticker, scan_day). Drizzle's onConflictDoUpdate
@@ -2190,6 +2302,7 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
       headline,
       bodyMd,
       images,
+      assetClass,
       runAt,
       meta,
     })
@@ -2200,6 +2313,7 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
         headline,
         bodyMd,
         images,
+        assetClass,
         runAt,
         meta,
         updatedAt: sql`now()`,
@@ -2210,8 +2324,12 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
       ticker: researchPosts.ticker,
       scanDay: researchPosts.scanDay,
     });
+  const url =
+    assetClass === "metals"
+      ? `/research/metals/${row.scanDay}/${row.ticker}`
+      : `/research/${row.scanDay}/${row.ticker}`;
   return {
-    url: `/research/${row.scanDay}/${row.ticker}`,
+    url,
     ticker: row.ticker,
     scan_day: row.scanDay,
     images_count: images.length,
@@ -5099,6 +5217,27 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         return {
           content: [
             { type: "text", text: `publish_research failed: ${err instanceof Error ? err.message : String(err)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "publish_metals_research") {
+      try {
+        const out = await publishMetalsResearch(args as unknown as PublishResearchArgs);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Published metals research for ${out.ticker} on ${out.scan_day} → ${out.url}. body=${out.body_chars} chars, ${out.images_count} images.`,
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            { type: "text", text: `publish_metals_research failed: ${err instanceof Error ? err.message : String(err)}` },
           ],
           isError: true,
         };

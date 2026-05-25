@@ -2,6 +2,7 @@ import Link from "next/link";
 
 export type ResearchTab =
   | "weekly"
+  | "metals"
   | "economic"
   | "institutional"
   | "earnings"
@@ -10,6 +11,7 @@ export type ResearchTab =
 
 const TABS: Array<{ id: ResearchTab; label: string; href: string }> = [
   { id: "weekly", label: "Weekly Research", href: "/research" },
+  { id: "metals", label: "Metals", href: "/research/metals" },
   { id: "economic", label: "Economic Calendar", href: "/calendar/economic" },
   { id: "institutional", label: "Institutional", href: "/research/institutional" },
   { id: "earnings", label: "Earnings", href: "/research/earnings" },

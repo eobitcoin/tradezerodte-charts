@@ -602,6 +602,13 @@ export type ResearchImage = {
   content_type?: string;
 };
 
+/** Asset class split for `research_posts`. Most rows are "equity" (the
+ *  Wicked Stocks daily writeups). "metals" rows are the Sunday metals
+ *  research routine (GLD/SLV/GDX/etc.). Members surfaces and ticker-hub
+ *  reverse lookups filter on this column so the two asset classes never
+ *  bleed into each other's archive pages. */
+export type AssetClass = "equity" | "metals";
+
 export const researchPosts = pgTable(
   "research_posts",
   {
@@ -612,6 +619,8 @@ export const researchPosts = pgTable(
     headline: text("headline").notNull().default(""),
     bodyMd: text("body_md").notNull().default(""),
     images: jsonb("images").$type<ResearchImage[]>().notNull().default([]),
+    /** Which research stream this row belongs to. See AssetClass above. */
+    assetClass: text("asset_class").$type<AssetClass>().notNull().default("equity"),
     runAt: timestamp("run_at", { withTimezone: true }),
     meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -625,6 +634,8 @@ export const researchPosts = pgTable(
     uniqueIndex("research_posts_ticker_day_idx").on(t.ticker, t.scanDay),
     index("research_posts_scan_day_idx").on(t.scanDay.desc()),
     index("research_posts_ticker_idx").on(t.ticker),
+    // Hot path: every metals page does WHERE asset_class='metals' ORDER BY scan_day DESC.
+    index("research_posts_asset_class_scan_day_idx").on(t.assetClass, t.scanDay.desc()),
   ],
 );
 

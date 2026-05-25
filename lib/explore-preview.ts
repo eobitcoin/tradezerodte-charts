@@ -27,6 +27,8 @@ import {
   sectorRotationPosts,
   insiderPosts,
   posts,
+  researchPosts,
+  type ResearchPost,
 } from "@/lib/db/schema";
 
 // ---------------------------------------------------------------------------
@@ -424,4 +426,80 @@ export async function listDailyAnalysisTradingDays(limit = 60): Promise<string[]
     .orderBy(desc(posts.tradingDay))
     .limit(limit);
   return rows.map((r) => r.tradingDay);
+}
+
+// ---------------------------------------------------------------------------
+// Metals Research preview
+//
+// Differs from the other previews above: research_posts stores one ticker
+// per row, not a JSONB array of items in a single row. So the "preview"
+// fully reveals ONE metals post (the alphabetically-first ticker for the
+// given scan_day, deterministic), and reports the count of other tickers
+// covered that day for the BlurredCard placeholders.
+// ---------------------------------------------------------------------------
+
+export interface MetalsPreview {
+  scanDay: string;
+  runAt: Date | null;
+  /** The fully-revealed headline post. */
+  headline: ResearchPost | null;
+  /** Number of other metals tickers covered on the same scan_day (for the
+   *  members-only blurred placeholder cards). */
+  hiddenCount: number;
+  /** All tickers covered on this scan day, used only for the rendered
+   *  count and the BlurredCard list — the placeholder cards don't show
+   *  the ticker symbol so no metadata leaks. */
+  totalTickerCount: number;
+}
+
+export async function loadMetalsPreview(
+  scanDay?: string,
+): Promise<MetalsPreview | null> {
+  // Pick the target scan_day: either the explicit one or the most recent
+  // day that has any metals post at all.
+  let day = scanDay;
+  if (!day) {
+    const [latest] = await db
+      .select({ scanDay: researchPosts.scanDay })
+      .from(researchPosts)
+      .where(eq(researchPosts.assetClass, "metals"))
+      .orderBy(desc(researchPosts.scanDay))
+      .limit(1);
+    if (!latest) return null;
+    day = latest.scanDay;
+  }
+  // Pull every metals post on the chosen day. Headline = first by ticker
+  // alpha (deterministic — same headline every render until new data lands).
+  const rows = await db
+    .select()
+    .from(researchPosts)
+    .where(
+      and(
+        eq(researchPosts.assetClass, "metals"),
+        eq(researchPosts.scanDay, day),
+      ),
+    )
+    .orderBy(researchPosts.ticker);
+  if (rows.length === 0) return null;
+  const headline = rows[0];
+  return {
+    scanDay: day,
+    runAt: headline.runAt ?? headline.createdAt,
+    headline,
+    hiddenCount: Math.max(0, rows.length - 1),
+    totalTickerCount: rows.length,
+  };
+}
+
+export async function listMetalsScanDays(limit = 26): Promise<string[]> {
+  // Distinct scan_days that have at least one metals post, newest-first.
+  // `selectDistinctOn` requires the ORDER BY to start with the distinct
+  // column, which can still be DESC — gives us the latest N scan days.
+  const rows = await db
+    .selectDistinctOn([researchPosts.scanDay], { scanDay: researchPosts.scanDay })
+    .from(researchPosts)
+    .where(eq(researchPosts.assetClass, "metals"))
+    .orderBy(desc(researchPosts.scanDay))
+    .limit(limit);
+  return rows.map((r) => r.scanDay);
 }

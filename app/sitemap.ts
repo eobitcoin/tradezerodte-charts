@@ -14,6 +14,13 @@ import { listAllCoveredTickers } from "@/lib/tickers-public";
 
 const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
+// Force dynamic generation per request — without this, Next.js prerenders
+// the sitemap at build time, when the DB queries haven't run yet, locking
+// the URL list to whatever the static phase saw (essentially: only the
+// hardcoded entries). We want the sitemap to reflect every brief and
+// ticker hub published since the build.
+export const dynamic = "force-dynamic";
+
 const LEARN_SLUGS = [
   "0dte-options",
   "max-pain",
@@ -124,10 +131,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           priority: 0.5,
         });
       }
-    } catch {
+    } catch (err) {
       // If the DB query fails (table missing during initial deploy, etc.),
       // skip the archives for this type rather than failing the whole
-      // sitemap generation.
+      // sitemap generation. Log so we can see real bugs instead of
+      // missing-table noise.
+      console.error(`[sitemap] explore/${slug} lister failed:`, err);
     }
   }
 
@@ -142,8 +151,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
       });
     }
-  } catch {
-    // Briefings table may not exist on a fresh deploy; skip rather than fail.
+  } catch (err) {
+    console.error("[sitemap] listPublicBriefingDays failed:", err);
   }
 
   // Weekly Earnings Briefs — one indexable URL per Sunday anchor with a
@@ -158,8 +167,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
       });
     }
-  } catch {
-    // weekly_earnings_briefings may not exist on a fresh deploy.
+  } catch (err) {
+    console.error("[sitemap] listPublicWeeklyEarningsAnchors failed:", err);
   }
 
   // Per-ticker hub pages — one per ticker with at least one published
@@ -176,8 +185,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.6,
       });
     }
-  } catch {
-    // posts/briefings tables may not exist on a fresh deploy.
+  } catch (err) {
+    console.error("[sitemap] listAllCoveredTickers failed:", err);
   }
 
   return out;

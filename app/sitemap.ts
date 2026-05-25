@@ -6,7 +6,11 @@ import {
   listInsiderScanDays,
   listDailyAnalysisTradingDays,
 } from "@/lib/explore-preview";
-import { listPublicBriefingDays } from "@/lib/briefings-public";
+import {
+  listPublicBriefingDays,
+  listPublicWeeklyEarningsAnchors,
+} from "@/lib/briefings-public";
+import { listAllCoveredTickers } from "@/lib/tickers-public";
 
 const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
@@ -80,6 +84,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily",
       priority: 0.9,
     },
+    {
+      url: `${APP_URL}/morning-brief/earnings`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.85,
+    },
+    {
+      url: `${APP_URL}/tickers`,
+      lastModified: now,
+      changeFrequency: "daily",
+      priority: 0.8,
+    },
     ...LEARN_SLUGS.map((slug) => ({
       url: `${APP_URL}/learn/${slug}`,
       lastModified: now,
@@ -128,6 +144,40 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }
   } catch {
     // Briefings table may not exist on a fresh deploy; skip rather than fail.
+  }
+
+  // Weekly Earnings Briefs — one indexable URL per Sunday anchor with a
+  // published video. Same idempotency contract as the daily block above.
+  try {
+    const weeklyAnchors = await listPublicWeeklyEarningsAnchors(26);
+    for (const w of weeklyAnchors) {
+      out.push({
+        url: `${APP_URL}/morning-brief/earnings/${w}`,
+        lastModified: new Date(`${w}T12:00:00Z`),
+        changeFrequency: "monthly",
+        priority: 0.7,
+      });
+    }
+  } catch {
+    // weekly_earnings_briefings may not exist on a fresh deploy.
+  }
+
+  // Per-ticker hub pages — one per ticker with at least one published
+  // brief. The /tickers/[symbol] route 404s when there's no coverage, so
+  // mirroring listAllCoveredTickers's filter guarantees no broken links
+  // in the sitemap.
+  try {
+    const tickers = await listAllCoveredTickers();
+    for (const t of tickers) {
+      out.push({
+        url: `${APP_URL}/tickers/${t}`,
+        lastModified: now,
+        changeFrequency: "weekly",
+        priority: 0.6,
+      });
+    }
+  } catch {
+    // posts/briefings tables may not exist on a fresh deploy.
   }
 
   return out;

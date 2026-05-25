@@ -12,7 +12,19 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/welcome", "/learn", "/learn/*"],
+        allow: [
+          "/",
+          "/welcome",
+          "/learn",
+          "/learn/*",
+          // Public brief surfaces — explicit so crawlers don't second-guess
+          // their indexability after the canonical-redirect shuffle.
+          "/morning-brief",
+          "/morning-brief/*",
+          // Per-ticker hub pages + index.
+          "/tickers",
+          "/tickers/*",
+        ],
         disallow: [
           "/admin",
           "/admin/*",

@@ -164,19 +164,23 @@ export default function AdminWeeklyEarningsCard(props: CardProps) {
       </div>
 
       {/* TICKERS COVERED — chip list, in narration order. Empty when the
-          script-writer routine didn't populate the field. */}
+          script-writer routine didn't populate the field. Each chip links
+          to /tickers/[symbol] for cross-coverage discovery. */}
       {tickers.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] uppercase tracking-widest text-black/45 dark:text-white/45">
             Tickers
           </span>
           {tickers.map((t) => (
-            <span
+            <a
               key={t}
-              className="text-[11px] font-mono font-bold tracking-tight px-2 py-0.5 rounded border border-white/15 bg-white/[0.04] text-white/85"
+              href={`/tickers/${t}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] font-mono font-bold tracking-tight px-2 py-0.5 rounded border border-white/15 bg-white/[0.04] text-white/85 hover:border-white/30 hover:bg-white/[0.08] transition-colors"
             >
               ${t}
-            </span>
+            </a>
           ))}
         </div>
       )}

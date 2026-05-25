@@ -113,9 +113,12 @@ export default function EarningsBriefDayView({ brief, otherWeeks, tabBar }: Prop
             <ul className="flex flex-wrap gap-2">
               {brief.tickers.map((t) => (
                 <li key={t}>
-                  <span className="inline-flex items-center px-3 py-1.5 rounded-md border border-white/15 bg-white/[0.04] font-bold tracking-tight text-base">
+                  <Link
+                    href={`/tickers/${t}`}
+                    className="inline-flex items-center px-3 py-1.5 rounded-md border border-white/15 bg-white/[0.04] hover:border-red-500/40 hover:bg-white/[0.08] hover:text-white font-bold tracking-tight text-base text-white/85 transition-colors"
+                  >
                     ${t}
-                  </span>
+                  </Link>
                 </li>
               ))}
             </ul>

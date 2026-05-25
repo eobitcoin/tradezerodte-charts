@@ -122,23 +122,25 @@ export default function BriefDayView({
           {brief.calls.length > 0 ? (
             <ul className="space-y-2">
               {brief.calls.map((c) => (
-                <li
-                  key={c.ticker}
-                  className="flex items-baseline gap-3 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"
-                >
-                  <span className="font-bold tracking-tight text-lg">
-                    {c.ticker}
-                  </span>
-                  <span
-                    className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${directionTone(c.direction)}`}
+                <li key={c.ticker}>
+                  <Link
+                    href={`/tickers/${c.ticker}`}
+                    className="flex items-baseline gap-3 rounded-lg border border-white/10 bg-white/[0.02] hover:border-red-500/40 hover:bg-white/[0.04] px-3 py-2 transition-colors group"
                   >
-                    {directionLabel(c.direction)}
-                  </span>
-                  {c.grade && (
-                    <span className="ml-auto text-xs text-white/55 font-mono">
-                      {c.grade}
+                    <span className="font-bold tracking-tight text-lg group-hover:text-white">
+                      {c.ticker}
                     </span>
-                  )}
+                    <span
+                      className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${directionTone(c.direction)}`}
+                    >
+                      {directionLabel(c.direction)}
+                    </span>
+                    {c.grade && (
+                      <span className="ml-auto text-xs text-white/55 font-mono">
+                        {c.grade}
+                      </span>
+                    )}
+                  </Link>
                 </li>
               ))}
             </ul>

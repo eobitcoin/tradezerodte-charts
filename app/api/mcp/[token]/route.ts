@@ -686,7 +686,7 @@ const TOOLS = [
   {
     name: "publish_metals_research",
     description:
-      "Publish (or replace) one metals ticker's weekly long-form research writeup. Same shape as `publish_research` but writes to the metals stream (`asset_class='metals'`) and surfaces at /research/metals/[scan_day]/[ticker]. Allowed tickers (server-enforced): GLD, SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX. Pass charts via the `images` array after uploading them with upload_research_image.",
+      "Publish (or replace) one metals ticker's weekly long-form research writeup. Same shape as `publish_research` but writes to the metals stream (`asset_class='metals'`) and surfaces at /research/metals/[scan_day]/[ticker]. **Allowed tickers (server-enforced):** GLD, SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX, **XAUUSDT**. For XAUUSDT pull bars via `fetch_crypto_bars` (NOT `fetch_bars` — it's a crypto pair, not a US equity). For everything else use Tradier via `fetch_bars`. Pass charts via the `images` array after uploading them with upload_research_image.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2220,16 +2220,24 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
 /** Allowlist of metals tickers. Keep tight — the metals routine should
  *  cover this universe and no other names. Rejecting unknown tickers
  *  here is a guardrail against a misconfigured routine accidentally
- *  publishing an equity into the metals stream. */
+ *  publishing an equity into the metals stream.
+ *
+ *  XAUUSDT is the crypto spot-gold pair (gold priced in Tether), traded
+ *  24/7 on OKX/MEXC. It's intentionally bundled into the metals stream —
+ *  captures weekend + overnight gold moves that GLD can't show because
+ *  US equity markets are closed. Note: data path for XAUUSDT goes through
+ *  fetch_crypto_bars / fetch_crypto_quote, NOT fetch_bars (Tradier doesn't
+ *  list it). The routine is expected to branch on that. */
 const METALS_ALLOWLIST = new Set([
-  "GLD",   // SPDR Gold Trust
-  "SLV",   // iShares Silver Trust
-  "GDX",   // VanEck Gold Miners
-  "GDXJ",  // VanEck Junior Gold Miners
-  "CPER",  // US Copper Index Fund
-  "PPLT",  // Aberdeen Platinum
-  "NEM",   // Newmont
-  "FCX",   // Freeport-McMoRan
+  "GLD",     // SPDR Gold Trust
+  "SLV",     // iShares Silver Trust
+  "GDX",     // VanEck Gold Miners
+  "GDXJ",    // VanEck Junior Gold Miners
+  "CPER",    // US Copper Index Fund
+  "PPLT",    // Aberdeen Platinum
+  "NEM",     // Newmont
+  "FCX",     // Freeport-McMoRan
+  "XAUUSDT", // Crypto-listed spot gold (OKX/MEXC), 24/7 tape
 ]);
 
 async function publishMetalsResearch(args: PublishResearchArgs): Promise<{

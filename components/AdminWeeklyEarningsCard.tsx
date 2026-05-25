@@ -63,6 +63,7 @@ function wordCount(s: string | null): number {
 }
 
 function fmtWeekRange(sundayAnchor: string): string {
+  // See EarningsBriefDayView.fmtWeekRange for the format rationale.
   const start = new Date(`${sundayAnchor}T12:00:00Z`);
   const mon = new Date(start);
   mon.setUTCDate(start.getUTCDate() + 1);
@@ -74,13 +75,14 @@ function fmtWeekRange(sundayAnchor: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
-  const friLabel = fri.toLocaleDateString(undefined, {
-    month: sameMonth ? undefined : "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  return `Week of ${monLabel} — ${friLabel}`;
+  const friLabel = sameMonth
+    ? String(fri.getUTCDate())
+    : fri.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+  return `Week of ${monLabel} — ${friLabel}, ${fri.getUTCFullYear()}`;
 }
 
 function fmtRelative(iso: string | null): string {

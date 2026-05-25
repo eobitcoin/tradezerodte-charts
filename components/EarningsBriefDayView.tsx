@@ -11,7 +11,12 @@ interface Props {
 
 function fmtWeekRange(sundayAnchor: string): string {
   // weekAnchor is the Sunday-of-the-week. The "trading week" runs Mon→Fri
-  // following that Sunday, so display "May 25 — May 29, 2026".
+  // following that Sunday. Render as a range — collapsing the redundant
+  // month when both ends fall in the same calendar month.
+  //   same-month  → "May 25 — 29, 2026"
+  //   cross-month → "May 25 — Jun 1, 2026"
+  // We render the year as a separate suffix so the en-US Intl formatter
+  // doesn't fall back to "2026 (day: 29)" when asked for just day+year.
   const start = new Date(`${sundayAnchor}T12:00:00Z`);
   const mon = new Date(start);
   mon.setUTCDate(start.getUTCDate() + 1);
@@ -23,13 +28,14 @@ function fmtWeekRange(sundayAnchor: string): string {
     day: "numeric",
     timeZone: "UTC",
   });
-  const friLabel = fri.toLocaleDateString(undefined, {
-    month: sameMonth ? undefined : "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  return `${monLabel} — ${friLabel}`;
+  const friLabel = sameMonth
+    ? String(fri.getUTCDate())
+    : fri.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+  return `${monLabel} — ${friLabel}, ${fri.getUTCFullYear()}`;
 }
 
 function fmtShort(anchor: string): string {

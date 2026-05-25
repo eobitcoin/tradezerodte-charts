@@ -78,6 +78,16 @@ export default function ScanTabs(props: Props) {
           </Link>
         );
       })}
+      {/* Calendar — cross-day navigation aid pinned after the scan tabs.
+          Not part of the ScanTab union (it's a route, not a per-day scan
+          surface), so always renders as an outbound link without
+          "pending" or "active" treatment. */}
+      <Link
+        href="/calendar"
+        className="px-4 py-2 -mb-px border-b-2 border-transparent text-sm font-mono uppercase tracking-widest text-black/55 dark:text-white/55 hover:text-black dark:hover:text-white hover:border-black/20 dark:hover:border-white/20 transition-colors"
+      >
+        Calendar
+      </Link>
     </nav>
   );
 }

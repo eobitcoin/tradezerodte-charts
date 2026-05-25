@@ -29,7 +29,6 @@ export default async function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/" className="hover:underline">Today</Link>
-          <Link href="/calendar" className="hover:underline">Calendar</Link>
           <Link href="/research" className="hover:underline">Research</Link>
           <Link href="/radar" className="hover:underline">Stocks</Link>
           <Link href="/crypto" className="hover:underline">Crypto</Link>

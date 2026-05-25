@@ -476,7 +476,7 @@ export const weeklyEarningsBriefings = pgTable(
     script: text("script"),
     /** Uppercased ticker symbols mentioned in the script, in narration order
      *  (e.g. ["MRVL", "DELL", "AVGO"]). Surfaced as chips next to the video
-     *  on both /morning-brief?kind=earnings and /admin/briefings/weekly. The
+     *  on both /morning-brief/earnings/[anchor] and /admin/briefings/weekly. The
      *  script writer emits this alongside the script; we don't try to parse
      *  it back out because the script uses company names rather than
      *  symbols. Empty array when the writer didn't populate it. */

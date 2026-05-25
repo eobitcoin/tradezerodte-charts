@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 /**
  * GET /api/weekly-briefings/video/YYYY-MM-DD — serves the final Weekly
  * Earnings Brief MP4 from the Railway bucket. PUBLIC (no auth) so the
- * embedded video player on the public /morning-brief?kind=earnings page and
+ * embedded video player on the public /morning-brief/earnings page and
  * the YouTube/TikTok upload pipelines can reach it without login.
  *
  * Parallel to /api/briefings/video/[date]; weekly clips live under the

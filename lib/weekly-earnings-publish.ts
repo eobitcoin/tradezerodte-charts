@@ -81,7 +81,7 @@ function defaultWeeklyYtDescription(script: string | null): string {
   const body = script?.trim() || "This week's earnings prints to watch.";
   return (
     `${body}\n\n` +
-    `Full weekly earnings book: https://www.oliviatrades.com/morning-brief?kind=earnings\n\n` +
+    `Full weekly earnings book: https://www.oliviatrades.com/morning-brief/earnings\n\n` +
     `#EarningsWeek #Options #IV #Earnings #StockMarket #Trading`
   );
 }

@@ -154,7 +154,7 @@ export default function AdminWeeklyEarningsCard(props: CardProps) {
           )}
         </div>
         <a
-          href={`/morning-brief?kind=earnings&week=${weekAnchor}`}
+          href={`/morning-brief/earnings/${weekAnchor}`}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-sky-300 hover:underline"

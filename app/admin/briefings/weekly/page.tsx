@@ -43,10 +43,10 @@ export default async function AdminWeeklyEarningsBriefingsPage() {
           YouTube and TikTok independently — approved rows are picked up by
           the publish routines on their next run. Public:{" "}
           <Link
-            href="/morning-brief?kind=earnings"
+            href="/morning-brief/earnings"
             className="underline hover:text-white"
           >
-            /morning-brief?kind=earnings
+            /morning-brief/earnings
           </Link>
           .
         </p>

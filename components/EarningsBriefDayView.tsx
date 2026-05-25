@@ -157,7 +157,7 @@ export default function EarningsBriefDayView({ brief, otherWeeks, tabBar }: Prop
             {otherWeeks.slice(0, 12).map((w) => (
               <li key={w}>
                 <Link
-                  href={`/morning-brief?kind=earnings&week=${w}`}
+                  href={`/morning-brief/earnings/${w}`}
                   className="block rounded-md border border-white/10 hover:border-red-500/40 hover:bg-white/[0.03] px-3 py-2 text-xs transition-all"
                 >
                   <span className="font-mono text-white/55">{w}</span>

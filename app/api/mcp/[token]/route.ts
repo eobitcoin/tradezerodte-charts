@@ -2283,35 +2283,57 @@ async function publishResearchInternal(
   const bodyMd = args.body_md || "";
   const headline = (args.headline || deriveHeadline(bodyMd)).slice(0, 240);
 
-  // Star-rating guard. The Key Level Map section MUST contain ★ rating
-  // characters — they're embedded in the Type column of the 3-column
-  // markdown table (Level | Type | Role) using a fixed vocabulary:
+  // Key Level Map validator. The canonical Wicked Stocks format is a
+  // 3-column markdown table — | Level | Type | Role | — with star
+  // ratings embedded in the Type column via a fixed vocabulary:
   //
-  //   ★★★★★  Annual containment   — cycle anchors
+  //   ★★★★★  Annual containment   — cycle anchors (A/C-wave, multi-quarter)
   //   ★★★★   Multi-week contain   — major D/B-wave pivots
   //   ★★★    Weekly containment   — weekly-bar pivots
   //   ★★     Intra-day containment — round numbers / recent pivots
   //   ★      Session containment  — single-session extremes
   //   (none) Wave projection      — ABCD measured-move targets
   //
-  // The common failure mode is the routine emitting a 2-column
-  // | Level | Context | table with no Type classifications, producing
-  // zero ★ characters and breaking the visual hierarchy. Reject those at
-  // publish time so the routine has to retry with the proper 3-column
-  // structure.
+  // Two known failure modes:
+  //   1. 2-column table (| Level | Context |) — no Type classifications,
+  //      no ★ characters anywhere.
+  //   2. Bulleted list (- ★★★ $price — context) — ★ present but rendered
+  //      format doesn't match the equity research pages.
+  //
+  // Validator rejects both:
+  //   - require ★ present somewhere in body_md
+  //   - require a markdown table row (line with two or more "|" chars)
+  //     within the Key Level Map section
   const hasKeyLevelsHeading = /^#{1,4}\s*key\s+(?:level|levels)\b/im.test(bodyMd);
-  if (hasKeyLevelsHeading && !bodyMd.includes("★")) {
-    throw new Error(
-      `body_md has a "Key Level Map" / "Key Levels" section but no ★ rating ` +
-        `characters. Required format: 3-column markdown table ` +
-        `\`| Level | Type | Role |\` with star ratings embedded inside the ` +
-        `Type column using the canonical vocabulary — Annual containment ` +
-        `(★★★★★), Multi-week contain (★★★★), Weekly containment (★★★), ` +
-        `Intra-day containment (★★), Session containment (★), or Wave ` +
-        `projection (no stars). Re-emit body_md with stars in the Type ` +
-        `column and retry. See examples/research-routine-mcp.md for the ` +
-        `literal table format.`,
+  if (hasKeyLevelsHeading) {
+    if (!bodyMd.includes("★")) {
+      throw new Error(
+        `body_md has a "Key Level Map" / "Key Levels" section but no ★ ` +
+          `rating characters. Required format: 3-column markdown table ` +
+          `\`| Level | Type | Role |\` with star ratings embedded in the ` +
+          `Type column using the canonical vocabulary — Annual containment ` +
+          `(★★★★★), Multi-week contain (★★★★), Weekly containment (★★★), ` +
+          `Intra-day containment (★★), Session containment (★), or Wave ` +
+          `projection (no stars). See examples/research-routine-mcp.md.`,
+      );
+    }
+    // Extract the section (from the heading to the next heading / end).
+    const sectionMatch = bodyMd.match(
+      /(?:^|\n)#{1,4}\s*Key\s+Levels?[^\n]*\n+([\s\S]*?)(?=\n#{1,4}\s|\n---|\n+$|$)/i,
     );
+    const sectionBody = sectionMatch ? sectionMatch[1] : "";
+    // Require at least one markdown table row in the section — line with
+    // exactly 2+ pipe characters, signalling 3+ columns.
+    const hasTableRow = /\n\s*\|[^\n]*\|[^\n]*\|/.test("\n" + sectionBody);
+    if (!hasTableRow) {
+      throw new Error(
+        `body_md "Key Level Map" section has ★ characters but no markdown ` +
+          `table rows. Required format is a 3-column table with header ` +
+          `\`| Level | Type | Role |\`, not a bulleted list. Re-emit the ` +
+          `section as a table; star ratings stay embedded inside the Type ` +
+          `column (e.g. "| $245.30 | Annual containment (★★★★★) | C-wave low |").`,
+      );
+    }
   }
   const images: ResearchImage[] = (args.images || []).map((img) => ({
     slot: String(img.slot || "image"),

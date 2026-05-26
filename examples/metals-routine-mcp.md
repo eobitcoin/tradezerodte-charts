@@ -99,7 +99,27 @@ Markdown body with this structure:
 
 3. **"How the analysis was built"** — 2–4 paragraphs of structural narrative: cycle low/high, A/B/C/D wave/swing labels, speed-line and channel observations, ABC measured-move targets (B−C+B), convergence with prior multi-week containments. Every dated price reference must be a real bar in the fetched window.
 
-4. **"Key level map"** — bulleted list of horizontal levels with star ratings (★/★★/★★★) and a one-line role label per level. Order: highest to lowest. All prices observable in the fetched bars.
+4. **"Key Levels" — MANDATORY bulleted-star format (NOT a table):**
+
+   This section must be a markdown bulleted list, ordered highest price to lowest, with each level prefixed by a star rating:
+   - **★★★** for the most important pivots (cycle highs/lows, multi-month containment edges, ABCD anchors)
+   - **★★** for medium-importance levels (recent swing high/low, channel edges, prior pivots)
+   - **★** for minor levels (recent intraday extremes, gap fills, narrow consolidations)
+
+   Use this EXACT format:
+
+   ```
+   ## Key Levels
+   - ★★★ $245.30 — April 20 absolute cycle high
+   - ★★ $238.50 — January 29 spike high
+   - ★ $232.10 — May 18 session high
+   - ★★★ $228.40 — May 19 swing low (current support)
+   - ★★★ $215.60 — March 19 corrective floor (Wave D)
+   ```
+
+   **DO NOT use a `| Level | Context |` markdown table.** The chart renderer's sidebar reads star counts to size level lines visually, and `publish_metals_research` will REJECT body_md that has a "Key Levels" heading but no ★ characters. Table format = server-side 400, must retry with bulleted stars.
+
+   All prices observable in the fetched bars.
 
 5. **Closing line:** `Not financial advice. Analysis only.`
 

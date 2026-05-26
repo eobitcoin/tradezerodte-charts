@@ -2282,6 +2282,24 @@ async function publishResearchInternal(
   const title = args.title || `${ticker} Research — ${scanDay}`;
   const bodyMd = args.body_md || "";
   const headline = (args.headline || deriveHeadline(bodyMd)).slice(0, 240);
+
+  // Star-rating guard. The Key Levels section must use the bulleted
+  // ★/★★/★★★ format because the chart renderer's sidebar reads stars
+  // to size level lines visually, and the Wicked Stocks reader habit
+  // depends on the ranking being immediately scannable. The most common
+  // failure mode is the model emitting a `| Level | Context |` markdown
+  // table that produces zero ★ characters — reject those at publish time
+  // so the routine has to retry rather than silently degrading the page.
+  const hasKeyLevelsHeading = /^#{1,4}\s*key\s+(?:level|levels)\b/im.test(bodyMd);
+  if (hasKeyLevelsHeading && !bodyMd.includes("★")) {
+    throw new Error(
+      `body_md has a "Key Levels" section but no ★ rating characters. ` +
+        `Required format: bulleted list with ★/★★/★★★ prefixes per level, ` +
+        `e.g. "- ★★★ $245.30 — cycle high". ` +
+        `Markdown tables (| Level | Context |) are not accepted because the ` +
+        `chart sidebar reads star count to size level lines.`,
+    );
+  }
   const images: ResearchImage[] = (args.images || []).map((img) => ({
     slot: String(img.slot || "image"),
     key: String(img.key || ""),

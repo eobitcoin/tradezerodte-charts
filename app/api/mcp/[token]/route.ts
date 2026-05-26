@@ -61,6 +61,7 @@ import {
   CRYPTO_TICKERS,
   fetchCryptoQuotes,
   fetchCryptoKlines,
+  fetchFromOkx,
   type CryptoInterval,
   type CryptoTicker,
 } from "@/lib/crypto";
@@ -686,7 +687,7 @@ const TOOLS = [
   {
     name: "publish_metals_research",
     description:
-      "Publish (or replace) one metals ticker's weekly long-form research writeup. Same shape as `publish_research` but writes to the metals stream (`asset_class='metals'`) and surfaces at /research/metals/[scan_day]/[ticker]. **Allowed tickers (server-enforced):** GLD, SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX, **XAUUSDT**. For XAUUSDT pull bars via `fetch_crypto_bars` (NOT `fetch_bars` — it's a crypto pair, not a US equity). For everything else use Tradier via `fetch_bars`. Pass charts via the `images` array after uploading them with upload_research_image.",
+      "Publish (or replace) one metals ticker's weekly long-form research writeup. Same shape as `publish_research` but writes to the metals stream (`asset_class='metals'`) and surfaces at /research/metals/[scan_day]/[ticker]. **Allowed tickers (server-enforced):** GLD, SLV, GDX, GDXJ, CPER, PPLT, NEM, FCX, **XAUTUSDT** (Tether Gold). For XAUTUSDT pull bars via `fetch_crypto_bars` and quotes via `fetch_crypto_quote` (NOT the Tradier fetchers — XAUT/USDT is a crypto pair on OKX, not a US equity). For everything else use Tradier via `fetch_bars`. Pass charts via the `images` array after uploading them with upload_research_image.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2222,22 +2223,25 @@ async function publishResearch(args: PublishResearchArgs): Promise<{
  *  here is a guardrail against a misconfigured routine accidentally
  *  publishing an equity into the metals stream.
  *
- *  XAUUSDT is the crypto spot-gold pair (gold priced in Tether), traded
- *  24/7 on OKX/MEXC. It's intentionally bundled into the metals stream —
- *  captures weekend + overnight gold moves that GLD can't show because
- *  US equity markets are closed. Note: data path for XAUUSDT goes through
- *  fetch_crypto_bars / fetch_crypto_quote, NOT fetch_bars (Tradier doesn't
- *  list it). The routine is expected to branch on that. */
+ *  XAUTUSDT is the **Tether Gold (XAUT) / USDT** crypto pair, traded 24/7
+ *  on OKX. Each XAUT token is backed by 1 oz of physical gold held by
+ *  Tether — it tracks spot gold but trades through weekends and overnight,
+ *  so it captures price action that GLD (US equity market hours) misses.
+ *  Data path goes through fetch_crypto_bars / fetch_crypto_quote, NOT
+ *  fetch_bars (Tradier doesn't list crypto). The routine is expected to
+ *  branch on that. Note: an earlier draft used "XAUUSDT" (no T) — that
+ *  symbol doesn't exist as a real pair on any major exchange; the
+ *  canonical spot-gold-vs-USDT instrument is XAUT/USDT. */
 const METALS_ALLOWLIST = new Set([
-  "GLD",     // SPDR Gold Trust
-  "SLV",     // iShares Silver Trust
-  "GDX",     // VanEck Gold Miners
-  "GDXJ",    // VanEck Junior Gold Miners
-  "CPER",    // US Copper Index Fund
-  "PPLT",    // Aberdeen Platinum
-  "NEM",     // Newmont
-  "FCX",     // Freeport-McMoRan
-  "XAUUSDT", // Crypto-listed spot gold (OKX/MEXC), 24/7 tape
+  "GLD",      // SPDR Gold Trust
+  "SLV",      // iShares Silver Trust
+  "GDX",      // VanEck Gold Miners
+  "GDXJ",     // VanEck Junior Gold Miners
+  "CPER",     // US Copper Index Fund
+  "PPLT",     // Aberdeen Platinum
+  "NEM",      // Newmont
+  "FCX",      // Freeport-McMoRan
+  "XAUTUSDT", // Tether Gold (XAUT) / USDT — 24/7 spot-gold via OKX
 ]);
 
 async function publishMetalsResearch(args: PublishResearchArgs): Promise<{
@@ -2757,23 +2761,55 @@ interface FetchCryptoQuoteArgs {
   tickers?: string[];
 }
 
+/** External USDT pairs that aren't on the crypto radar watchlist but
+ *  the MCP fetch tools must still allow — currently just XAUTUSDT
+ *  (Tether Gold), needed by the Sunday metals research routine. */
+const EXTERNAL_FETCH_OK = new Set(["XAUTUSDT"]);
+
 async function fetchCryptoQuoteForRoutine(args: FetchCryptoQuoteArgs): Promise<unknown> {
   const requested = (args.tickers ?? CRYPTO_TICKERS as readonly string[])
     .map((t) => String(t).trim().toUpperCase());
-  const all = await fetchCryptoQuotes();
+  // Split: in-watchlist tickers come from the batched fetchCryptoQuotes
+  // (single OKX round-trip for everything in CRYPTO_TICKERS); external
+  // allowed tickers (XAUTUSDT) fetch directly via fetchFromOkx.
   const allowed = new Set(CRYPTO_TICKERS as readonly string[]);
+  const inWatch = requested.filter((t) => allowed.has(t));
+  const external = requested.filter((t) => !allowed.has(t) && EXTERNAL_FETCH_OK.has(t));
+  const [batch, ...externals] = await Promise.all([
+    inWatch.length ? fetchCryptoQuotes() : Promise.resolve([] as Awaited<ReturnType<typeof fetchCryptoQuotes>>),
+    ...external.map(async (t) => ({ ticker: t, quote: await fetchFromOkx(t) })),
+  ]);
+  const externalByTicker = new Map(
+    externals.map((e) => [e.ticker, e.quote]),
+  );
   return requested.map((ticker) => {
-    if (!allowed.has(ticker)) {
-      return { ticker, source: "Coingecko (not in watchlist)" };
+    if (allowed.has(ticker)) {
+      const q = batch.find((qq) => qq.ticker === ticker);
+      return {
+        ticker,
+        last: q?.usd ?? null,
+        change_pct_24h: q?.change24h ?? null,
+        volume_usd_24h: q?.vol24h ?? null,
+        source: "OKX",
+      };
     }
-    const q = all.find((qq) => qq.ticker === ticker);
-    return {
-      ticker,
-      last: q?.usd ?? null,
-      change_pct_24h: q?.change24h ?? null,
-      volume_usd_24h: q?.vol24h ?? null,
-      source: "Coingecko",
-    };
+    if (EXTERNAL_FETCH_OK.has(ticker)) {
+      const q = externalByTicker.get(ticker);
+      const last = q?.last ?? null;
+      const open24h = q?.open24h ?? null;
+      const changePct =
+        last != null && open24h != null && open24h > 0
+          ? ((last - open24h) / open24h) * 100
+          : null;
+      return {
+        ticker,
+        last,
+        change_pct_24h: changePct,
+        volume_usd_24h: q?.volUsd ?? null,
+        source: "OKX",
+      };
+    }
+    return { ticker, source: "rejected (not in watchlist or external allowlist)" };
   });
 }
 
@@ -2786,9 +2822,13 @@ interface FetchCryptoBarsArgs {
 async function fetchCryptoBarsForRoutine(args: FetchCryptoBarsArgs): Promise<unknown> {
   const symbol = String(args.symbol || "").trim().toUpperCase();
   if (!symbol) throw new Error("symbol required");
-  // Reject non-watchlist symbols to keep routine output disciplined.
-  if (!CRYPTO_TICKERS.includes(symbol as CryptoTicker)) {
-    throw new Error(`symbol '${symbol}' is not in the crypto watchlist`);
+  // Reject symbols that aren't on the radar watchlist OR on the
+  // external-allowed list (currently just XAUTUSDT for metals research).
+  const inWatch = CRYPTO_TICKERS.includes(symbol as CryptoTicker);
+  if (!inWatch && !EXTERNAL_FETCH_OK.has(symbol)) {
+    throw new Error(
+      `symbol '${symbol}' is not in the crypto watchlist or external allowlist (XAUTUSDT)`,
+    );
   }
   const interval = args.interval;
   if (!interval) throw new Error("interval required");

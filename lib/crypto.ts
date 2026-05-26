@@ -158,7 +158,10 @@ interface RawQuote {
 }
 
 /** OKX per-ticker fetch. Returns null prices on miss (e.g. unlisted symbol). */
-async function fetchFromOkx(ticker: CryptoTicker): Promise<RawQuote> {
+/** Single-ticker OKX spot quote. Exported (and widened to accept any
+ *  string symbol) so the MCP layer can fetch external-but-allowed pairs
+ *  like XAUTUSDT (Tether Gold) that aren't on the radar watchlist. */
+export async function fetchFromOkx(ticker: string): Promise<RawQuote> {
   const okxSym = toOkxSymbol(ticker);
   try {
     const res = await fetch(

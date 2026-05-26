@@ -2283,21 +2283,34 @@ async function publishResearchInternal(
   const bodyMd = args.body_md || "";
   const headline = (args.headline || deriveHeadline(bodyMd)).slice(0, 240);
 
-  // Star-rating guard. The Key Levels section must use the bulleted
-  // ★/★★/★★★ format because the chart renderer's sidebar reads stars
-  // to size level lines visually, and the Wicked Stocks reader habit
-  // depends on the ranking being immediately scannable. The most common
-  // failure mode is the model emitting a `| Level | Context |` markdown
-  // table that produces zero ★ characters — reject those at publish time
-  // so the routine has to retry rather than silently degrading the page.
+  // Star-rating guard. The Key Level Map section MUST contain ★ rating
+  // characters — they're embedded in the Type column of the 3-column
+  // markdown table (Level | Type | Role) using a fixed vocabulary:
+  //
+  //   ★★★★★  Annual containment   — cycle anchors
+  //   ★★★★   Multi-week contain   — major D/B-wave pivots
+  //   ★★★    Weekly containment   — weekly-bar pivots
+  //   ★★     Intra-day containment — round numbers / recent pivots
+  //   ★      Session containment  — single-session extremes
+  //   (none) Wave projection      — ABCD measured-move targets
+  //
+  // The common failure mode is the routine emitting a 2-column
+  // | Level | Context | table with no Type classifications, producing
+  // zero ★ characters and breaking the visual hierarchy. Reject those at
+  // publish time so the routine has to retry with the proper 3-column
+  // structure.
   const hasKeyLevelsHeading = /^#{1,4}\s*key\s+(?:level|levels)\b/im.test(bodyMd);
   if (hasKeyLevelsHeading && !bodyMd.includes("★")) {
     throw new Error(
-      `body_md has a "Key Levels" section but no ★ rating characters. ` +
-        `Required format: bulleted list with ★/★★/★★★ prefixes per level, ` +
-        `e.g. "- ★★★ $245.30 — cycle high". ` +
-        `Markdown tables (| Level | Context |) are not accepted because the ` +
-        `chart sidebar reads star count to size level lines.`,
+      `body_md has a "Key Level Map" / "Key Levels" section but no ★ rating ` +
+        `characters. Required format: 3-column markdown table ` +
+        `\`| Level | Type | Role |\` with star ratings embedded inside the ` +
+        `Type column using the canonical vocabulary — Annual containment ` +
+        `(★★★★★), Multi-week contain (★★★★), Weekly containment (★★★), ` +
+        `Intra-day containment (★★), Session containment (★), or Wave ` +
+        `projection (no stars). Re-emit body_md with stars in the Type ` +
+        `column and retry. See examples/research-routine-mcp.md for the ` +
+        `literal table format.`,
     );
   }
   const images: ResearchImage[] = (args.images || []).map((img) => ({

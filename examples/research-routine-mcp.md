@@ -88,27 +88,36 @@ A markdown body with this structure:
 
 3. **"How the analysis was built"** — 2–4 paragraphs of structural narrative: cycle low/high, A/B/C/D wave/swing labels, speed-line and channel observations, ABC measured-move targets (B−C+B), convergence with prior multi-week containments. Every dated price reference (e.g. "Apr 7 cycle low at $337.24") must be a real bar in the fetched window — verify before writing.
 
-4. **"Key Levels" — MANDATORY bulleted-star format (NOT a table):**
+4. **"Key Level Map" — MANDATORY 3-column markdown table format:**
 
-   This section must be a markdown bulleted list, ordered highest price to lowest, with each level prefixed by a star rating:
-   - **★★★** for the most important pivots (cycle highs/lows, multi-month containment edges, ABCD anchors)
-   - **★★** for medium-importance levels (recent swing high/low, channel edges, prior pivots)
-   - **★** for minor levels (recent intraday extremes, gap fills, narrow consolidations)
+   This section is a markdown table with exactly these three columns: `| Level | Type | Role |`. The **Type column** embeds the star rating using the canonical Wicked Stocks vocabulary:
 
-   Use this EXACT format:
+   | Stars | Type label                  | When to use |
+   |-------|-----------------------------|-------------|
+   | ★★★★★ | `Annual containment (★★★★★)`  | Cycle anchors — A/C-wave lows, multi-quarter cycle highs/lows |
+   | ★★★★  | `Multi-week contain (★★★★)`   | Major D/B-wave pivots, multi-week containment edges |
+   | ★★★   | `Weekly containment (★★★)`    | Weekly-bar pivots, prior breakout/breakdown lines |
+   | ★★    | `Intra-day containment (★★)`  | Round numbers, recent pivots, intra-day containment |
+   | ★     | `Session containment (★)`     | Single-session highs/lows, speed-line intersections |
+   | (none) | `Wave projection C+1.618×(B–A)` etc. | ABCD measured-move targets — **no star rating** |
+
+   Order rows highest price to lowest. Use this EXACT shape:
 
    ```
-   ## Key Levels
-   - ★★★ $70.965 — April 20 absolute cycle high
-   - ★★ $69.44 — January 29 spike high
-   - ★ $63.46 — May 18 session high
-   - ★★★ $58.30 — May 19 swing low (current support)
-   - ★★★ $50.79 — March 19 corrective floor (Wave D)
+   ## Key Level Map
+
+   | Level | Type | Role |
+   |-------|------|------|
+   | $298.58 | Wave projection C+1.618×(B–A) | Extended cycle target |
+   | $247.30 | Wave projection C+1.0×(B–A) | Next primary target |
+   | $236.54 | Multi-week contain (★★★★) | D-wave high — resistance |
+   | $220.00 | Session containment (★) | 2/3 speed line / pivot |
+   | $212.19 | Weekly containment (★★★) | B-wave high — prior breakout level |
+   | $164.27 | Annual containment (★★★★★) | C-wave low — cycle floor |
+   | $129.16 | Annual containment (★★★★★) | A-wave low |
    ```
 
-   **DO NOT use a `| Level | Context |` markdown table.** The chart renderer's sidebar reads star counts to size the level lines visually, and the published page enforces this at the server (publish_research will REJECT body_md that has a "Key Levels" heading but no ★ characters). If you publish a table, the call fails — you must retry with the bulleted-stars format.
-
-   All prices observable in the fetched bars.
+   All prices observable in the fetched bars. `publish_research` will REJECT body_md that has a "Key Level Map" / "Key Levels" heading but contains zero ★ characters — re-emit with the proper Type-column ratings if it rejects.
 
 5. **Closing line:** `Not financial advice. Analysis only.`
 

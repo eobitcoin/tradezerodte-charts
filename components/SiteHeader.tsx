@@ -32,6 +32,7 @@ export default async function SiteHeader() {
           <Link href="/research" className="hover:underline">Research</Link>
           <Link href="/radar" className="hover:underline">Stocks</Link>
           <Link href="/research/metals" className="hover:underline">Metals</Link>
+          <Link href="/research/quantum" className="hover:underline">Quantum</Link>
           <Link href="/crypto" className="hover:underline">Crypto</Link>
           <Link
             href="/botwick"

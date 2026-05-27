@@ -5,8 +5,8 @@ import PublicFooter from "./PublicFooter";
 const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 export interface ExplorePageProps {
-  /** Slug used in the URL: institutional | earnings | sector-rotation | insider | daily | metals */
-  type: "institutional" | "earnings" | "sector-rotation" | "insider" | "daily" | "metals";
+  /** Slug used in the URL: institutional | earnings | sector-rotation | insider | daily | metals | quantum */
+  type: "institutional" | "earnings" | "sector-rotation" | "insider" | "daily" | "metals" | "quantum";
   /** The scan-day this preview is for; powers canonical + JSON-LD */
   scanDay: string;
   /** Pretty title (e.g. "Institutional Flow — May 19, 2026") */

@@ -6,6 +6,7 @@ import {
   listInsiderScanDays,
   listDailyAnalysisTradingDays,
   listMetalsScanDays,
+  listQuantumScanDays,
 } from "@/lib/explore-preview";
 import {
   listPublicBriefingDays,
@@ -40,7 +41,7 @@ const LEARN_SLUGS = [
 ];
 
 const EXPLORE_TYPES: Array<{
-  slug: "daily" | "institutional" | "earnings" | "sector-rotation" | "insider" | "metals";
+  slug: "daily" | "institutional" | "earnings" | "sector-rotation" | "insider" | "metals" | "quantum";
   lister: (limit?: number) => Promise<string[]>;
 }> = [
   { slug: "daily", lister: listDailyAnalysisTradingDays },
@@ -49,6 +50,7 @@ const EXPLORE_TYPES: Array<{
   { slug: "sector-rotation", lister: listSectorRotationScanDays },
   { slug: "insider", lister: listInsiderScanDays },
   { slug: "metals", lister: listMetalsScanDays },
+  { slug: "quantum", lister: listQuantumScanDays },
 ];
 
 /**

@@ -27,6 +27,7 @@ export type ResearchKind =
   | "insider"
   | "wicked_stocks"
   | "metals"
+  | "quantum"
   | "institutional"
   | "earnings"
   | "max_pain";
@@ -37,6 +38,7 @@ export const RESEARCH_KIND_LABEL: Record<ResearchKind, string> = {
   insider: "Insider Buys",
   wicked_stocks: "Wicked Stocks",
   metals: "Metals Research",
+  quantum: "Quantum Research",
   institutional: "Institutional Flow",
   earnings: "Earnings Whiplash",
   max_pain: "Max Pain + GEX",
@@ -87,7 +89,7 @@ export async function loadResearchForTicker(
   // ticker is regex-validated upstream.
   const arrayObjContains = sql`jsonb_build_array(jsonb_build_object('ticker', ${t}::text))`;
 
-  const [daily, insider, wicked, metals, institutional, earnings, maxPain] = await Promise.all([
+  const [daily, insider, wicked, metals, quantum, institutional, earnings, maxPain] = await Promise.all([
     db.execute<{ trading_day: string }>(sql`
       SELECT trading_day::text AS trading_day
       FROM posts
@@ -125,6 +127,17 @@ export async function loadResearchForTicker(
       FROM research_posts
       WHERE ticker = ${t}
         AND asset_class = 'metals'
+        AND scan_day >= ${SIXTY_DAYS}
+      ORDER BY scan_day DESC
+      LIMIT ${limit}
+    `),
+    // Quantum stream of research_posts. Surfaces only on quantum-ticker
+    // hubs (IONQ/RGTI/QBTS/QUBT/INFQ/FORM).
+    db.execute<{ scan_day: string; ticker: string }>(sql`
+      SELECT scan_day::text AS scan_day, ticker
+      FROM research_posts
+      WHERE ticker = ${t}
+        AND asset_class = 'quantum'
         AND scan_day >= ${SIXTY_DAYS}
       ORDER BY scan_day DESC
       LIMIT ${limit}
@@ -196,6 +209,17 @@ export async function loadResearchForTicker(
       // Link to the preview rather than the member URL so curious
       // visitors get a free peek before the signup gate fires.
       url: `/explore/metals/${r.scan_day}`,
+      isFree: false,
+    });
+  }
+  for (const r of quantum) {
+    items.push({
+      kind: "quantum",
+      date: r.scan_day,
+      title: `${RESEARCH_KIND_LABEL.quantum}: ${r.ticker} — ${fmtDate(r.scan_day)}`,
+      // Same pattern as metals — link to the public preview, which
+      // shows the headline ticker fully + locked cards for the rest.
+      url: `/explore/quantum/${r.scan_day}`,
       isFree: false,
     });
   }

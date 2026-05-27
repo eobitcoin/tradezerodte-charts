@@ -604,10 +604,13 @@ export type ResearchImage = {
 
 /** Asset class split for `research_posts`. Most rows are "equity" (the
  *  Wicked Stocks daily writeups). "metals" rows are the Sunday metals
- *  research routine (GLD/SLV/GDX/etc.). Members surfaces and ticker-hub
- *  reverse lookups filter on this column so the two asset classes never
+ *  research routine (GLD/SLV/GDX/etc.). "quantum" rows are the Sunday
+ *  quantum-computing research routine (IONQ/RGTI/QBTS/QUBT/INFQ/FORM),
+ *  which adds Fundamentals + Valuation sections on top of the standard
+ *  Wicked Stocks technical layout. Members surfaces and ticker-hub
+ *  reverse lookups filter on this column so the asset classes never
  *  bleed into each other's archive pages. */
-export type AssetClass = "equity" | "metals";
+export type AssetClass = "equity" | "metals" | "quantum";
 
 export const researchPosts = pgTable(
   "research_posts",

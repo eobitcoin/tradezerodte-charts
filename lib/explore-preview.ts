@@ -503,3 +503,64 @@ export async function listMetalsScanDays(limit = 26): Promise<string[]> {
     .limit(limit);
   return rows.map((r) => r.scanDay);
 }
+
+// ---------------------------------------------------------------------------
+// Quantum Research preview
+//
+// Same shape as the Metals preview — one ticker per row in research_posts,
+// asset_class='quantum'. Headline = alphabetically-first ticker for the
+// scan day (deterministic), hiddenCount = other tickers covered that day.
+// ---------------------------------------------------------------------------
+
+export interface QuantumPreview {
+  scanDay: string;
+  runAt: Date | null;
+  headline: ResearchPost | null;
+  hiddenCount: number;
+  totalTickerCount: number;
+}
+
+export async function loadQuantumPreview(
+  scanDay?: string,
+): Promise<QuantumPreview | null> {
+  let day = scanDay;
+  if (!day) {
+    const [latest] = await db
+      .select({ scanDay: researchPosts.scanDay })
+      .from(researchPosts)
+      .where(eq(researchPosts.assetClass, "quantum"))
+      .orderBy(desc(researchPosts.scanDay))
+      .limit(1);
+    if (!latest) return null;
+    day = latest.scanDay;
+  }
+  const rows = await db
+    .select()
+    .from(researchPosts)
+    .where(
+      and(
+        eq(researchPosts.assetClass, "quantum"),
+        eq(researchPosts.scanDay, day),
+      ),
+    )
+    .orderBy(researchPosts.ticker);
+  if (rows.length === 0) return null;
+  const headline = rows[0];
+  return {
+    scanDay: day,
+    runAt: headline.runAt ?? headline.createdAt,
+    headline,
+    hiddenCount: Math.max(0, rows.length - 1),
+    totalTickerCount: rows.length,
+  };
+}
+
+export async function listQuantumScanDays(limit = 26): Promise<string[]> {
+  const rows = await db
+    .selectDistinctOn([researchPosts.scanDay], { scanDay: researchPosts.scanDay })
+    .from(researchPosts)
+    .where(eq(researchPosts.assetClass, "quantum"))
+    .orderBy(desc(researchPosts.scanDay))
+    .limit(limit);
+  return rows.map((r) => r.scanDay);
+}

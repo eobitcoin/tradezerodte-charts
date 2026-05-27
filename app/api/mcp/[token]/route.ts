@@ -738,6 +738,74 @@ const TOOLS = [
     },
   },
   {
+    name: "publish_quantum_research",
+    description:
+      "Publish (or replace) one quantum-computing ticker's weekly long-form research writeup with technical + fundamental + valuation analysis. Same shape as `publish_research` / `publish_metals_research` but writes to the quantum stream (`asset_class='quantum'`) and surfaces at /research/quantum/[scan_day]/[ticker]. **Allowed tickers (server-enforced):** IONQ, RGTI, QBTS, QUBT, INFQ, FORM. For technical/price data use Tradier via `fetch_quote` + `fetch_bars`. For fundamentals (revenue, gross margin, cash, runway, valuation) call `fetch_sec_fundamentals` — returns null for some tickers (notably INFQ post-SPAC) which is fine, just do technical-only and note the data gap. Same Key Level Map 3-column table format as the other research streams (validator enforces).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticker: {
+          type: "string",
+          description:
+            "Uppercase ticker. Must be one of: IONQ, RGTI, QBTS, QUBT, INFQ, FORM.",
+        },
+        scan_day: {
+          type: "string",
+          description:
+            "Optional YYYY-MM-DD; defaults to today's date in America/New_York. Sunday is the canonical quantum publish day.",
+        },
+        title: {
+          type: "string",
+          description:
+            "Post title. Recommended format: '<TICKER> Quantum Research — <Month Day, Year>'.",
+        },
+        headline: {
+          type: "string",
+          description:
+            "One-line summary shown in the right-pane index (e.g. 'IONQ $48.50 — bullish above $52, bearish below $42'). Keep under 160 chars.",
+        },
+        body_md: {
+          type: "string",
+          description:
+            "Full markdown analysis including Technical section (Wicked Stocks style — charts/levels/wave structure), Fundamentals section (revenue TTM / YoY / margin / cash / runway from fetch_sec_fundamentals), Valuation (P/S, EV/S, peer compare), Catalyst calendar (next earnings + known announcements), and the canonical Key Level Map 3-column table.",
+        },
+        images: {
+          type: "array",
+          description:
+            "Charts to attach. Each entry should reference an upload_research_image result. Page renders in slot order (weekly → daily → others) under the prose.",
+          items: {
+            type: "object",
+            properties: {
+              slot: { type: "string", description: "e.g. 'weekly', 'daily'." },
+              key: { type: "string", description: "Bucket key returned by upload_research_image." },
+              url: { type: "string", description: "URL returned by upload_research_image." },
+              alt: { type: "string" },
+              width: { type: "integer" },
+              height: { type: "integer" },
+            },
+            required: ["slot", "key", "url"],
+          },
+        },
+      },
+      required: ["ticker", "title", "body_md"],
+    },
+  },
+  {
+    name: "fetch_sec_fundamentals",
+    description:
+      "Pull fundamentals for a US-listed equity straight from SEC EDGAR's XBRL companyfacts API. Returns trailing-12-month revenue + YoY growth, gross margin, operating income, cash + short-term investments, latest-quarter cash from operations, computed runway in quarters, shares outstanding, and the source filing reference. Free, no API key, no rate limits. Use this for the Fundamentals section of quantum research (and any other fundamental-aware analysis later). Returns null for tickers not in SEC EDGAR (e.g. foreign filers that submit 20-F instead of 10-Q).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ticker: {
+          type: "string",
+          description: "Uppercase US-listed ticker (e.g. 'IONQ').",
+        },
+      },
+      required: ["ticker"],
+    },
+  },
+  {
     name: "publish_insider_scan",
     description:
       "Publish the daily SEC Form 4 Insider Buy Scan to the user's website. Call this exactly once at the end of the routine.",
@@ -2260,6 +2328,36 @@ async function publishMetalsResearch(args: PublishResearchArgs): Promise<{
   return publishResearchInternal(args, "metals");
 }
 
+/** Allowlist of quantum-computing tickers. Six US-listed names spanning
+ *  trapped-ion (IONQ), superconducting (RGTI), annealing (QBTS), photonic
+ *  (QUBT), neutral-atom (INFQ — Infleqtion, recent SPAC), and the
+ *  picks-and-shovels play (FORM — FormFactor, cryogenic test gear used
+ *  by every QC lab). All have SEC EDGAR fundamentals available. */
+const QUANTUM_ALLOWLIST = new Set([
+  "IONQ",  // IonQ — trapped-ion
+  "RGTI",  // Rigetti Computing — superconducting
+  "QBTS",  // D-Wave Quantum — annealing
+  "QUBT",  // Quantum Computing Inc — photonic
+  "INFQ",  // Infleqtion — neutral atom (recently SPAC'd)
+  "FORM",  // FormFactor — cryogenic probe stations for QC labs
+]);
+
+async function publishQuantumResearch(args: PublishResearchArgs): Promise<{
+  url: string;
+  ticker: string;
+  scan_day: string;
+  images_count: number;
+  body_chars: number;
+}> {
+  const ticker = String(args.ticker || "").trim().toUpperCase();
+  if (!QUANTUM_ALLOWLIST.has(ticker)) {
+    throw new Error(
+      `ticker "${ticker}" is not in the quantum allowlist (${Array.from(QUANTUM_ALLOWLIST).join(", ")})`,
+    );
+  }
+  return publishResearchInternal(args, "quantum");
+}
+
 /**
  * Shared upsert path for equity + metals research. Sets asset_class
  * explicitly on both insert and on conflict so re-running an existing
@@ -2272,7 +2370,7 @@ async function publishMetalsResearch(args: PublishResearchArgs): Promise<{
  */
 async function publishResearchInternal(
   args: PublishResearchArgs,
-  assetClass: "equity" | "metals",
+  assetClass: "equity" | "metals" | "quantum",
 ): Promise<{
   url: string;
   ticker: string;
@@ -2350,7 +2448,11 @@ async function publishResearchInternal(
   }));
   const meta = {
     routine_name:
-      assetClass === "metals" ? "Metals Research" : "Wicked Research",
+      assetClass === "metals"
+        ? "Metals Research"
+        : assetClass === "quantum"
+          ? "Quantum Research"
+          : "Wicked Research",
     agent: "claude-mcp",
     asset_class: assetClass,
   };
@@ -2392,7 +2494,9 @@ async function publishResearchInternal(
   const url =
     assetClass === "metals"
       ? `/research/metals/${row.scanDay}/${row.ticker}`
-      : `/research/${row.scanDay}/${row.ticker}`;
+      : assetClass === "quantum"
+        ? `/research/quantum/${row.scanDay}/${row.ticker}`
+        : `/research/${row.scanDay}/${row.ticker}`;
   return {
     url,
     ticker: row.ticker,
@@ -5339,6 +5443,64 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         return {
           content: [
             { type: "text", text: `publish_metals_research failed: ${err instanceof Error ? err.message : String(err)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "publish_quantum_research") {
+      try {
+        const out = await publishQuantumResearch(args as unknown as PublishResearchArgs);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Published quantum research for ${out.ticker} on ${out.scan_day} → ${out.url}. body=${out.body_chars} chars, ${out.images_count} images.`,
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            { type: "text", text: `publish_quantum_research failed: ${err instanceof Error ? err.message : String(err)}` },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "fetch_sec_fundamentals") {
+      try {
+        const { fetchSecFundamentals } = await import("@/lib/sec-edgar");
+        const ticker = String((args as { ticker?: string }).ticker || "").trim();
+        if (!ticker) {
+          return { content: [{ type: "text", text: "ticker required" }], isError: true };
+        }
+        const out = await fetchSecFundamentals(ticker);
+        if (!out) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  found: false,
+                  ticker: ticker.toUpperCase(),
+                  reason:
+                    "ticker not in SEC EDGAR (foreign filer 20-F, OTC, or unknown). Skip fundamentals for this ticker; do technical-only analysis.",
+                }),
+              },
+            ],
+            isError: false,
+          };
+        }
+        return {
+          content: [{ type: "text", text: JSON.stringify({ found: true, ...out }) }],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            { type: "text", text: `fetch_sec_fundamentals failed: ${err instanceof Error ? err.message : String(err)}` },
           ],
           isError: true,
         };

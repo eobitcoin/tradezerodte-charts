@@ -16,31 +16,48 @@ function dirLabel(d?: Trade["direction"]): string {
   return d.toUpperCase();
 }
 
-/** Coerce a numeric|string level to a display string, or null if empty. */
-function fmtLevel(v?: number | string): string | null {
-  if (v === undefined || v === null) return null;
-  const s = String(v).trim();
-  return s.length ? s : null;
-}
-
 /**
- * Build a compact actionable levels string for the Top Recommendations
- * box, e.g. "Entry 595–596 · T1 599 · T2 602 · Stop 593". Prefers the
- * explicit entry_zone, falls back to entry_trigger. Skips any missing
- * field so the line stays tight.
+ * Pull a named section out of a markdown document. Finds the first
+ * heading whose text contains `needle` (case-insensitive), then captures
+ * everything from that heading until the next heading of the same or
+ * higher level (lower-or-equal `#` count). Returns the extracted section
+ * (heading included) plus the document with that section removed.
+ *
+ * Used to lift the routine-written "Top Recommendations" section out of
+ * the analysis narrative and render it in the highlighted box up top,
+ * without duplicating it lower in the prose.
  */
-function tradeLevels(t?: Trade | null): string {
-  if (!t) return "";
-  const parts: string[] = [];
-  const entry = fmtLevel(t.entry_zone) ?? fmtLevel(t.entry_trigger);
-  if (entry) parts.push(`Entry ${entry}`);
-  const t1 = fmtLevel(t.target1);
-  if (t1) parts.push(`T1 ${t1}`);
-  const t2 = fmtLevel(t.target2);
-  if (t2) parts.push(`T2 ${t2}`);
-  const stop = fmtLevel(t.stop);
-  if (stop) parts.push(`Stop ${stop}`);
-  return parts.join(" · ");
+function extractSection(
+  md: string,
+  needle: string,
+): { section: string | null; rest: string } {
+  const lines = md.split("\n");
+  const target = needle.toLowerCase();
+  let startIdx = -1;
+  let level = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (m && m[2].toLowerCase().includes(target)) {
+      startIdx = i;
+      level = m[1].length;
+      break;
+    }
+  }
+  if (startIdx === -1) return { section: null, rest: md };
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+/);
+    if (m && m[1].length <= level) {
+      endIdx = i;
+      break;
+    }
+  }
+  const section = lines.slice(startIdx, endIdx).join("\n");
+  const rest = [...lines.slice(0, startIdx), ...lines.slice(endIdx)]
+    .join("\n")
+    // Collapse the blank-line gap left where the section was removed.
+    .replace(/\n{3,}/g, "\n\n");
+  return { section, rest };
 }
 
 function dirClass(d?: Trade["direction"]): string {
@@ -143,9 +160,22 @@ export default async function AnalysisView({
     marketOpenTrades: mopTrades,
   });
 
-  const narrativeHtml = analysis
-    ? await renderMarkdown(analysis.bodyMd, [])
-    : null;
+  // Lift the routine-written "Top Recommendations" section out of the
+  // analysis markdown → render it in the highlighted box up top, and
+  // render the remaining narrative without it (no duplication).
+  let recommendationsHtml: string | null = null;
+  let narrativeHtml: string | null = null;
+  if (analysis) {
+    const { section, rest } = extractSection(analysis.bodyMd, "top recommendation");
+    if (section) {
+      // Strip the section's own heading line — the box supplies its header.
+      const sectionBody = section.replace(/^\s*#{1,6}\s+[^\n]*\n+/, "");
+      recommendationsHtml = await renderMarkdown(sectionBody, []);
+      narrativeHtml = await renderMarkdown(rest, []);
+    } else {
+      narrativeHtml = await renderMarkdown(analysis.bodyMd, []);
+    }
+  }
 
   return (
     <article className="max-w-4xl lg:max-w-5xl mx-auto px-4 py-8 space-y-8">
@@ -182,74 +212,25 @@ export default async function AnalysisView({
         </p>
       </header>
 
-      {/* TOP RECOMMENDATIONS — hero summary box. Surfaced right under the
-          headline so a reader can scan the highest-conviction picks without
-          scrolling through the narrative. Same data as the deterministic
-          high-probability filter (in BOTH scans · stable direction · grade
-          ≥ A−), now elevated + made visually prominent with actionable
-          levels (entry / targets / stop). */}
-      <section
-        aria-label="Top recommendations"
-        className="rounded-xl border-2 border-emerald-500/50 bg-gradient-to-br from-emerald-500/[0.10] to-emerald-500/[0.02] shadow-lg shadow-emerald-900/10 p-4 sm:p-5 space-y-3"
-      >
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+      {/* TOP RECOMMENDATIONS — hero box. Renders the routine-written
+          "Top Recommendations" section (lifted from the analysis markdown)
+          right under the headline so a reader can scan-and-go. The section
+          is stripped from the narrative below so it isn't duplicated. Only
+          shows when the analysis actually contains such a section. */}
+      {recommendationsHtml && (
+        <section
+          aria-label="Top recommendations"
+          className="rounded-xl border-2 border-emerald-500/50 bg-gradient-to-br from-emerald-500/[0.10] to-emerald-500/[0.02] shadow-lg shadow-emerald-900/10 p-4 sm:p-5 space-y-3"
+        >
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
             <span aria-hidden="true">★</span> Top Recommendations
           </h2>
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80 dark:text-emerald-300/80">
-            {comparison.highProbability.length} high-conviction{" "}
-            {comparison.highProbability.length === 1 ? "pick" : "picks"}
-          </span>
-        </div>
-        {comparison.highProbability.length === 0 ? (
-          <p className="text-sm text-black/65 dark:text-white/65">
-            No trades cleared the high-conviction bar in today&apos;s comparison
-            (appears in both scans, stable direction, grade ≥ A−). Read the full
-            analysis below for the nuanced picks.
-          </p>
-        ) : (
-          <ul className="space-y-2.5">
-            {comparison.highProbability.map((r) => {
-              const gc = gradeColors(r.marketOpen?.grade);
-              const levels = tradeLevels(r.marketOpen);
-              return (
-                <li
-                  key={r.ticker}
-                  className="rounded-lg border border-emerald-500/25 bg-white/60 dark:bg-white/[0.03] p-3 space-y-1.5"
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono font-bold text-base">{r.ticker}</span>
-                    <span
-                      className={`inline-block px-2 py-0.5 text-xs font-semibold rounded border ${dirClass(r.marketOpen?.direction)}`}
-                    >
-                      {dirLabel(r.marketOpen?.direction)}
-                    </span>
-                    <span
-                      className={`inline-block px-2 py-0.5 text-xs font-semibold rounded border ${gc.pill}`}
-                    >
-                      {r.marketOpen?.grade ?? "—"}
-                    </span>
-                    {levels && (
-                      <span className="font-mono text-xs text-black/70 dark:text-white/70 ml-auto">
-                        {levels}
-                      </span>
-                    )}
-                  </div>
-                  {(r.marketOpen?.rationale || r.reason) && (
-                    <p className="text-sm text-black/75 dark:text-white/75 leading-snug">
-                      {r.marketOpen?.rationale || r.reason}
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <p className="text-[11px] text-black/45 dark:text-white/45">
-          Read the full analysis below for context, the cross-scan comparison,
-          and every ticker that appeared in either scan.
-        </p>
-      </section>
+          <div
+            className="prose prose-neutral dark:prose-invert prose-sm max-w-none dte-post"
+            dangerouslySetInnerHTML={{ __html: recommendationsHtml }}
+          />
+        </section>
+      )}
 
       {/* LLM narrative */}
       {narrativeHtml ? (
@@ -264,18 +245,55 @@ export default async function AnalysisView({
         </section>
       )}
 
-      {/* Cross-comparison table — the full ticker-by-ticker detail. The
-          high-probability picks are surfaced in the Top Recommendations box
-          above; the `isHighProbability` rows are still tinted here for
-          continuity. */}
+      {/* High-probability picks */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide">
+          High-probability picks ({comparison.highProbability.length})
+        </h2>
+        <p className="text-xs text-black/55 dark:text-white/55">
+          Rule: appears in BOTH scans · direction stable across scans (no flip, no shift to AVOID) ·
+          grade ≥ A− in both (or upgraded into A-tier at open).
+        </p>
+        {comparison.highProbability.length === 0 ? (
+          <div className="rounded border border-black/10 dark:border-white/10 p-4 text-sm text-black/55 dark:text-white/55">
+            No trades cleared the high-probability bar in today&apos;s comparison.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {comparison.highProbability.map((r) => {
+              const gc = gradeColors(r.marketOpen?.grade);
+              return (
+                <li
+                  key={r.ticker}
+                  className="rounded border border-emerald-500/30 bg-emerald-500/[0.04] p-3 flex items-start gap-3"
+                >
+                  <span className="font-mono font-bold text-sm">{r.ticker}</span>
+                  <span
+                    className={`inline-block px-2 py-0.5 text-xs font-semibold rounded border ${gc.pill}`}
+                  >
+                    {r.marketOpen?.grade ?? "—"}
+                  </span>
+                  <span
+                    className={`inline-block px-2 py-0.5 text-xs rounded border ${dirClass(r.marketOpen?.direction)}`}
+                  >
+                    {dirLabel(r.marketOpen?.direction)}
+                  </span>
+                  <span className="text-sm text-black/75 dark:text-white/75 flex-1">{r.reason}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* Cross-comparison table */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide">
           Cross-comparison ({comparison.rows.length})
         </h2>
         <p className="text-xs text-black/55 dark:text-white/55">
           Every ticker that appeared in either scan. Δ columns show how grade and direction shifted
-          from premarket → market open. Rows tinted green cleared the high-conviction bar (shown up
-          top).
+          from premarket → market open.
         </p>
         <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg">
           <table className="w-full text-sm">

@@ -16,6 +16,33 @@ function dirLabel(d?: Trade["direction"]): string {
   return d.toUpperCase();
 }
 
+/** Coerce a numeric|string level to a display string, or null if empty. */
+function fmtLevel(v?: number | string): string | null {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+}
+
+/**
+ * Build a compact actionable levels string for the Top Recommendations
+ * box, e.g. "Entry 595–596 · T1 599 · T2 602 · Stop 593". Prefers the
+ * explicit entry_zone, falls back to entry_trigger. Skips any missing
+ * field so the line stays tight.
+ */
+function tradeLevels(t?: Trade | null): string {
+  if (!t) return "";
+  const parts: string[] = [];
+  const entry = fmtLevel(t.entry_zone) ?? fmtLevel(t.entry_trigger);
+  if (entry) parts.push(`Entry ${entry}`);
+  const t1 = fmtLevel(t.target1);
+  if (t1) parts.push(`T1 ${t1}`);
+  const t2 = fmtLevel(t.target2);
+  if (t2) parts.push(`T2 ${t2}`);
+  const stop = fmtLevel(t.stop);
+  if (stop) parts.push(`Stop ${stop}`);
+  return parts.join(" · ");
+}
+
 function dirClass(d?: Trade["direction"]): string {
   if (d === "call" || d === "long")
     return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
@@ -155,6 +182,75 @@ export default async function AnalysisView({
         </p>
       </header>
 
+      {/* TOP RECOMMENDATIONS — hero summary box. Surfaced right under the
+          headline so a reader can scan the highest-conviction picks without
+          scrolling through the narrative. Same data as the deterministic
+          high-probability filter (in BOTH scans · stable direction · grade
+          ≥ A−), now elevated + made visually prominent with actionable
+          levels (entry / targets / stop). */}
+      <section
+        aria-label="Top recommendations"
+        className="rounded-xl border-2 border-emerald-500/50 bg-gradient-to-br from-emerald-500/[0.10] to-emerald-500/[0.02] shadow-lg shadow-emerald-900/10 p-4 sm:p-5 space-y-3"
+      >
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+            <span aria-hidden="true">★</span> Top Recommendations
+          </h2>
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700/80 dark:text-emerald-300/80">
+            {comparison.highProbability.length} high-conviction{" "}
+            {comparison.highProbability.length === 1 ? "pick" : "picks"}
+          </span>
+        </div>
+        {comparison.highProbability.length === 0 ? (
+          <p className="text-sm text-black/65 dark:text-white/65">
+            No trades cleared the high-conviction bar in today&apos;s comparison
+            (appears in both scans, stable direction, grade ≥ A−). Read the full
+            analysis below for the nuanced picks.
+          </p>
+        ) : (
+          <ul className="space-y-2.5">
+            {comparison.highProbability.map((r) => {
+              const gc = gradeColors(r.marketOpen?.grade);
+              const levels = tradeLevels(r.marketOpen);
+              return (
+                <li
+                  key={r.ticker}
+                  className="rounded-lg border border-emerald-500/25 bg-white/60 dark:bg-white/[0.03] p-3 space-y-1.5"
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono font-bold text-base">{r.ticker}</span>
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs font-semibold rounded border ${dirClass(r.marketOpen?.direction)}`}
+                    >
+                      {dirLabel(r.marketOpen?.direction)}
+                    </span>
+                    <span
+                      className={`inline-block px-2 py-0.5 text-xs font-semibold rounded border ${gc.pill}`}
+                    >
+                      {r.marketOpen?.grade ?? "—"}
+                    </span>
+                    {levels && (
+                      <span className="font-mono text-xs text-black/70 dark:text-white/70 ml-auto">
+                        {levels}
+                      </span>
+                    )}
+                  </div>
+                  {(r.marketOpen?.rationale || r.reason) && (
+                    <p className="text-sm text-black/75 dark:text-white/75 leading-snug">
+                      {r.marketOpen?.rationale || r.reason}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="text-[11px] text-black/45 dark:text-white/45">
+          Read the full analysis below for context, the cross-scan comparison,
+          and every ticker that appeared in either scan.
+        </p>
+      </section>
+
       {/* LLM narrative */}
       {narrativeHtml ? (
         <section
@@ -168,55 +264,18 @@ export default async function AnalysisView({
         </section>
       )}
 
-      {/* High-probability picks */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide">
-          High-probability picks ({comparison.highProbability.length})
-        </h2>
-        <p className="text-xs text-black/55 dark:text-white/55">
-          Rule: appears in BOTH scans · direction stable across scans (no flip, no shift to AVOID) ·
-          grade ≥ A− in both (or upgraded into A-tier at open).
-        </p>
-        {comparison.highProbability.length === 0 ? (
-          <div className="rounded border border-black/10 dark:border-white/10 p-4 text-sm text-black/55 dark:text-white/55">
-            No trades cleared the high-probability bar in today&apos;s comparison.
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {comparison.highProbability.map((r) => {
-              const gc = gradeColors(r.marketOpen?.grade);
-              return (
-                <li
-                  key={r.ticker}
-                  className="rounded border border-emerald-500/30 bg-emerald-500/[0.04] p-3 flex items-start gap-3"
-                >
-                  <span className="font-mono font-bold text-sm">{r.ticker}</span>
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs font-semibold rounded border ${gc.pill}`}
-                  >
-                    {r.marketOpen?.grade ?? "—"}
-                  </span>
-                  <span
-                    className={`inline-block px-2 py-0.5 text-xs rounded border ${dirClass(r.marketOpen?.direction)}`}
-                  >
-                    {dirLabel(r.marketOpen?.direction)}
-                  </span>
-                  <span className="text-sm text-black/75 dark:text-white/75 flex-1">{r.reason}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {/* Cross-comparison table */}
+      {/* Cross-comparison table — the full ticker-by-ticker detail. The
+          high-probability picks are surfaced in the Top Recommendations box
+          above; the `isHighProbability` rows are still tinted here for
+          continuity. */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide">
           Cross-comparison ({comparison.rows.length})
         </h2>
         <p className="text-xs text-black/55 dark:text-white/55">
           Every ticker that appeared in either scan. Δ columns show how grade and direction shifted
-          from premarket → market open.
+          from premarket → market open. Rows tinted green cleared the high-conviction bar (shown up
+          top).
         </p>
         <div className="overflow-x-auto border border-black/10 dark:border-white/10 rounded-lg">
           <table className="w-full text-sm">

@@ -1,5 +1,10 @@
 import Link from "next/link";
 
+/** Tab union covers every Research surface, including the asset-class
+ *  pages (metals, quantum). They're not rendered in this tab strip
+ *  because the top-level site nav links to them directly — but the
+ *  union stays complete so the per-page `active={...}` typecheck still
+ *  works on /research/metals and /research/quantum. */
 export type ResearchTab =
   | "weekly"
   | "metals"
@@ -12,8 +17,6 @@ export type ResearchTab =
 
 const TABS: Array<{ id: ResearchTab; label: string; href: string }> = [
   { id: "weekly", label: "Weekly Research", href: "/research" },
-  { id: "metals", label: "Metals", href: "/research/metals" },
-  { id: "quantum", label: "Quantum", href: "/research/quantum" },
   { id: "economic", label: "Economic Calendar", href: "/calendar/economic" },
   { id: "institutional", label: "Institutional", href: "/research/institutional" },
   { id: "earnings", label: "Earnings", href: "/research/earnings" },

@@ -407,6 +407,13 @@ export const briefings = pgTable(
     tradingDay: date("trading_day").notNull().unique(),
     /** 30-45 word voiceover script. First-person presenter voice. */
     script: text("script"),
+    /** Uppercased ticker symbols the script actually names, in narration
+     *  order (e.g. ["QCOM","INTC","MU"]). Drives the right-side calls panel
+     *  on /morning-brief so it matches what's spoken in the video — the
+     *  script-writer can theme its picks differently from the premarket
+     *  top-3 ranking. Empty array → the page falls back to inferring the
+     *  top-3 from the premarket scan (legacy behavior). */
+    tickers: text("tickers").array().notNull().default(sql`'{}'::text[]`),
     /** One-line scene/wardrobe/mood prompt fed to Higgsfield (Soul + Speak). */
     settingPrompt: text("setting_prompt"),
     status: text("status").$type<BriefingStatus>().notNull().default("pending"),

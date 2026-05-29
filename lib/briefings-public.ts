@@ -118,6 +118,7 @@ export async function loadBriefingByDay(
     .select({
       tradingDay: briefings.tradingDay,
       script: briefings.script,
+      tickers: briefings.tickers,
       videoS3Key: briefings.videoS3Key,
       thumbnailUrl: briefings.thumbnailUrl,
       postedAt: briefings.postedAt,
@@ -128,17 +129,36 @@ export async function loadBriefingByDay(
     .limit(1);
   if (!row || !row.script || !row.videoS3Key) return null;
 
-  // Pull top 3 ticker calls from the matching premarket post. Same data
-  // Olivia spoke from; lets the per-day page render a static "today's
-  // calls" panel.
+  // Pull the premarket scan's trades — used either to cross-reference the
+  // briefing's own ticker list (for direction + grade) or, when the
+  // briefing didn't declare tickers, to infer the legacy top-3 panel.
   const [post] = await db
     .select({ trades: posts.trades })
     .from(posts)
     .where(and(eq(posts.tradingDay, tradingDay), eq(posts.scanKind, "premarket")))
     .limit(1);
+  const premarketTrades = Array.isArray(post?.trades) ? post!.trades : [];
+  const tradeByTicker = new Map(premarketTrades.map((t) => [t.ticker, t]));
+
   const calls: PublicBriefingWithCalls["calls"] = [];
-  if (post && Array.isArray(post.trades)) {
-    const sorted = [...post.trades]
+  if (row.tickers && row.tickers.length > 0) {
+    // PREFERRED: the briefing declared the exact tickers the video names.
+    // Show those, in spoken order. Cross-reference the premarket scan for
+    // direction + grade (the script-writer themes its picks, so these may
+    // be lower-ranked names — but the scan still graded them). Tickers not
+    // present in the scan render with no direction/grade pills.
+    for (const sym of row.tickers) {
+      const t = tradeByTicker.get(sym);
+      calls.push({
+        ticker: sym,
+        direction: t?.direction ?? null,
+        grade: (t?.grade as string | undefined) ?? null,
+      });
+    }
+  } else {
+    // FALLBACK (legacy briefings with no declared tickers): infer the
+    // premarket top-3 by rank, excluding AVOIDs.
+    const sorted = [...premarketTrades]
       .filter((t) => t.direction !== "avoid")
       .sort((a, b) => {
         const ar = typeof a.rank === "number" ? a.rank : 999;

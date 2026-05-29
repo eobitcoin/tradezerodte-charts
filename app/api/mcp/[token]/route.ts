@@ -208,7 +208,7 @@ const TOOLS = [
   {
     name: "publish_briefing_script",
     description:
-      "Save the 15-second voiceover script for the daily YouTube briefing video. Phase 1 of the briefing pipeline — Phase 2 (video gen) and Phase 3 (YouTube upload) will read this row downstream. UPSERTs on trading_day; safe to re-run. Script must be 30-45 words (≈15 seconds at conversational pace), first-person presenter voice ('today I like TSLA puts…'). The setting_prompt is a one-line scene/wardrobe/mood description for Higgsfield ('morning light, cafe counter, espresso in hand, white blouse, calm tone').",
+      "Save the 15-second voiceover script for the daily YouTube briefing video. Phase 1 of the briefing pipeline — Phase 2 (video gen) and Phase 3 (YouTube upload) will read this row downstream. UPSERTs on trading_day; safe to re-run. Script must be 30-45 words (≈15 seconds at conversational pace), first-person presenter voice ('today I like TSLA puts…'). The setting_prompt is a one-line scene/wardrobe/mood description for Higgsfield.\n\n**ALWAYS pass `tickers`** — the exact symbols you name in the script, in spoken order. The /morning-brief page renders these as the right-side calls panel so it matches the video. If you skip this, the page falls back to GUESSING from the premarket scan's top-3 ranking, which often won't match the names you actually chose to discuss (the script themes its picks). Use symbols even when the script says company names (Qualcomm→QCOM, Intel→INTC, Micron→MU).",
     inputSchema: {
       type: "object",
       properties: {
@@ -222,13 +222,19 @@ const TOOLS = [
           description:
             "Voiceover text. 30-45 words. First-person presenter voice. One-line market context + 3 ticker calls (ticker, direction, headline thesis) + sign-off. No emojis or stage directions — just what she'll say.",
         },
+        tickers: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Uppercased ticker symbols named in the script, in spoken order (e.g. ['QCOM','INTC','MU']). Server uppercases + dedupes; rejects entries that aren't 1-6 letters/digits. Typically the 3 calls the script discusses.",
+        },
         setting_prompt: {
           type: "string",
           description:
             "One-line scene/wardrobe/mood description for the Higgsfield video (e.g. 'morning light, cafe counter, espresso in hand, white blouse, warm casual tone'). Keep it concrete; the video model uses this verbatim. Vary it day-to-day so the channel feels fresh.",
         },
       },
-      required: ["script", "setting_prompt"],
+      required: ["script", "setting_prompt", "tickers"],
     },
   },
   {
@@ -3602,6 +3608,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           trading_day?: string;
           script?: string;
           setting_prompt?: string;
+          tickers?: unknown;
         };
         const tradingDay = a.trading_day || nyTradingDay();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDay)) {
@@ -3637,11 +3644,46 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             isError: true,
           };
         }
+        // Normalize tickers: uppercase, trim, dedupe (first-occurrence order),
+        // validate symbol shape. These drive the /morning-brief calls panel.
+        if (!Array.isArray(a.tickers)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "tickers must be an array of the symbols named in the script (e.g. ['QCOM','INTC','MU'])",
+              },
+            ],
+            isError: true,
+          };
+        }
+        const seen = new Set<string>();
+        const tickers: string[] = [];
+        for (const raw of a.tickers) {
+          if (typeof raw !== "string") continue;
+          const sym = raw.trim().toUpperCase();
+          if (!/^[A-Z0-9.\-]{1,6}$/.test(sym)) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: `invalid ticker "${raw}" — must be 1-6 uppercase letters/digits (dots/dashes allowed)`,
+                },
+              ],
+              isError: true,
+            };
+          }
+          if (!seen.has(sym)) {
+            seen.add(sym);
+            tickers.push(sym);
+          }
+        }
         const { briefings } = await import("@/lib/db/schema");
         const meta = {
           routine_name: "0DTE Daily Briefing — Script Writer",
           agent: "claude-mcp",
           word_count: wordCount,
+          ticker_count: tickers.length,
         };
         const [row] = await db
           .insert(briefings)
@@ -3649,6 +3691,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             tradingDay,
             script,
             settingPrompt,
+            tickers,
             status: "scripted",
             meta,
           })
@@ -3657,6 +3700,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             set: {
               script,
               settingPrompt,
+              tickers,
               status: "scripted",
               meta,
               updatedAt: sql`now()`,
@@ -3677,6 +3721,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
                 trading_day: row.tradingDay,
                 status: row.status,
                 word_count: wordCount,
+                tickers,
                 admin_url: "/admin/briefings",
               }),
             },

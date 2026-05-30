@@ -185,7 +185,39 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
                   <div className="text-sm font-semibold text-white/90">
                     {a.suggestedStrategy}
                   </div>
-                  <p className="text-sm text-white/65 leading-relaxed mt-1">
+
+                  {/* Concrete-strike chips. Computed deterministically from the
+                      surface (delta-target inversion → snapped to grid). Buy
+                      legs render emerald, sell legs render rose, matching the
+                      bid/ask intuition. Hidden when no legs (older posts or
+                      missing surface data). */}
+                  {a.legs && a.legs.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {a.legs.map((leg, j) => (
+                        <span
+                          key={`${leg.side}-${leg.type}-${leg.strike}-${leg.dte}-${j}`}
+                          className={[
+                            "inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-mono",
+                            leg.side === "buy"
+                              ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/[0.08]"
+                              : "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]",
+                          ].join(" ")}
+                        >
+                          <span className="uppercase tracking-wider font-semibold">
+                            {leg.side === "buy" ? "Buy" : "Sell"}
+                          </span>
+                          <span>
+                            {fmtUsd(leg.strike)}
+                            {leg.type === "call" ? "C" : "P"}
+                          </span>
+                          <span className="text-white/40">·</span>
+                          <span className="text-white/55">{leg.dte}d</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-sm text-white/65 leading-relaxed mt-2">
                     {a.thesis}
                   </p>
                 </div>

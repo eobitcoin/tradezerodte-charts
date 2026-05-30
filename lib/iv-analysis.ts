@@ -14,7 +14,11 @@
 
 import { desc, eq, sql, and, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { ivSnapshots, type OptionsEdgeAnomaly } from "@/lib/db/schema";
+import {
+  ivSnapshots,
+  type OptionsEdgeAnomaly,
+  type TradeLeg,
+} from "@/lib/db/schema";
 
 /** Minimum observations required to compute a stable z-score. */
 const MIN_HISTORY = 60;
@@ -156,6 +160,123 @@ function suggestStrategy(
       };
 }
 
+/**
+ * Snap a raw computed strike to the nearest reasonable listed-options
+ * grid. Most US equity options trade in $1 increments under $200 and $5
+ * increments above; sub-$10 names use $0.50. Not exact (listed grids
+ * differ per ticker), but close enough that the snapped strike is almost
+ * always tradeable.
+ */
+function snapStrike(raw: number): number {
+  if (!Number.isFinite(raw) || raw <= 0) return raw;
+  if (raw >= 200) return Math.round(raw / 5) * 5;
+  if (raw >= 10) return Math.round(raw);
+  return Math.round(raw * 2) / 2;
+}
+
+/**
+ * Given a surface snapshot (spot + ATM IV), compute concrete strike
+ * suggestions per leg of the strategy implied by the anomaly. Uses the
+ * standard log-normal delta-target approximation:
+ *
+ *   K(δ) ≈ S · exp(±N⁻¹(δ) · σ · √T)
+ *
+ * with N⁻¹(0.25)=0.6745 for the 25Δ strikes and N⁻¹(0.10)=1.2816 for
+ * the 10Δ wings, T = DTE/365. Drift is ignored — for 30-day equity
+ * options at typical r ~ 5%, the rate term shifts strikes <0.5% and the
+ * snap-to-listed-grid step swamps it.
+ *
+ * Returns [] if the surface is missing spot or ATM IV (the anomaly card
+ * will then just omit the suggested-strikes row).
+ */
+function suggestLegs(
+  surface: OptionsEdgeAnomaly["surface"],
+  metric: OptionsEdgeAnomaly["metric"],
+  direction: "high" | "low",
+): TradeLeg[] {
+  const S = surface.underlyingPrice;
+  const sigma = surface.atmIv30d;
+  if (S == null || sigma == null || !Number.isFinite(S) || !Number.isFinite(sigma)) {
+    return [];
+  }
+  const T = 30 / 365;
+  const sqrtT = Math.sqrt(T);
+  const k25 = sigma * 0.6745 * sqrtT;
+  const k10 = sigma * 1.2816 * sqrtT;
+
+  const atm = snapStrike(S);
+  const put25 = snapStrike(S * Math.exp(-k25));
+  const call25 = snapStrike(S * Math.exp(k25));
+  const put10 = snapStrike(S * Math.exp(-k10));
+  const call10 = snapStrike(S * Math.exp(k10));
+
+  // Short premium structures — iron condor: short the 25Δ body, long
+  // the 10Δ wings. Used when ATM IV rank OR IV/HV ratio is stretched
+  // high (volatility expensive vs its own range / realized).
+  if (
+    (metric === "atm_iv_rank" && direction === "high") ||
+    (metric === "iv_hv_ratio" && direction === "high")
+  ) {
+    return [
+      { side: "sell", type: "put",  strike: put25,  dte: 30 },
+      { side: "sell", type: "call", strike: call25, dte: 30 },
+      { side: "buy",  type: "put",  strike: put10,  dte: 30 },
+      { side: "buy",  type: "call", strike: call10, dte: 30 },
+    ];
+  }
+
+  // Long gamma at ATM — ATM straddle. Used when ATM IV rank OR IV/HV
+  // ratio is stretched LOW (vol cheap relative to history / realized).
+  if (
+    (metric === "atm_iv_rank" && direction === "low") ||
+    (metric === "iv_hv_ratio" && direction === "low")
+  ) {
+    return [
+      { side: "buy", type: "put",  strike: atm, dte: 30 },
+      { side: "buy", type: "call", strike: atm, dte: 30 },
+    ];
+  }
+
+  // Skew rich (puts overpriced vs calls) — risk-reversal: short the
+  // expensive 25Δ put, long the cheap 25Δ call.
+  if (metric === "skew_z" && direction === "high") {
+    return [
+      { side: "sell", type: "put",  strike: put25,  dte: 30 },
+      { side: "buy",  type: "call", strike: call25, dte: 30 },
+    ];
+  }
+
+  // Skew cheap (puts underpriced) — reverse risk-reversal: long the
+  // cheap put, short the rich call.
+  if (metric === "skew_z" && direction === "low") {
+    return [
+      { side: "buy",  type: "put",  strike: put25,  dte: 30 },
+      { side: "sell", type: "call", strike: call25, dte: 30 },
+    ];
+  }
+
+  // Term structure: contango wider than normal → calendar long the
+  // back month, short the front (both ATM). For the long-call calendar
+  // shape, return two ATM call legs at different DTEs.
+  if (metric === "term_z" && direction === "high") {
+    return [
+      { side: "sell", type: "call", strike: atm, dte: 30 },
+      { side: "buy",  type: "call", strike: atm, dte: 60 },
+    ];
+  }
+
+  // Term inverted/flat (front-month vol bid for an event) — buy front
+  // gamma instead, let the inversion bleed in your favor.
+  if (metric === "term_z" && direction === "low") {
+    return [
+      { side: "buy", type: "put",  strike: atm, dte: 30 },
+      { side: "buy", type: "call", strike: atm, dte: 30 },
+    ];
+  }
+
+  return [];
+}
+
 /** One ticker's analysis result. */
 export interface TickerAnalysis {
   ticker: string;
@@ -285,6 +406,13 @@ export async function analyzeTicker(ticker: string): Promise<TickerAnalysis> {
     if (Math.abs(z) < ANOMALY_THRESHOLD) return;
     const direction: "high" | "low" = z > 0 ? "high" : "low";
     const { strategy, thesis } = suggestStrategy(name, direction);
+    const surface = {
+      atmIv30d: current.atmIv30d,
+      put25dIv30d: current.put25dIv30d,
+      call25dIv30d: current.call25dIv30d,
+      hv30d: current.hv30d,
+      underlyingPrice: latest.underlyingPrice,
+    };
     anomalies.push({
       ticker,
       metric: name,
@@ -294,13 +422,8 @@ export async function analyzeTicker(ticker: string): Promise<TickerAnalysis> {
       direction,
       suggestedStrategy: strategy,
       thesis,
-      surface: {
-        atmIv30d: current.atmIv30d,
-        put25dIv30d: current.put25dIv30d,
-        call25dIv30d: current.call25dIv30d,
-        hv30d: current.hv30d,
-        underlyingPrice: latest.underlyingPrice,
-      },
+      surface,
+      legs: suggestLegs(surface, name, direction),
     });
   };
 

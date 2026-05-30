@@ -1739,6 +1739,21 @@ export type IvSnapshot = typeof ivSnapshots.$inferSelect;
 
 /** A single anomaly the scanner flagged. The metric tells you what's
  *  out-of-line; zScore + percentileRank give the strength. */
+/** One leg of a suggested trade structure. The scanner returns these so
+ *  the UI can render concrete strike levels next to the strategy name —
+ *  e.g. "Sell 145P / 175C · Buy 125P / 195C" for an iron condor. Strikes
+ *  are computed from a Black-Scholes delta approximation against the
+ *  surface (spot × exp(±N⁻¹(δ) · σ√T)) then snapped to the nearest
+ *  listed-options grid. They are SUGGESTIONS, not live quotes. */
+export interface TradeLeg {
+  side: "buy" | "sell";
+  type: "call" | "put";
+  /** Snapped strike in dollars. */
+  strike: number;
+  /** Target days-to-expiration (30 or 60 for the Options Edge structures). */
+  dte: number;
+}
+
 export interface OptionsEdgeAnomaly {
   ticker: string;
   /** What's anomalous. */
@@ -1768,6 +1783,10 @@ export interface OptionsEdgeAnomaly {
     hv30d: number | null;
     underlyingPrice: number | null;
   };
+  /** Concrete suggested strikes per leg. Optional — older scans
+   *  predating this field won't have it; the UI hides the strike row
+   *  when missing. */
+  legs?: TradeLeg[];
 }
 
 export const optionsEdgeScans = pgTable(

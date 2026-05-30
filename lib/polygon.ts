@@ -55,6 +55,17 @@ interface PolygonContract {
     timeframe?: "REAL-TIME" | "DELAYED";
     last_updated?: number;
   };
+  /** Day aggregate — present on chain snapshot rows for actively-traded
+   *  contracts. UOA uses `day.volume` to pre-filter which contracts are
+   *  worth fetching trades for. */
+  day?: {
+    volume?: number;
+    open?: number;
+    high?: number;
+    low?: number;
+    close?: number;
+    previous_close?: number;
+  };
   open_interest?: number;
   underlying_asset?: {
     price?: number;
@@ -495,4 +506,122 @@ export async function hv30dForDate(
   );
   const prices = [...bars.values()];
   return computeHv30d(prices);
+}
+
+// ---------------------------------------------------------------------------
+// Options trades (tape) — used by the UOA scanner.
+// ---------------------------------------------------------------------------
+
+/** One trade print from Polygon's /v3/trades/{options_ticker}. */
+export interface PolygonOptionTrade {
+  /** Nanoseconds since epoch — Polygon native. Convert via /1e6 for ms. */
+  sip_timestamp?: number;
+  participant_timestamp?: number;
+  price: number;
+  size: number;
+  /** Condition codes — see Polygon docs. We care about 41 (intermarket
+   *  sweep order). */
+  conditions?: number[];
+  /** Exchange ID. */
+  exchange?: number;
+  sequence_number?: number;
+}
+
+interface PolygonTradesResponse {
+  status?: string;
+  results?: PolygonOptionTrade[];
+  next_url?: string;
+}
+
+/**
+ * Fetch the day's option trades for one contract. Returns trades in
+ * descending timestamp order (newest first), capped at `limit` per page.
+ *
+ * `contractTicker` is the Polygon-format OPRA symbol, e.g.
+ * "O:SPY261016C00600000". The chain endpoint we already use returns
+ * these in `contract.details.ticker`.
+ *
+ * The optional time window narrows the result — pass `tsGteNs` /
+ * `tsLteNs` in NANOSECONDS (Polygon native) to pull just the last
+ * intraday window for the 5-min UOA cron.
+ */
+export async function fetchOptionTrades(
+  contractTicker: string,
+  opts: {
+    tsGteNs?: number; // nanoseconds since epoch
+    tsLteNs?: number;
+    limit?: number;
+    maxPages?: number;
+  } = {},
+): Promise<PolygonOptionTrade[]> {
+  const limit = opts.limit ?? 1000;
+  const maxPages = opts.maxPages ?? 10;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  qs.set("order", "desc");
+  qs.set("sort", "timestamp");
+  if (opts.tsGteNs) qs.set("timestamp.gte", String(opts.tsGteNs));
+  if (opts.tsLteNs) qs.set("timestamp.lte", String(opts.tsLteNs));
+
+  let next: string | null = `/v3/trades/${encodeURIComponent(contractTicker)}?${qs}`;
+  const all: PolygonOptionTrade[] = [];
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const path = next.startsWith("http")
+      ? next.replace(/^https?:\/\/api\.polygon\.io/, "")
+      : next;
+    const body: PolygonTradesResponse = await polygonGet(path);
+    if (body.results) all.push(...body.results);
+    next = body.next_url ?? null;
+    pages++;
+  }
+  return all;
+}
+
+// ---------------------------------------------------------------------------
+// UOA classification helpers.
+// ---------------------------------------------------------------------------
+
+/** Polygon condition code 41 = "Intermarket Sweep Order". A single
+ *  order routed to multiple venues at once, conventionally read as
+ *  urgent / institutional. The UOA scanner flags any trade carrying
+ *  this condition. */
+export const SWEEP_CONDITION_CODE = 41;
+
+/** Detect whether a trade's condition array marks it as a sweep. */
+export function isSweep(conditions: number[] | undefined): boolean {
+  return Array.isArray(conditions) && conditions.includes(SWEEP_CONDITION_CODE);
+}
+
+/**
+ * Classify a trade's aggressor side based on where the print landed
+ * relative to the NBBO at trade time:
+ *
+ *   - price ≥ ask          → "buy"        (aggressive buyer hit the ask)
+ *   - price ≤ bid          → "sell"       (aggressive seller hit the bid)
+ *   - between bid and ask  → "ambiguous"  (midmarket fill, hard to call)
+ *
+ * Tolerates a tiny epsilon on the ask/bid touch (rounding noise).
+ * Returns "ambiguous" when quotes are missing or invalid — caller can
+ * choose to drop these from the UOA scan.
+ */
+export function classifyAggressor(
+  price: number,
+  bid: number | null | undefined,
+  ask: number | null | undefined,
+): "buy" | "sell" | "ambiguous" {
+  if (!Number.isFinite(price) || price <= 0) return "ambiguous";
+  if (
+    bid == null || !Number.isFinite(bid) || bid <= 0 ||
+    ask == null || !Number.isFinite(ask) || ask <= 0 ||
+    ask < bid
+  ) {
+    return "ambiguous";
+  }
+  // 1c epsilon — fills that land within a cent of the bid/ask count as
+  // a touch. Helps when the trade price is reported rounded.
+  const eps = 0.01;
+  if (price >= ask - eps) return "buy";
+  if (price <= bid + eps) return "sell";
+  return "ambiguous";
 }

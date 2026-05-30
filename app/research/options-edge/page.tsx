@@ -3,6 +3,7 @@ import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { optionsEdgeScans } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
+import OptionsSubNav from "@/components/OptionsSubNav";
 import OptionsEdgeScanView from "@/components/OptionsEdgeScanView";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,9 @@ export default async function OptionsEdgeLandingPage() {
     return (
       <>
         <SiteHeader />
+        <div className="max-w-6xl mx-auto px-4 pt-6">
+          <OptionsSubNav active="edge" />
+        </div>
         <main className="max-w-5xl mx-auto px-4 py-12 space-y-4 text-center">
           <h1 className="text-xl font-semibold">No Options Edge scans yet</h1>
           <p className="text-sm text-black/60 dark:text-white/60 max-w-md mx-auto">
@@ -49,6 +53,9 @@ export default async function OptionsEdgeLandingPage() {
   return (
     <>
       <SiteHeader />
+      <div className="max-w-6xl mx-auto px-4 pt-6">
+        <OptionsSubNav active="edge" />
+      </div>
       <OptionsEdgeScanView
         scan={latest}
         archive={archive.filter((a) => a.scanDay !== latest.scanDay)}

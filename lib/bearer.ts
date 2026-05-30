@@ -48,6 +48,16 @@ export function requireIvSnapshotCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("IV_SNAPSHOT_CRON_TOKEN", req);
 }
 
+/**
+ * UOA scanner cron token. Separate from the IV snapshot token so a leaked
+ * token can only fire UOA scans (not write IV snapshots, not trigger trades).
+ * Set as `UOA_CRON_TOKEN` in Railway env. The daily EOD cron AND the
+ * intraday 5-min cron share this token.
+ */
+export function requireUoaCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("UOA_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

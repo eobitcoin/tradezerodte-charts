@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { renderMarkdown, extractSection } from "@/lib/markdown";
+import OptionsSubNav from "@/components/OptionsSubNav";
 import type {
   OptionsEdgeScan,
   OptionsEdgeAnomaly,
@@ -108,6 +109,8 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
           {anomalies.length === 1 ? "anomaly" : "anomalies"} surfaced
         </p>
       </header>
+
+      <OptionsSubNav active="edge" />
 
       {/* ANOMALIES — hero box. Renders the routine-written "Anomalies"
           section (lifted from the summary) right under the headline so a

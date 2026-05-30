@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { renderMarkdown } from "@/lib/markdown";
+import OptionsSubNav from "@/components/OptionsSubNav";
 import type {
   UoaScan,
   UoaPrintSummary,
@@ -114,6 +115,8 @@ export default async function UoaScanView({ scan, archive }: Props) {
           </div>
         )}
       </header>
+
+      <OptionsSubNav active="unusual" />
 
       {summaryHtml && (
         <section

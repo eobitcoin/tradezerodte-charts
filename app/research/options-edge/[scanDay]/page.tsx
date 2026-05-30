@@ -3,6 +3,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { optionsEdgeScans } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
+import OptionsSubNav from "@/components/OptionsSubNav";
 import OptionsEdgeScanView from "@/components/OptionsEdgeScanView";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,9 @@ export default async function OptionsEdgeArchivePage({
   return (
     <>
       <SiteHeader />
+      <div className="max-w-6xl mx-auto px-4 pt-6">
+        <OptionsSubNav active="edge" />
+      </div>
       <OptionsEdgeScanView scan={scan} archive={archive} />
     </>
   );

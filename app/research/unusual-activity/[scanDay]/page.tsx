@@ -3,6 +3,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { uoaScans } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
+import OptionsSubNav from "@/components/OptionsSubNav";
 import UoaScanView from "@/components/UoaScanView";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,9 @@ export default async function UnusualActivityArchivePage({
   return (
     <>
       <SiteHeader />
+      <div className="max-w-6xl mx-auto px-4 pt-6">
+        <OptionsSubNav active="unusual" />
+      </div>
       <UoaScanView scan={scan} archive={archive} />
     </>
   );

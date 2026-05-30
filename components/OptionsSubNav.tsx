@@ -27,7 +27,7 @@ export default function OptionsSubNav({ active }: { active: OptionsSubNavTab }) 
             key={t.id}
             href={t.href}
             className={[
-              "px-4 py-2 -mb-px border-b-2 text-sm font-medium transition-colors",
+              "px-4 py-2 -mb-px border-b-2 text-sm font-semibold uppercase tracking-wide transition-colors",
               isActive
                 ? "border-amber-500 text-amber-700 dark:text-amber-300"
                 : "border-transparent text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white hover:border-black/20 dark:hover:border-white/20",

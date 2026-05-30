@@ -45,10 +45,21 @@ export async function POST(req: Request) {
   const failed: string[] = [];
   const errors: Array<{ ticker: string; message: string }> = [];
 
+  // Throttle: pause between tickers so we stay under Polygon's per-minute
+  // cap. Each ticker fires ~3 calls (chain + chain pagination + aggs), so
+  // 600ms between tickers keeps us under ~100 calls/min comfortably. The
+  // polygonGet wrapper retries 429s on top of this; the sleep is the
+  // first line of defense so retries stay rare.
+  const PER_TICKER_DELAY_MS = 600;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   // Sequential — Polygon Options Advanced has generous limits but the chain
-  // calls are heavy (one per expiry). 25 tickers × ~3s each ≈ 75-90s well
-  // under the 300s maxDuration cap. No concurrency tuning needed.
+  // calls are heavy. 25 tickers × ~4s each ≈ 100s well under the 300s
+  // maxDuration cap.
+  let first = true;
   for (const ticker of OPTIONS_EDGE_WATCHLIST) {
+    if (!first) await sleep(PER_TICKER_DELAY_MS);
+    first = false;
     try {
       const chain = await fetchOptionChain(ticker);
       const surface = extractSurfacePoints(chain, snapshotDate);

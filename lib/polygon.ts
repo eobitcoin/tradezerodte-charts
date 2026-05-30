@@ -85,19 +85,51 @@ interface PolygonAggsResponse {
 // HTTP wrappers.
 // ---------------------------------------------------------------------------
 
+/**
+ * Authenticated GET against Polygon with automatic retry on 429 (and 5xx).
+ *
+ * Polygon's Options Advanced tier is generous but not infinite — when
+ * the daily IV-snapshot cron sweeps 25 tickers back-to-back (≈75 calls in
+ * 90 seconds), the per-minute limit can clip the tail. We retry up to 4
+ * times with exponential backoff, honoring the `Retry-After` header when
+ * Polygon supplies one. Anything else propagates as-is so callers can log
+ * + report it.
+ */
 async function polygonGet<T>(path: string): Promise<T> {
   const sep = path.includes("?") ? "&" : "?";
   const url = `${POLYGON_BASE}${path}${sep}apiKey=${apiKey()}`;
-  const res = await fetch(url, {
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) {
+
+  const maxAttempts = 4;
+  let lastErr: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (res.ok) return (await res.json()) as T;
+
     const body = await res.text().catch(() => "");
-    throw new Error(
+    const retryable = res.status === 429 || (res.status >= 500 && res.status < 600);
+
+    if (retryable && attempt < maxAttempts) {
+      // Prefer the server's hint, fall back to exponential backoff with
+      // jitter. Polygon's 429 doesn't always include Retry-After, so cap
+      // the floor at 2s × 2^(attempt-1) to give the bucket time to refill.
+      const retryAfterHdr = res.headers.get("retry-after");
+      const retryAfterSec = retryAfterHdr ? Number(retryAfterHdr) : NaN;
+      const backoffMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+        ? Math.min(retryAfterSec * 1000, 30_000)
+        : 2_000 * 2 ** (attempt - 1) + Math.floor(Math.random() * 500);
+      await new Promise((r) => setTimeout(r, backoffMs));
+      continue;
+    }
+
+    lastErr = new Error(
       `Polygon ${path} → HTTP ${res.status} ${res.statusText}: ${body.slice(0, 300)}`,
     );
+    throw lastErr;
   }
-  return (await res.json()) as T;
+
+  // Exhausted retries.
+  throw lastErr ?? new Error(`Polygon ${path}: retries exhausted`);
 }
 
 /**

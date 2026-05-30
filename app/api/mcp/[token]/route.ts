@@ -812,6 +812,47 @@ const TOOLS = [
     },
   },
   {
+    name: "scan_options_edge",
+    description:
+      "Run the Options Edge IV anomaly scanner across the 25-name watchlist (SPY, QQQ, IWM + mega-caps + semis + high-IV retail + sector ETFs). Reads from the iv_snapshots table built by the daily backfill. For each ticker computes 1-year z-scores on four metrics — ATM IV rank, 25Δ skew, term structure slope (60d-30d), and IV/HV ratio. Returns the ranked anomalies (|z| ≥ 2.0 by default) plus per-ticker analysis. Anomaly objects include suggested trade strategy and thesis. Use this in the weekly Options Edge research routine before publishing. Returns {scanDate, universeSize, rankedAnomalies, byTicker}.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "publish_options_edge_scan",
+    description:
+      "Persist a weekly Options Edge scan to the options_edge_scans table. UPSERTs on scan_day; safe to re-run. Pass the anomalies array from scan_options_edge plus a prose summary the routine wrote. Surfaces at /research/options-edge/[scan_day].",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scan_day: {
+          type: "string",
+          description: "YYYY-MM-DD. Defaults to today's NY date.",
+        },
+        title: {
+          type: "string",
+          description:
+            "Post title. Recommended: 'Options Edge — <Month Day, Year>'.",
+        },
+        summary: {
+          type: "string",
+          description:
+            "Prose summary of the scan — markdown. The page renders this above the ranked anomaly cards. 2-4 paragraphs: regime context, headline picks, what's notable across the surface.",
+        },
+        anomalies: {
+          type: "array",
+          description:
+            "Ranked anomaly objects from scan_options_edge — paste the rankedAnomalies array verbatim.",
+          items: { type: "object" },
+        },
+        universe_size: {
+          type: "integer",
+          description: "Number of tickers scanned (the scanner returns this).",
+        },
+      },
+      required: ["title", "summary", "anomalies"],
+    },
+  },
+  {
     name: "publish_insider_scan",
     description:
       "Publish the daily SEC Form 4 Insider Buy Scan to the user's website. Call this exactly once at the end of the routine.",
@@ -5547,6 +5588,86 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           content: [
             { type: "text", text: `fetch_sec_fundamentals failed: ${err instanceof Error ? err.message : String(err)}` },
           ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "scan_options_edge") {
+      try {
+        const { scanOptionsEdgeUniverse } = await import("@/lib/iv-analysis");
+        const out = await scanOptionsEdgeUniverse();
+        return {
+          content: [{ type: "text", text: JSON.stringify(out) }],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `scan_options_edge failed: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
+    }
+    if (name === "publish_options_edge_scan") {
+      try {
+        const a = args as {
+          scan_day?: string;
+          title?: string;
+          summary?: string;
+          anomalies?: unknown;
+          universe_size?: number;
+        };
+        const scanDay = a.scan_day || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(scanDay)) {
+          return { content: [{ type: "text", text: "scan_day must be YYYY-MM-DD" }], isError: true };
+        }
+        if (!a.title) return { content: [{ type: "text", text: "title is required" }], isError: true };
+        if (!a.summary) return { content: [{ type: "text", text: "summary is required" }], isError: true };
+        if (!Array.isArray(a.anomalies)) return { content: [{ type: "text", text: "anomalies must be an array" }], isError: true };
+        const { optionsEdgeScans } = await import("@/lib/db/schema");
+        const meta = {
+          routine_name: "Options Edge — Weekly Scan",
+          agent: "claude-mcp",
+          anomaly_count: a.anomalies.length,
+        };
+        const [row] = await db
+          .insert(optionsEdgeScans)
+          .values({
+            scanDay,
+            title: a.title,
+            summary: a.summary,
+            anomalies: a.anomalies as never,
+            universeSize: a.universe_size ?? 0,
+            runAt: new Date(),
+            meta,
+          })
+          .onConflictDoUpdate({
+            target: optionsEdgeScans.scanDay,
+            set: {
+              title: a.title,
+              summary: a.summary,
+              anomalies: a.anomalies as never,
+              universeSize: a.universe_size ?? 0,
+              runAt: new Date(),
+              meta,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning({ id: optionsEdgeScans.id, scanDay: optionsEdgeScans.scanDay });
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              id: row.id,
+              scan_day: row.scanDay,
+              url: `/research/options-edge/${row.scanDay}`,
+            }),
+          }],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `publish_options_edge_scan failed: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }

@@ -1,0 +1,227 @@
+import Link from "next/link";
+import { renderMarkdown } from "@/lib/markdown";
+import type {
+  OptionsEdgeScan,
+  OptionsEdgeAnomaly,
+} from "@/lib/db/schema";
+
+/**
+ * Renders one published Options Edge scan post. Layout:
+ *   1. Header — title + scan date + run-at timestamp
+ *   2. Routine-written prose summary (markdown)
+ *   3. Ranked anomaly cards — each shows ticker + metric + z-score +
+ *      suggested strategy + thesis + surface mini-table
+ *   4. Footer link to the archive
+ *
+ * Used by both /research/options-edge (latest) and
+ * /research/options-edge/[scanDay] (specific scan).
+ */
+
+interface Props {
+  scan: OptionsEdgeScan;
+  archive: Array<{ scanDay: string }>;
+}
+
+const METRIC_LABEL: Record<OptionsEdgeAnomaly["metric"], string> = {
+  atm_iv_rank: "ATM IV rank",
+  skew_z: "25Δ skew",
+  term_z: "Term structure",
+  iv_hv_ratio: "IV / HV",
+};
+
+const METRIC_TONE: Record<OptionsEdgeAnomaly["metric"], string> = {
+  atm_iv_rank: "border-violet-500/40 text-violet-300 bg-violet-500/[0.08]",
+  skew_z: "border-amber-500/40 text-amber-300 bg-amber-500/[0.08]",
+  term_z: "border-cyan-500/40 text-cyan-300 bg-cyan-500/[0.08]",
+  iv_hv_ratio: "border-emerald-500/40 text-emerald-300 bg-emerald-500/[0.08]",
+};
+
+function fmtIv(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${(v * 100).toFixed(1)}%`;
+}
+function fmtUsd(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `$${v.toFixed(2)}`;
+}
+function fmtZ(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const sign = v >= 0 ? "+" : "";
+  return `${sign}${v.toFixed(2)}σ`;
+}
+function fmtPct(v: number | null | undefined, decimals = 0): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${v.toFixed(decimals)}`;
+}
+
+function fmtScanDate(day: string): string {
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function directionLabel(d: "high" | "low"): string {
+  return d === "high" ? "Stretched high" : "Stretched low";
+}
+function directionTone(d: "high" | "low"): string {
+  return d === "high"
+    ? "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]"
+    : "border-sky-500/40 text-sky-300 bg-sky-500/[0.08]";
+}
+
+export default async function OptionsEdgeScanView({ scan, archive }: Props) {
+  const summaryHtml = scan.summary
+    ? await renderMarkdown(scan.summary, [])
+    : null;
+  const anomalies = (scan.anomalies as OptionsEdgeAnomaly[]) ?? [];
+
+  return (
+    <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <header className="space-y-2">
+        <div className="text-[10px] uppercase tracking-widest text-amber-400">
+          Options Edge · Weekly IV anomaly scan
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight">{scan.title}</h1>
+        <p className="text-sm text-white/55">
+          Scan date · {fmtScanDate(scan.scanDay)} ·{" "}
+          {scan.universeSize} tickers scanned · {anomalies.length}{" "}
+          {anomalies.length === 1 ? "anomaly" : "anomalies"} surfaced
+        </p>
+      </header>
+
+      {summaryHtml && (
+        <section
+          className="prose prose-neutral dark:prose-invert max-w-none dte-post"
+          dangerouslySetInnerHTML={{ __html: summaryHtml }}
+        />
+      )}
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-white/65">
+          Ranked anomalies
+        </h2>
+        {anomalies.length === 0 ? (
+          <p className="text-sm text-white/55 italic">
+            No anomalies cleared the |z| ≥ 2.0 threshold this scan. The
+            volatility surface across the universe is sitting within its
+            1-year norms.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {anomalies.map((a, i) => (
+              <li
+                key={`${a.ticker}-${a.metric}-${i}`}
+                className="rounded-lg border border-white/10 bg-white/[0.02] p-4 space-y-3"
+              >
+                {/* Top row: ticker + metric chip + direction + z-score */}
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <Link
+                    href={`/tickers/${a.ticker}`}
+                    className="font-mono text-xl font-bold tracking-tight hover:underline"
+                  >
+                    {a.ticker}
+                  </Link>
+                  <span
+                    className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${METRIC_TONE[a.metric]}`}
+                  >
+                    {METRIC_LABEL[a.metric]}
+                  </span>
+                  <span
+                    className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${directionTone(a.direction)}`}
+                  >
+                    {directionLabel(a.direction)}
+                  </span>
+                  <span className="ml-auto font-mono text-sm text-white/65">
+                    z = <span className="font-bold text-white/90">{fmtZ(a.zScore)}</span>{" "}
+                    · p<sub>{fmtPct(a.percentileRank)}</sub>
+                  </span>
+                </div>
+
+                {/* Strategy + thesis */}
+                <div>
+                  <div className="text-[11px] uppercase tracking-widest text-emerald-400 mb-1">
+                    Suggested
+                  </div>
+                  <div className="text-sm font-semibold text-white/90">
+                    {a.suggestedStrategy}
+                  </div>
+                  <p className="text-sm text-white/65 leading-relaxed mt-1">
+                    {a.thesis}
+                  </p>
+                </div>
+
+                {/* Surface mini-table */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                  <div className="rounded border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-widest text-white/45">
+                      Underlying
+                    </div>
+                    <div className="font-mono text-white/85 mt-0.5">
+                      {fmtUsd(a.surface.underlyingPrice)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-widest text-white/45">
+                      ATM IV 30d
+                    </div>
+                    <div className="font-mono text-white/85 mt-0.5">
+                      {fmtIv(a.surface.atmIv30d)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-widest text-white/45">
+                      25Δ Put
+                    </div>
+                    <div className="font-mono text-white/85 mt-0.5">
+                      {fmtIv(a.surface.put25dIv30d)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-widest text-white/45">
+                      25Δ Call
+                    </div>
+                    <div className="font-mono text-white/85 mt-0.5">
+                      {fmtIv(a.surface.call25dIv30d)}
+                    </div>
+                  </div>
+                  <div className="rounded border border-white/10 bg-white/[0.02] px-2 py-1.5">
+                    <div className="text-[9px] uppercase tracking-widest text-white/45">
+                      HV 30d
+                    </div>
+                    <div className="font-mono text-white/85 mt-0.5">
+                      {fmtIv(a.surface.hv30d)}
+                    </div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {archive.length > 0 && (
+        <section className="border-t border-white/10 pt-6">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-white/65 mb-3">
+            Recent scans
+          </h2>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {archive.slice(0, 12).map((a) => (
+              <li key={a.scanDay}>
+                <Link
+                  href={`/research/options-edge/${a.scanDay}`}
+                  className="block rounded border border-white/10 hover:border-amber-500/40 hover:bg-white/[0.03] px-3 py-2 text-xs transition-colors"
+                >
+                  <span className="font-mono text-white/55">{a.scanDay}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </main>
+  );
+}

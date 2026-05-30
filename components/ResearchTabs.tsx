@@ -9,6 +9,7 @@ export type ResearchTab =
   | "weekly"
   | "metals"
   | "quantum"
+  | "options_edge"
   | "economic"
   | "institutional"
   | "earnings"

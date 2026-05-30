@@ -1684,3 +1684,118 @@ export const botBacktestRuns = pgTable(
 );
 
 export type BotBacktestRun = typeof botBacktestRuns.$inferSelect;
+
+// ============================================================================
+// Options Edge — IV surface anomaly scanner.
+//
+// Two tables:
+//   1. ivSnapshots — daily per-ticker constant-maturity IV + HV surface points,
+//      backfilled 12 months from Polygon's as_of endpoint and refreshed
+//      weekly. The historical depth here is what makes IV rank / z-scores
+//      possible from day one.
+//   2. optionsEdgeScans — weekly scan posts: ranked anomaly list +
+//      summary + suggested trade per anomaly. The /research/options-edge
+//      surface reads these.
+// ============================================================================
+
+export const ivSnapshots = pgTable(
+  "iv_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),
+    /** Snapshot calendar date (the Polygon `as_of` date the chain was
+     *  pulled at). Daily granularity. */
+    snapshotDate: date("snapshot_date").notNull(),
+    /** Underlying spot price at the snapshot. */
+    underlyingPrice: numeric("underlying_price", { precision: 14, scale: 4 }),
+    /** Constant-maturity 30-day ATM IV. Linearly interpolated between the
+     *  two listed expiries that bracket 30 DTE. */
+    atmIv30d: numeric("atm_iv_30d", { precision: 8, scale: 6 }),
+    /** Constant-maturity 60-day ATM IV. */
+    atmIv60d: numeric("atm_iv_60d", { precision: 8, scale: 6 }),
+    /** 25-delta put IV at the 30-day tenor. */
+    put25dIv30d: numeric("put_25d_iv_30d", { precision: 8, scale: 6 }),
+    /** 25-delta call IV at the 30-day tenor. */
+    call25dIv30d: numeric("call_25d_iv_30d", { precision: 8, scale: 6 }),
+    /** 30-day realized historical volatility computed from underlying
+     *  daily bars (annualized log-return stdev). */
+    hv30d: numeric("hv_30d", { precision: 8, scale: 6 }),
+    /** Fit metadata — strike count, interpolation source, error flags. */
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("iv_snapshots_ticker_date_idx").on(t.ticker, t.snapshotDate),
+    index("iv_snapshots_ticker_date_desc_idx").on(
+      t.ticker,
+      t.snapshotDate.desc(),
+    ),
+  ],
+);
+
+export type IvSnapshot = typeof ivSnapshots.$inferSelect;
+
+/** A single anomaly the scanner flagged. The metric tells you what's
+ *  out-of-line; zScore + percentileRank give the strength. */
+export interface OptionsEdgeAnomaly {
+  ticker: string;
+  /** What's anomalous. */
+  metric:
+    | "atm_iv_rank"      // current ATM IV percentile vs 1y history
+    | "skew_z"           // 25Δ put-call IV spread vs 1y norm
+    | "term_z"           // 60d - 30d slope vs 1y norm
+    | "iv_hv_ratio";     // IV30 / HV30 vs 1y norm
+  /** Current observed value. */
+  currentValue: number;
+  /** 1-year z-score (how many stdevs from the mean). */
+  zScore: number;
+  /** 0-100. 95 = current value in the top 5%. */
+  percentileRank: number;
+  /** "high" = sell-vol candidate; "low" = buy-vol candidate. */
+  direction: "high" | "low";
+  /** Suggested trade strategy in trader vocabulary
+   *  (e.g. "sell 30d 25-delta strangle", "buy 60d ATM straddle"). */
+  suggestedStrategy: string;
+  /** One-line plain-English thesis. */
+  thesis: string;
+  /** Surface snapshot at scan time — for the page to render context. */
+  surface: {
+    atmIv30d: number | null;
+    put25dIv30d: number | null;
+    call25dIv30d: number | null;
+    hv30d: number | null;
+    underlyingPrice: number | null;
+  };
+}
+
+export const optionsEdgeScans = pgTable(
+  "options_edge_scans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** Scan day. Sunday is the canonical publish day. */
+    scanDay: date("scan_day").notNull().unique(),
+    title: text("title").notNull(),
+    /** Prose summary the routine wrote — rendered as the post body. */
+    summary: text("summary").notNull().default(""),
+    /** Ranked anomaly list (top N across all metrics). */
+    anomalies: jsonb("anomalies")
+      .$type<OptionsEdgeAnomaly[]>()
+      .notNull()
+      .default([]),
+    /** How many tickers were scanned. */
+    universeSize: integer("universe_size").notNull().default(0),
+    runAt: timestamp("run_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("options_edge_scans_scan_day_idx").on(t.scanDay.desc())],
+);
+
+export type OptionsEdgeScan = typeof optionsEdgeScans.$inferSelect;

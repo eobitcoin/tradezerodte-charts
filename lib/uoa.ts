@@ -18,6 +18,7 @@
  */
 
 import { and, desc, eq, sql } from "drizzle-orm";
+import { formatInTimeZone } from "date-fns-tz";
 import { db } from "@/lib/db";
 import {
   uoaPrints,
@@ -33,6 +34,38 @@ import {
 } from "@/lib/polygon";
 import { OPTIONS_EDGE_WATCHLIST } from "@/lib/iv-analysis";
 import { nyTradingDay } from "@/lib/trading-day";
+
+const NY_TZ = "America/New_York";
+
+/** Format a JS Date as the NY-tz calendar date (YYYY-MM-DD). */
+function nyDateOf(d: Date): string {
+  return formatInTimeZone(d, NY_TZ, "yyyy-MM-dd");
+}
+
+/**
+ * Pick the most-common NY-tz date among an array of trade prints.
+ * Used to derive scan_day from the data itself — on a weekday production
+ * run this matches today's NY date; on a weekend smoke test it matches
+ * Friday (the most recent actual session). Falls back to today's NY
+ * date when there are no prints at all.
+ */
+function dominantNyDate(prints: UoaPrintSummary[], fallback: string): string {
+  if (prints.length === 0) return fallback;
+  const counts = new Map<string, number>();
+  for (const p of prints) {
+    const d = nyDateOf(new Date(p.printTs));
+    counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+  let best = fallback;
+  let bestN = 0;
+  for (const [d, n] of counts) {
+    if (n > bestN) {
+      best = d;
+      bestN = n;
+    }
+  }
+  return best;
+}
 
 /** Reuse the Options Edge 25 — same Polygon usage profile. */
 export const UOA_WATCHLIST = OPTIONS_EDGE_WATCHLIST;
@@ -105,7 +138,6 @@ export async function runUoaScan(opts: {
   perTickerDelayMs?: number;
   topN?: number;
 } = {}): Promise<UoaScanResult> {
-  const scanDay = nyTradingDay();
   const perTickerDelayMs = opts.perTickerDelayMs ?? 600;
   const topN = opts.topN ?? 25;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -249,6 +281,12 @@ export async function runUoaScan(opts: {
     }
   }
 
+  // Derive scan_day from the prints themselves — on a Friday EOD run
+  // this is "today"; on a Saturday smoke test it ends up "Friday"
+  // (the actual session the data describes). Match against today's NY
+  // date when there are zero prints (preserves the empty-state row).
+  const scanDay = dominantNyDate(allSurviving, nyTradingDay());
+
   // Build top-N. Rank by premium descending (biggest dollars first).
   const topPrints = [...allSurviving]
     .sort((a, b) => b.premiumUsd - a.premiumUsd)
@@ -284,7 +322,9 @@ export async function publishDailyUoaSummary(opts: {
   const rows = await db
     .select()
     .from(uoaPrints)
-    .where(sql`${uoaPrints.printTs}::date = ${scanDay}::date`)
+    .where(
+      sql`(${uoaPrints.printTs} AT TIME ZONE 'America/New_York')::date = ${scanDay}::date`,
+    )
     .orderBy(desc(uoaPrints.premiumUsd))
     .limit(topN);
 
@@ -316,7 +356,9 @@ export async function publishDailyUoaSummary(opts: {
       n: sql<number>`count(*)::int`,
     })
     .from(uoaPrints)
-    .where(sql`${uoaPrints.printTs}::date = ${scanDay}::date`)
+    .where(
+      sql`(${uoaPrints.printTs} AT TIME ZONE 'America/New_York')::date = ${scanDay}::date`,
+    )
     .groupBy(uoaPrints.classification);
 
   const classificationCounts: Record<UoaClassification, number> = {
@@ -328,6 +370,21 @@ export async function publishDailyUoaSummary(opts: {
   };
   for (const b of breakdown) {
     classificationCounts[b.classification as UoaClassification] = Number(b.n);
+  }
+
+  // Guard: don't write a scan row that has zero prints AND no existing
+  // row to refresh. Without this, a weekend/no-data run creates a
+  // phantom "latest" row that the landing page then shows as empty —
+  // hiding the most-recent real scan from view.
+  if (topPrints.length === 0) {
+    const [existing] = await db
+      .select({ id: uoaScans.id })
+      .from(uoaScans)
+      .where(eq(uoaScans.scanDay, scanDay))
+      .limit(1);
+    if (!existing) {
+      return { topPrints, classificationCounts };
+    }
   }
 
   const title = `Unusual Activity — ${new Date(`${scanDay}T12:00:00Z`).toLocaleDateString("en-US", {

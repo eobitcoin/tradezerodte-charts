@@ -38,6 +38,16 @@ export function requireBotwickCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("BOTWICK_CRON_TOKEN", req);
 }
 
+/**
+ * IV-snapshot cron token. Used by the daily Polygon IV surface harvester that
+ * feeds the Options Edge weekly scanner. Separate from BotWick so a leaked
+ * trading token cannot trigger snapshot writes (and vice versa). Set as
+ * `IV_SNAPSHOT_CRON_TOKEN` in Railway env.
+ */
+export function requireIvSnapshotCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("IV_SNAPSHOT_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

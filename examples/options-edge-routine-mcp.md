@@ -45,15 +45,35 @@ If `rankedAnomalies.length === 0`, write a "no anomalies cleared the bar" summar
 
 ## STEP 3 — Write the prose summary
 
-Markdown body, **3-5 paragraphs**, in this structure:
+Markdown body in this **exact structure** — the website renders the `## Anomalies` section as a highlighted hero box up top, so the heading + numbered-list format is required:
 
-1. **Regime context (1 paragraph).** What's the vol environment telling us right now? Look at the `byTicker` data for SPY/QQQ — are most names sitting in normal ranges or stretched? Is the universe leaning sell-vol (most names at high IV ranks) or buy-vol (low IV ranks)? This is the macro framing.
+```markdown
+<one-paragraph regime context — no heading>
 
-2. **Top 2-3 picks (1 paragraph each).** For the most extreme anomalies (highest |z|), explain WHY this matters beyond the raw number. Don't just restate `thesis` — add color: what's the catalyst window? Are there earnings within 21 days? Is the underlying in a trend or chop? Reference the surface values (ATM IV, skew, HV) to ground the take.
+## Anomalies
 
-3. **Honorable mentions (1 paragraph).** Names at |z| 1.5–2.0 that didn't clear the threshold but are worth watching for next week. List 2-3 with one-line rationale each.
+1. **<TICKER> (<metric>, z=<z>)** — <2-3 sentences explaining WHY this matters beyond the raw number. Add color: catalyst window, trend vs chop, surface values that ground the take. Don't just restate `thesis`.
+2. **<TICKER> (<metric>, z=<z>)** — same shape.
+3. **<TICKER> (<metric>, z=<z>)** — same shape.
 
-4. **Risks / caveats (optional 1 paragraph).** Earnings calendar, Fed meeting, OPEX, election — anything in the next 5 trading days that would change the picture. If a high-z anomaly is on a name with earnings this week, FLAG IT — that's not mispricing, that's event premium.
+## Honorable mentions
+
+2-3 names at |z| 1.5–2.0 that didn't clear the threshold but are worth watching, with one-line rationale each. Format as bullets or short paragraphs.
+
+## Risks & caveats
+
+Earnings calendar, Fed meeting, OPEX, election — anything in the next 5 trading days that would change the picture. If a high-z anomaly is on a name with earnings this week, FLAG IT — that's not mispricing, that's event premium. Optional but recommended.
+```
+
+**Section guidance:**
+
+1. **Regime context** (1 paragraph, NO heading). What's the vol environment telling us right now? Look at the `byTicker` data for SPY/QQQ — are most names sitting in normal ranges or stretched? Is the universe leaning sell-vol (most names at high IV ranks) or buy-vol (low IV ranks)? This is the macro framing.
+
+2. **`## Anomalies` — REQUIRED heading.** Pick the 2–3 most extreme anomalies (highest |z|) and write them as a numbered list. The website lifts this entire section into a green hero box at the top of the post, so DO emit the heading exactly as `## Anomalies` and DO use the numbered-list format. Lead each item with bold `**TICKER (metric, z=±X.X)**` so the box reads like a scan-and-go briefing.
+
+3. **`## Honorable mentions`** — names at |z| 1.5–2.0 that didn't clear the threshold but are worth watching for next week. 2–3 with one-line rationale each.
+
+4. **`## Risks & caveats`** (optional) — see template.
 
 Style notes:
 - Conversational but precise. No jargon dump.

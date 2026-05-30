@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { renderMarkdown } from "@/lib/markdown";
+import { renderMarkdown, extractSection } from "@/lib/markdown";
 import { gradeColors } from "@/lib/grade";
 import { compareScans, type ComparisonRow } from "@/lib/scan-compare";
 import type { Post, Trade } from "@/lib/db/schema";
@@ -14,50 +14,6 @@ type Props = {
 function dirLabel(d?: Trade["direction"]): string {
   if (!d) return "—";
   return d.toUpperCase();
-}
-
-/**
- * Pull a named section out of a markdown document. Finds the first
- * heading whose text contains `needle` (case-insensitive), then captures
- * everything from that heading until the next heading of the same or
- * higher level (lower-or-equal `#` count). Returns the extracted section
- * (heading included) plus the document with that section removed.
- *
- * Used to lift the routine-written "Top Recommendations" section out of
- * the analysis narrative and render it in the highlighted box up top,
- * without duplicating it lower in the prose.
- */
-function extractSection(
-  md: string,
-  needle: string,
-): { section: string | null; rest: string } {
-  const lines = md.split("\n");
-  const target = needle.toLowerCase();
-  let startIdx = -1;
-  let level = 0;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^(#{1,6})\s+(.+?)\s*$/);
-    if (m && m[2].toLowerCase().includes(target)) {
-      startIdx = i;
-      level = m[1].length;
-      break;
-    }
-  }
-  if (startIdx === -1) return { section: null, rest: md };
-  let endIdx = lines.length;
-  for (let i = startIdx + 1; i < lines.length; i++) {
-    const m = lines[i].match(/^(#{1,6})\s+/);
-    if (m && m[1].length <= level) {
-      endIdx = i;
-      break;
-    }
-  }
-  const section = lines.slice(startIdx, endIdx).join("\n");
-  const rest = [...lines.slice(0, startIdx), ...lines.slice(endIdx)]
-    .join("\n")
-    // Collapse the blank-line gap left where the section was removed.
-    .replace(/\n{3,}/g, "\n\n");
-  return { section, rest };
 }
 
 function dirClass(d?: Trade["direction"]): string {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { renderMarkdown } from "@/lib/markdown";
+import { renderMarkdown, extractSection } from "@/lib/markdown";
 import type {
   OptionsEdgeScan,
   OptionsEdgeAnomaly,
@@ -74,10 +74,26 @@ function directionTone(d: "high" | "low"): string {
 }
 
 export default async function OptionsEdgeScanView({ scan, archive }: Props) {
-  const summaryHtml = scan.summary
-    ? await renderMarkdown(scan.summary, [])
-    : null;
   const anomalies = (scan.anomalies as OptionsEdgeAnomaly[]) ?? [];
+
+  // Lift the routine-written "Anomalies" section out of the summary →
+  // render it in the highlighted hero box up top, and render the
+  // remaining narrative (regime context, honorable mentions, risks)
+  // below without it. Falls back to plain prose if the routine didn't
+  // emit the section heading (older posts before the prompt update).
+  let anomaliesHtml: string | null = null;
+  let narrativeHtml: string | null = null;
+  if (scan.summary) {
+    const { section, rest } = extractSection(scan.summary, "anomalies");
+    if (section) {
+      // Strip the section's own heading line — the box supplies its header.
+      const sectionBody = section.replace(/^\s*#{1,6}\s+[^\n]*\n+/, "");
+      anomaliesHtml = await renderMarkdown(sectionBody, []);
+      narrativeHtml = await renderMarkdown(rest, []);
+    } else {
+      narrativeHtml = await renderMarkdown(scan.summary, []);
+    }
+  }
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -93,10 +109,30 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
         </p>
       </header>
 
-      {summaryHtml && (
+      {/* ANOMALIES — hero box. Renders the routine-written "Anomalies"
+          section (lifted from the summary) right under the headline so a
+          reader can scan-and-go. The section is stripped from the
+          narrative below so it isn't duplicated. Mirrors the daily
+          analysis "Top Recommendations" box for visual consistency. */}
+      {anomaliesHtml && (
+        <section
+          aria-label="Anomalies"
+          className="rounded-xl border-2 border-emerald-500/50 bg-gradient-to-br from-emerald-500/[0.10] to-emerald-500/[0.02] shadow-lg shadow-emerald-900/10 p-4 sm:p-5 space-y-3"
+        >
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+            <span aria-hidden="true">★</span> Anomalies
+          </h2>
+          <div
+            className="prose prose-neutral dark:prose-invert prose-sm max-w-none dte-post"
+            dangerouslySetInnerHTML={{ __html: anomaliesHtml }}
+          />
+        </section>
+      )}
+
+      {narrativeHtml && (
         <section
           className="prose prose-neutral dark:prose-invert max-w-none dte-post"
-          dangerouslySetInnerHTML={{ __html: summaryHtml }}
+          dangerouslySetInnerHTML={{ __html: narrativeHtml }}
         />
       )}
 

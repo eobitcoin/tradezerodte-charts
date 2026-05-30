@@ -66,3 +66,48 @@ export async function renderMarkdown(md: string, tickers: string[] = []): Promis
 function escapeRe(s: string): string {
   return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
 }
+
+/**
+ * Pull a named section out of a markdown document. Finds the first heading
+ * whose text contains `needle` (case-insensitive), then captures everything
+ * from that heading until the next heading of the same or higher level
+ * (lower-or-equal `#` count). Returns the extracted section (heading
+ * included) plus the document with that section removed.
+ *
+ * Used to lift routine-written hero sections (Top Recommendations on the
+ * daily analysis, Anomalies on the Options Edge scan) out of the prose
+ * narrative and render them in a highlighted box up top, without
+ * duplicating them lower in the body.
+ */
+export function extractSection(
+  md: string,
+  needle: string,
+): { section: string | null; rest: string } {
+  const lines = md.split("\n");
+  const target = needle.toLowerCase();
+  let startIdx = -1;
+  let level = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (m && m[2].toLowerCase().includes(target)) {
+      startIdx = i;
+      level = m[1].length;
+      break;
+    }
+  }
+  if (startIdx === -1) return { section: null, rest: md };
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s+/);
+    if (m && m[1].length <= level) {
+      endIdx = i;
+      break;
+    }
+  }
+  const section = lines.slice(startIdx, endIdx).join("\n");
+  const rest = [...lines.slice(0, startIdx), ...lines.slice(endIdx)]
+    .join("\n")
+    // Collapse the blank-line gap left where the section was removed.
+    .replace(/\n{3,}/g, "\n\n");
+  return { section, rest };
+}

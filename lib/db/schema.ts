@@ -1818,3 +1818,136 @@ export const optionsEdgeScans = pgTable(
 );
 
 export type OptionsEdgeScan = typeof optionsEdgeScans.$inferSelect;
+
+// ============================================================================
+// UNUSUAL OPTIONS ACTIVITY (UOA)
+//
+// Smart-money flow scanner. Two tables:
+//   1. uoaPrints — raw filtered prints. Each row is one option trade
+//      that cleared the unusual-activity bar (premium > $50k, OI mult
+//      > 3x, opening-trade aggressor signal). Populated by an EOD
+//      cron + an intraday 5-min cron during RTH.
+//   2. uoaScans — daily summary post. UPSERTs on scan_day; one row
+//      per trading day with the top N prints + classification
+//      breakdown + prose summary.
+//
+// The Sweep flag uses Polygon's condition code 41 (intermarket sweep
+// order) — a single order broken across exchanges, conventionally
+// read as urgent / institutional. Aggressor side is classified from
+// the bid/ask at trade time: at-or-above ask → aggressive buyer,
+// at-or-below bid → aggressive seller, midmarket → ambiguous.
+// ============================================================================
+
+/** UOA print classification. Drives the per-card color + the
+ *  "bullish call buying" / "bearish put buying" copy. */
+export type UoaClassification =
+  | "bullish_call_buy"   // aggressive buyer of calls — bullish bet
+  | "bearish_put_buy"    // aggressive buyer of puts — bearish bet
+  | "call_sell"          // aggressive seller of calls (short call)
+  | "put_sell"           // aggressive seller of puts (short put / cash-secured)
+  | "ambiguous";         // couldn't classify cleanly (midmarket fill, etc)
+
+export const uoaPrints = pgTable(
+  "uoa_prints",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** When the trade actually printed (Polygon participant_timestamp). */
+    printTs: timestamp("print_ts", { withTimezone: true }).notNull(),
+    /** When our cron pulled + classified it. */
+    capturedAt: timestamp("captured_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    underlying: text("underlying").notNull(),
+    contractTicker: text("contract_ticker").notNull(),
+    expirationDate: date("expiration_date").notNull(),
+    strike: numeric("strike", { precision: 14, scale: 4 }).notNull(),
+    contractType: text("contract_type").notNull(), // 'call' | 'put'
+
+    side: text("side").notNull(), // 'buy' | 'sell' aggressor
+    size: integer("size").notNull(),
+    price: numeric("price", { precision: 14, scale: 4 }).notNull(),
+    premiumUsd: numeric("premium_usd", { precision: 16, scale: 2 }).notNull(),
+
+    bidAtTrade: numeric("bid_at_trade", { precision: 14, scale: 4 }),
+    askAtTrade: numeric("ask_at_trade", { precision: 14, scale: 4 }),
+
+    isSweep: boolean("is_sweep").notNull().default(false),
+    conditions: jsonb("conditions").$type<number[]>().notNull().default([]),
+
+    priorDayOi: integer("prior_day_oi"),
+    oiMultiplier: numeric("oi_multiplier", { precision: 8, scale: 2 }),
+
+    classification: text("classification").$type<UoaClassification>().notNull(),
+
+    pctFromSpot: numeric("pct_from_spot", { precision: 8, scale: 2 }),
+    underlyingPriceAtTrade: numeric("underlying_price_at_trade", {
+      precision: 14,
+      scale: 4,
+    }),
+
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("uoa_prints_underlying_ts_idx").on(t.underlying, t.printTs.desc()),
+    index("uoa_prints_captured_at_idx").on(t.capturedAt.desc()),
+    index("uoa_prints_premium_desc_idx").on(t.premiumUsd.desc(), t.printTs.desc()),
+    index("uoa_prints_classification_idx").on(t.classification, t.printTs.desc()),
+    uniqueIndex("uoa_prints_dedup_idx").on(
+      t.contractTicker,
+      t.printTs,
+      t.size,
+      t.price,
+    ),
+  ],
+);
+
+export type UoaPrint = typeof uoaPrints.$inferSelect;
+
+/** Denormalized print summary stored in `uoa_scans.prints`. Snapshot at
+ *  scan time so historical scans don't break if uoa_prints evolves. */
+export interface UoaPrintSummary {
+  printTs: string; // ISO
+  underlying: string;
+  contractTicker: string;
+  expirationDate: string; // YYYY-MM-DD
+  strike: number;
+  contractType: "call" | "put";
+  side: "buy" | "sell";
+  size: number;
+  price: number;
+  premiumUsd: number;
+  isSweep: boolean;
+  oiMultiplier: number | null;
+  classification: UoaClassification;
+  pctFromSpot: number | null;
+  underlyingPriceAtTrade: number | null;
+}
+
+export const uoaScans = pgTable(
+  "uoa_scans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull().unique(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull().default(""),
+    prints: jsonb("prints").$type<UoaPrintSummary[]>().notNull().default([]),
+    universeSize: integer("universe_size").notNull(),
+    runAt: timestamp("run_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("uoa_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type UoaScan = typeof uoaScans.$inferSelect;

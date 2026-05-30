@@ -34,7 +34,10 @@ export default async function SiteHeader() {
            *  between equity research surfaces without going through the
            *  top-level menu. */}
           <Link href="/research" className="hover:underline">Stocks</Link>
-          <Link href="/research/options-edge" className="hover:underline">Options Edge</Link>
+          {/* Top-level chip is "Options" — the surface inside is still called
+           *  Options Edge in copy/headings, but this menu entry will grow to
+           *  hold sibling options features (GEX dashboard, unusual flow). */}
+          <Link href="/research/options-edge" className="hover:underline">Options</Link>
           <Link href="/crypto" className="hover:underline">Crypto</Link>
           <Link
             href="/botwick"

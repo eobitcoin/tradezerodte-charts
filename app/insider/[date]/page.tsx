@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { insiderPosts } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
 import ResearchTabs from "@/components/ResearchTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 import InsiderView from "@/components/InsiderView";
 import InsiderSidebar, { type InsiderSidebarItem } from "@/components/InsiderSidebar";
 
@@ -48,6 +49,7 @@ export default async function InsiderDetailPage({
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-10">
         <main className="min-w-0 space-y-4">
+          <StocksNavTabs active="research" />
           <ResearchTabs active="insider" />
           <Link href="/insider" className="text-sm underline inline-block">
             ← Back to latest insider scan

@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { institutionalPosts, type InstitutionalPost } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
 import ResearchTabs from "@/components/ResearchTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 import InstitutionalView from "@/components/InstitutionalView";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ export default async function InstitutionalPage({ searchParams }: PageProps) {
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-6 lg:gap-10">
         <main className="min-w-0 space-y-4">
+          <StocksNavTabs active="research" />
           <ResearchTabs active="institutional" />
           {post ? (
             <InstitutionalView post={post as InstitutionalPost} />

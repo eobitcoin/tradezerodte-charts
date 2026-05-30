@@ -29,10 +29,11 @@ export default async function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/" className="hover:underline">Today</Link>
-          <Link href="/research" className="hover:underline">Research</Link>
-          <Link href="/radar" className="hover:underline">Stocks</Link>
-          <Link href="/research/metals" className="hover:underline">Metals</Link>
-          <Link href="/research/quantum" className="hover:underline">Quantum</Link>
+          {/* Stocks is now a hub link — landing on /research surfaces the
+           *  Research|Metals|Quantum|Radar sub-nav so users can pivot
+           *  between equity research surfaces without going through the
+           *  top-level menu. */}
+          <Link href="/research" className="hover:underline">Stocks</Link>
           <Link href="/research/options-edge" className="hover:underline">Options Edge</Link>
           <Link href="/crypto" className="hover:underline">Crypto</Link>
           <Link

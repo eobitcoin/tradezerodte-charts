@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { maxPainPosts, type MaxPainTicker } from "@/lib/db/schema";
 import { nyTradingDay } from "@/lib/trading-day";
 import SiteHeader from "@/components/SiteHeader";
-import StocksTabs from "@/components/StocksTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 import MaxPainView from "@/components/MaxPainView";
 import { pickActiveTicker } from "@/lib/max-pain";
 
@@ -28,7 +28,7 @@ export default async function MaxPainTodayPage({
       <>
         <SiteHeader />
         <div className="max-w-7xl mx-auto px-4 pt-4">
-          <StocksTabs active="maxpain" />
+          <StocksNavTabs active="maxpain" />
         </div>
         <main className="flex-1 flex items-center justify-center p-6">
           <div className="text-center space-y-3 max-w-md">
@@ -53,7 +53,7 @@ export default async function MaxPainTodayPage({
       <>
         <SiteHeader />
         <div className="max-w-7xl mx-auto px-4 pt-4">
-          <StocksTabs active="maxpain" />
+          <StocksNavTabs active="maxpain" />
         </div>
         <main className="flex-1 flex items-center justify-center p-6">
           <div className="text-center space-y-3 max-w-md">
@@ -71,7 +71,7 @@ export default async function MaxPainTodayPage({
     <>
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 pt-4">
-        <StocksTabs active="maxpain" />
+        <StocksNavTabs active="maxpain" />
       </div>
       {latest.scanDay !== today && (
         <div className="max-w-7xl mx-auto px-4 pt-6">

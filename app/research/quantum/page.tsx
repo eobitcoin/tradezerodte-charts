@@ -5,7 +5,7 @@ import { researchPosts } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
 import ResearchView from "@/components/ResearchView";
 import ResearchSidebar, { type ResearchSidebarItem } from "@/components/ResearchSidebar";
-import ResearchTabs from "@/components/ResearchTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 
 /**
  * Member-only landing for the weekly quantum research stream.
@@ -53,7 +53,7 @@ export default async function QuantumResearchTodayPage() {
       <>
         <SiteHeader />
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-          <ResearchTabs active="quantum" />
+          <StocksNavTabs active="quantum" />
           <div className="text-center space-y-3 max-w-md mx-auto pt-12">
             <h1 className="text-xl font-semibold">No quantum research yet</h1>
             <p className="text-sm text-black/60 dark:text-white/60">
@@ -76,7 +76,7 @@ export default async function QuantumResearchTodayPage() {
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:gap-10">
         <main className="min-w-0 space-y-4">
-          <ResearchTabs active="quantum" />
+          <StocksNavTabs active="quantum" />
           <ResearchView post={latest} />
         </main>
         <ResearchSidebar

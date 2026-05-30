@@ -5,6 +5,7 @@ import { insiderPosts } from "@/lib/db/schema";
 import { nyTradingDay } from "@/lib/trading-day";
 import SiteHeader from "@/components/SiteHeader";
 import ResearchTabs from "@/components/ResearchTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 import InsiderView from "@/components/InsiderView";
 import InsiderSidebar, { type InsiderSidebarItem } from "@/components/InsiderSidebar";
 
@@ -42,6 +43,7 @@ export default async function InsiderTodayPage() {
       <>
         <SiteHeader />
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+          <StocksNavTabs active="research" />
           <ResearchTabs active="insider" />
           <div className="text-center space-y-3 max-w-md mx-auto pt-12">
             <h1 className="text-xl font-semibold">No insider scans yet</h1>
@@ -70,6 +72,7 @@ export default async function InsiderTodayPage() {
       )}
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px] gap-6 lg:gap-10">
         <main className="min-w-0 space-y-4">
+          <StocksNavTabs active="research" />
           <ResearchTabs active="insider" />
           <InsiderView post={latest} />
         </main>

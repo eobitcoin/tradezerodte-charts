@@ -6,6 +6,7 @@ import SiteHeader from "@/components/SiteHeader";
 import ResearchView from "@/components/ResearchView";
 import ResearchSidebar, { type ResearchSidebarItem } from "@/components/ResearchSidebar";
 import ResearchTabs from "@/components/ResearchTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export default async function ResearchTodayPage() {
       <>
         <SiteHeader />
         <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+          <StocksNavTabs active="research" />
           <ResearchTabs active="weekly" />
           <div className="text-center space-y-3 max-w-md mx-auto pt-12">
             <h1 className="text-xl font-semibold">No research posts yet</h1>
@@ -64,6 +66,7 @@ export default async function ResearchTodayPage() {
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6 lg:gap-10">
         <main className="min-w-0 space-y-4">
+          <StocksNavTabs active="research" />
           <ResearchTabs active="weekly" />
           <ResearchView post={latest} />
         </main>

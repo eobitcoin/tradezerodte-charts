@@ -1,6 +1,6 @@
 import Link from "next/link";
 import SiteHeader from "@/components/SiteHeader";
-import StocksTabs from "@/components/StocksTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 
 export const dynamic = "force-static";
 
@@ -42,7 +42,7 @@ export default function MaxPainHelpPage() {
     <>
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        <StocksTabs active="maxpain" />
+        <StocksNavTabs active="maxpain" />
         <header className="space-y-2">
           <h1 className="text-2xl font-bold tracking-tight">Max Pain &amp; Gamma Exposure</h1>
           <p className="text-sm text-black/60 dark:text-white/60">

@@ -18,6 +18,7 @@ import { economicEvents, type EconImportance } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import SiteHeader from "@/components/SiteHeader";
 import ResearchTabs from "@/components/ResearchTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -213,6 +214,7 @@ export default async function EconomicCalendarPage({
     <>
       <SiteHeader />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+        <StocksNavTabs active="research" />
         <ResearchTabs active="economic" />
 
         {/* Header + week navigation */}

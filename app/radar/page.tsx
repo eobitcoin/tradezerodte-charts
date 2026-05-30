@@ -12,7 +12,7 @@ import {
 } from "@/lib/radar";
 import type { RadarSignal, RadarTimeframe } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
-import StocksTabs from "@/components/StocksTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 import RadarTable from "@/components/RadarTable";
 
 export const dynamic = "force-dynamic";
@@ -92,7 +92,7 @@ export default async function RadarPage() {
     <>
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        <StocksTabs active="radar" />
+        <StocksNavTabs active="radar" />
         <header className="space-y-2">
           <h1 className="text-2xl font-bold tracking-tight">Radar</h1>
           <p className="text-sm text-black/60 dark:text-white/60">

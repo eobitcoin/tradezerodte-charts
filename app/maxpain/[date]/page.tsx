@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { maxPainPosts, type MaxPainTicker } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
-import StocksTabs from "@/components/StocksTabs";
+import StocksNavTabs from "@/components/StocksNavTabs";
 import MaxPainView from "@/components/MaxPainView";
 import { pickActiveTicker } from "@/lib/max-pain";
 
@@ -37,7 +37,7 @@ export default async function MaxPainDetailPage({
     <>
       <SiteHeader />
       <div className="max-w-7xl mx-auto px-4 pt-4">
-        <StocksTabs active="maxpain" />
+        <StocksNavTabs active="maxpain" />
       </div>
       <div className="max-w-7xl mx-auto px-4 pt-4 flex items-center justify-between gap-3">
         <Link href="/maxpain" className="text-sm underline">

@@ -1,15 +1,12 @@
 import Link from "next/link";
 
-/** Tab union covers every Research surface, including the asset-class
- *  pages (metals, quantum). They're not rendered in this tab strip
- *  because the top-level site nav links to them directly — but the
- *  union stays complete so the per-page `active={...}` typecheck still
- *  works on /research/metals and /research/quantum. */
+/** Second-row Research sub-nav. Sits below StocksNavTabs on the equity
+ *  research family pages. The "metals" / "quantum" asset-class pages and
+ *  the dedicated Options Edge surface live one level up (StocksNavTabs)
+ *  and DON'T render this strip — those are different streams that don't
+ *  share the weekly/economic/institutional/etc. axis. */
 export type ResearchTab =
   | "weekly"
-  | "metals"
-  | "quantum"
-  | "options_edge"
   | "economic"
   | "institutional"
   | "earnings"

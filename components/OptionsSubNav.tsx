@@ -19,7 +19,7 @@ const TABS: Array<{ id: OptionsSubNavTab; label: string; href: string }> = [
 
 export default function OptionsSubNav({ active }: { active: OptionsSubNavTab }) {
   return (
-    <nav className="border-b border-black/10 dark:border-white/10 flex gap-2 flex-wrap">
+    <nav className="border-b border-black/10 dark:border-white/10 flex justify-start gap-2 flex-wrap">
       {TABS.map((t) => {
         const isActive = t.id === active;
         return (

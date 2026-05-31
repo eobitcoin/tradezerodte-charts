@@ -88,7 +88,7 @@ export default async function UoaScanView({ scan, archive }: Props) {
   const totalPrints = (meta.totalPrints as number | undefined) ?? prints.length;
 
   return (
-    <main className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+    <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       <header className="space-y-2">
         <div className="text-[10px] uppercase tracking-widest text-amber-400">
           Unusual Activity · End-of-day smart-money flow

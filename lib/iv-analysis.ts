@@ -14,6 +14,7 @@
 
 import { desc, eq, sql, and, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { fetchOptionChain } from "@/lib/polygon";
 import {
   ivSnapshots,
   type OptionsEdgeAnomaly,
@@ -460,6 +461,101 @@ export type OptionsEdgeTicker = (typeof OPTIONS_EDGE_WATCHLIST)[number];
  * plus a flat ranked anomaly list sorted by absolute z-score (most
  * extreme first).
  */
+/**
+ * Find the listed strike closest to `target` from a sorted ascending
+ * list. Linear scan is fine — typical chains have 30-80 strikes.
+ * Returns the target itself when the list is empty (so the chip still
+ * renders something meaningful even if the chain fetch failed).
+ */
+function nearestListedStrike(target: number, strikes: number[]): number {
+  if (strikes.length === 0) return target;
+  let best = strikes[0];
+  let bestDist = Math.abs(target - best);
+  for (const s of strikes) {
+    const d = Math.abs(target - s);
+    if (d < bestDist) {
+      bestDist = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/**
+ * After the scan computes theoretical strikes via the delta-target
+ * formula, re-snap each anomaly's legs to the nearest LISTED strike
+ * on Polygon's chain. Without this, the chips can suggest strikes
+ * that don't exist (e.g. MSTR 181C — the actual grid is $2.50/$5
+ * not $1, so 181 isn't listed; 180 or 182.50 is).
+ *
+ * We dedupe by ticker so one chain fetch covers all anomalies for
+ * that name. Errors per ticker are swallowed — better to leave the
+ * theoretical strike than to crash the publish step.
+ */
+async function reSnapAnomaliesToListedStrikes(
+  anomalies: OptionsEdgeAnomaly[],
+): Promise<void> {
+  // Group anomalies by ticker; skip those with no legs.
+  const byTicker = new Map<string, OptionsEdgeAnomaly[]>();
+  for (const a of anomalies) {
+    if (!a.legs || a.legs.length === 0) continue;
+    if (!byTicker.has(a.ticker)) byTicker.set(a.ticker, []);
+    byTicker.get(a.ticker)!.push(a);
+  }
+
+  // Throttle slightly to stay polite to Polygon — same per-ticker cadence
+  // as the IV snapshot cron. ~13 tickers max × ~3 anomalies each.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  let first = true;
+  for (const [ticker, anoms] of byTicker) {
+    if (!first) await sleep(500);
+    first = false;
+    try {
+      const chain = await fetchOptionChain(ticker);
+      if (chain.length === 0) continue;
+
+      // Narrow to expiries in the 21-45 day window — that's where our
+      // theoretical strikes target (~30 DTE). The strike grid is
+      // usually consistent across expiries, but using the relevant
+      // window avoids picking a strike that only exists on a weekly
+      // we'd never trade.
+      const now = Date.now();
+      const inWindow = chain.filter((c) => {
+        const exp = new Date(`${c.details.expiration_date}T00:00:00Z`).getTime();
+        const dte = (exp - now) / 86_400_000;
+        return dte >= 21 && dte <= 45;
+      });
+      const source = inWindow.length > 0 ? inWindow : chain;
+
+      const callStrikes = [
+        ...new Set(
+          source
+            .filter((c) => c.details.contract_type === "call")
+            .map((c) => c.details.strike_price),
+        ),
+      ].sort((a, b) => a - b);
+      const putStrikes = [
+        ...new Set(
+          source
+            .filter((c) => c.details.contract_type === "put")
+            .map((c) => c.details.strike_price),
+        ),
+      ].sort((a, b) => a - b);
+
+      for (const a of anoms) {
+        for (const leg of a.legs!) {
+          const list = leg.type === "call" ? callStrikes : putStrikes;
+          leg.strike = nearestListedStrike(leg.strike, list);
+        }
+      }
+    } catch {
+      // Per-ticker failure: leave the theoretical strikes for that
+      // ticker untouched. Better to ship a near-correct chip than
+      // fail the whole publish.
+    }
+  }
+}
+
 export async function scanOptionsEdgeUniverse(): Promise<{
   scanDate: string;
   byTicker: TickerAnalysis[];
@@ -472,6 +568,12 @@ export async function scanOptionsEdgeUniverse(): Promise<{
   const rankedAnomalies = analyses
     .flatMap((a) => a.anomalies)
     .sort((a, b) => Math.abs(b.zScore) - Math.abs(a.zScore));
+
+  // Snap theoretical strikes to actual chain strikes. This mutates
+  // legs in place on the anomalies array; the byTicker copies share
+  // the same leg objects so they get the updated strikes too.
+  await reSnapAnomaliesToListedStrikes(rankedAnomalies);
+
   return {
     scanDate: new Date().toISOString().slice(0, 10),
     byTicker: analyses,

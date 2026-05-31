@@ -536,7 +536,7 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
       {resultsFirst && riskGraphSection}
 
       {chain && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           {/* LEFT: chain table */}
           <div className="space-y-3 min-w-0">
             {/* Expiry tabs — full chain, no cap. Polygon returns every

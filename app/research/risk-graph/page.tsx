@@ -17,7 +17,7 @@ export default function RiskGraphPage() {
   return (
     <>
       <SiteHeader />
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-7xl mx-auto px-4 py-8 space-y-6">
         <OptionsSubNav active="risk-graph" />
         <header className="space-y-2">
           <div className="flex items-baseline justify-between gap-3">

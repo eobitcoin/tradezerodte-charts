@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { gexSnapshots, type GexSnapshot } from "@/lib/db/schema";
 import { GEX_WATCHLIST } from "@/lib/gex";
@@ -10,32 +10,26 @@ export const dynamic = "force-dynamic";
 
 /**
  * /research/gex — universe overview. One row per ticker showing the
- * latest snapshot. Backed by a DISTINCT ON query that grabs the
- * freshest snapshot per ticker without a separate aggregation step.
+ * latest snapshot. We run 13 small "latest per ticker" queries in
+ * parallel rather than a fancy DISTINCT ON — drizzle's typed return
+ * properly maps snake_case columns to camelCase, and 13 indexed
+ * lookups against (ticker, ts desc) is microseconds.
  */
 export default async function GexLandingPage() {
-  // Latest snapshot per ticker. DISTINCT ON + ORDER BY (ticker, ts desc)
-  // is the canonical Postgres pattern for "newest per group" — single
-  // table scan, no window function.
-  const rows = (await db.execute(sql`
-    SELECT DISTINCT ON (ticker) *
-    FROM ${gexSnapshots}
-    ORDER BY ticker, ts DESC
-  `)) as unknown as { rows?: GexSnapshot[] } | GexSnapshot[];
-
-  // postgres-js returns the array directly; drizzle's execute can wrap
-  // it in { rows }. Handle both.
-  const flat: GexSnapshot[] = Array.isArray(rows)
-    ? rows
-    : (rows.rows ?? []);
-
-  // Sort by watchlist position so the table reads consistently
-  // (indexes first, then mega-cap tech, then high-flow names).
-  const order = new Map(GEX_WATCHLIST.map((t, i) => [t as string, i]));
-  flat.sort(
-    (a, b) =>
-      (order.get(a.ticker) ?? 999) - (order.get(b.ticker) ?? 999),
+  const perTicker = await Promise.all(
+    GEX_WATCHLIST.map(async (ticker) => {
+      const [row] = await db
+        .select()
+        .from(gexSnapshots)
+        .where(eq(gexSnapshots.ticker, ticker))
+        .orderBy(desc(gexSnapshots.ts))
+        .limit(1);
+      return row;
+    }),
   );
+  // Preserve watchlist order; drop tickers that haven't been
+  // snapshotted yet (cron hasn't run since they were added).
+  const flat: GexSnapshot[] = perTicker.filter((r): r is GexSnapshot => Boolean(r));
 
   return (
     <>

@@ -155,6 +155,8 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
         <p className="text-xs text-white/55 italic">{STRATEGY_DESC[tab]}</p>
       )}
 
+      {tab === "straddle" && <StraddleSignalBanner tickers={tickers} />}
+
       {filtered.length === 0 ? (
         <p className="text-sm text-white/55 italic py-8 text-center">
           {tab === "all"
@@ -286,6 +288,75 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
  * cycle count, and a sparkline of per-cycle ROIs (the visual at-a-
  * glance proxy for consistency).
  */
+/**
+ * Top-of-Straddle-tab banner that summarizes how many tickers actually
+ * have backtest signal this week. Without this, an earnings week with
+ * no STRONG candidates (common in slow weeks) reads as if the page is
+ * broken — the table just shows a sea of "no priceable cycles" rows.
+ *
+ * Tone:
+ *   ≥1 STRONG    → emerald, count of qualified picks
+ *   0 STRONG + ≥1 WEAK → amber, "directional only — no qualified picks"
+ *   0 of both    → gray,  "no qualified candidates this week"
+ */
+function StraddleSignalBanner({ tickers }: { tickers: EarningsTickerEntry[] }) {
+  let strong = 0;
+  let weak = 0;
+  let thin = 0;
+  for (const t of tickers) {
+    const tier = signalTier(t.backtests?.straddle);
+    if (tier === 3) strong++;
+    else if (tier === 2) weak++;
+    else if (tier === 1) thin++;
+  }
+
+  if (strong > 0) {
+    return (
+      <div className="rounded border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2 text-xs">
+        <span className="font-bold text-emerald-200 uppercase tracking-widest text-[10px] mr-2">
+          ✓ {strong} Strong {strong === 1 ? "pick" : "picks"}
+        </span>
+        <span className="text-white/65">
+          {strong} ticker{strong === 1 ? " has" : "s have"} ≥4 cycles of
+          historical backtest data this week — those are the actionable
+          rows.
+          {(weak + thin) > 0 &&
+            ` (${weak + thin} more show directional-only data.)`}
+        </span>
+      </div>
+    );
+  }
+  if (weak > 0) {
+    return (
+      <div className="rounded border border-amber-500/30 bg-amber-500/[0.05] px-3 py-2 text-xs">
+        <span className="font-bold text-amber-300 uppercase tracking-widest text-[10px] mr-2">
+          ⚠ No Strong picks
+        </span>
+        <span className="text-white/65">
+          {weak} ticker{weak === 1 ? "" : "s"} returned 2-3 cycles of
+          backtest data — directional only, sample too small to trust.
+          Treat as a watchlist, not a trade list.
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded border border-white/15 bg-white/[0.03] px-3 py-2 text-xs">
+      <span className="font-bold text-white/65 uppercase tracking-widest text-[10px] mr-2">
+        No qualified candidates
+      </span>
+      <span className="text-white/55">
+        Zero tickers had enough priceable historical option cycles to
+        produce a reliable backtest this week.
+        {thin > 0 &&
+          ` ${thin} surfaced 1-cycle data (informational only).`}{" "}
+        Slow earnings weeks and recent IPOs both tend to leave the
+        Straddle tab empty — that&apos;s the signal working, not breaking.
+      </span>
+    </div>
+  );
+}
+
 /**
  * Map cycle count → confidence tier. Drives sort order, chip color,
  * and overall cell opacity. 6 cycles is the max we ever attempt.

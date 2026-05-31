@@ -2162,3 +2162,60 @@ export const leapPickMarks = pgTable(
 );
 
 export type LeapPickMark = typeof leapPickMarks.$inferSelect;
+
+// ============================================================================
+// RISK GRAPH — saved multi-leg trade ideas
+//
+// Users build a multi-leg option position via the Risk Graph tool,
+// save it with a name + notes. The detail page recreates the risk
+// graph client-side from the stored legs against the latest live
+// spot. Wave 2 adds trade_idea_marks for performance tracking.
+// ============================================================================
+
+/** One leg of a saved trade idea. Matches the Leg interface in
+ *  lib/risk-graph.ts — kept here too so the schema is self-contained. */
+export interface TradeIdeaLeg {
+  type: "call" | "put";
+  side: "long" | "short";
+  strike: number;
+  expiration: string; // YYYY-MM-DD
+  qty: number;
+  entryPrice: number;
+  entryIv: number;
+  /** Optional — the OPRA ticker so wave-2 marks can re-fetch this exact
+   *  contract from Polygon. */
+  contractTicker?: string;
+}
+
+export type TradeIdeaStatus = "open" | "closed" | "expired";
+
+export const tradeIdeas = pgTable(
+  "trade_ideas",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    ticker: text("ticker").notNull(),
+    legs: jsonb("legs").$type<TradeIdeaLeg[]>().notNull().default([]),
+    underlyingSpotAtEntry: numeric("underlying_spot_at_entry", {
+      precision: 14,
+      scale: 4,
+    }).notNull(),
+    entryDebit: numeric("entry_debit", { precision: 16, scale: 2 }).notNull(),
+    status: text("status").$type<TradeIdeaStatus>().notNull().default("open"),
+    notes: text("notes").notNull().default(""),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("trade_ideas_created_at_idx").on(t.createdAt.desc()),
+    index("trade_ideas_ticker_idx").on(t.ticker, t.createdAt.desc()),
+    index("trade_ideas_status_idx").on(t.status, t.createdAt.desc()),
+  ],
+);
+
+export type TradeIdea = typeof tradeIdeas.$inferSelect;

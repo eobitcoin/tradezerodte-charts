@@ -33,18 +33,31 @@ import { fetchOptionChain } from "@/lib/polygon";
 import type { GexStrikeRow } from "@/lib/db/schema";
 
 /** GEX watchlist — indexes + the most-traded single names. Locked
- *  list to match the cron's Polygon usage profile (5 min × 13 tickers
- *  × ~2 chain calls each = ~78/min comfortably under the rate cap). */
+ *  list to match the cron's Polygon usage profile. SPX in particular
+ *  has a much heavier chain than the ETFs so the cron runtime budget
+ *  needs to be respected (still well under the 4-min cap). */
 export const GEX_WATCHLIST = [
-  // Indexes
-  "SPY", "QQQ", "IWM",
+  // Indexes / index-equivalent ETFs
+  "SPX", "SPY", "QQQ", "IWM",
   // Mega-cap tech
   "AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL",
-  // High-flow single names
-  "AMD", "COIN", "PLTR",
+  // Semis + high-flow single names
+  "AMD", "MU", "COIN", "PLTR",
 ] as const;
 
 export type GexTicker = (typeof GEX_WATCHLIST)[number];
+
+/**
+ * Map a display ticker to the format Polygon's options-chain endpoint
+ * expects. Cash-settled index options use the `I:` prefix on Polygon;
+ * ETFs and single names use the plain symbol. Storing the display
+ * ticker in the DB (so URLs and UI read naturally as "SPX") and
+ * translating only at fetch time keeps the data model clean.
+ */
+function polygonUnderlyingFor(ticker: string): string {
+  if (ticker === "SPX") return "I:SPX";
+  return ticker;
+}
 
 /** Computed snapshot ready for INSERT. */
 export interface GexSnapshotResult {
@@ -76,7 +89,7 @@ export interface GexSnapshotResult {
 export async function computeGexSnapshot(
   ticker: string,
 ): Promise<GexSnapshotResult | null> {
-  const chain = await fetchOptionChain(ticker);
+  const chain = await fetchOptionChain(polygonUnderlyingFor(ticker));
   if (chain.length === 0) return null;
 
   // Pull the underlying spot from the first contract that has it.

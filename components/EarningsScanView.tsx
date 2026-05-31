@@ -101,9 +101,21 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
           );
           return bMax - aMax;
         })
-      : [...tickers]
-          .filter((t) => t.strategies[tab].score >= 50)
-          .sort((a, b) => b.strategies[tab].score - a.strategies[tab].score);
+      : tab === "straddle"
+        ? // V3.1: Straddle tab is gated by backtest data, not heuristic score.
+          // Show every ticker; rank by backtest avg ROI when present, else
+          // fall back to heuristic score. No min-score filter.
+          [...tickers].sort((a, b) => {
+            const ar = a.backtests?.straddle?.avgRoiPct;
+            const br = b.backtests?.straddle?.avgRoiPct;
+            const av = typeof ar === "number" ? ar : -Infinity;
+            const bv = typeof br === "number" ? br : -Infinity;
+            if (av !== bv) return bv - av;
+            return b.strategies.straddle.score - a.strategies.straddle.score;
+          })
+        : [...tickers]
+            .filter((t) => t.strategies[tab].score >= 50)
+            .sort((a, b) => b.strategies[tab].score - a.strategies[tab].score);
 
   return (
     <section className="space-y-4">
@@ -141,7 +153,9 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
         <p className="text-sm text-white/55 italic py-8 text-center">
           {tab === "all"
             ? "No earnings reports this week passed the options-liquidity bar."
-            : `No tickers scored ≥ 50 for the ${tab} strategy this week.`}
+            : tab === "straddle"
+              ? "No tickers with computed Straddle backtest data this week."
+              : `No tickers scored ≥ 50 for the ${tab} strategy this week.`}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-white/10">

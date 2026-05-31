@@ -85,6 +85,10 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
   const [name, setName] = useState(initial?.name ?? "");
   const [notes, setNotes] = useState("");
   const [ivShift, setIvShift] = useState(0);
+  /** X-axis zoom for the price chart, as fractional half-width of spot.
+   *  0.30 = ±30% (default, captures most breakevens). 0.05 = tight,
+   *  1.00 = wide (useful for far-OTM tails). */
+  const [priceRangePct, setPriceRangePct] = useState(0.30);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
 
@@ -165,8 +169,9 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
       spot: chain.spot,
       asOf: chain.asOf,
       ivShift,
+      priceRangePct,
     });
-  }, [chain, legs, ivShift]);
+  }, [chain, legs, ivShift, priceRangePct]);
 
   // ---------- IV sensitivity compute ----------
   const ivResult = useMemo(() => {
@@ -231,35 +236,85 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
       <div id="risk-graph" className="space-y-3 scroll-mt-20">
         <HeadlineStats headline={result.headline} />
 
-        {/* IV shift slider */}
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-          <label className="flex items-center gap-3 text-xs">
-            <span className="text-white/55 uppercase tracking-widest">
-              IV shift
-            </span>
-            <input
-              type="range"
-              min={-0.2}
-              max={0.2}
-              step={0.01}
-              value={ivShift}
-              onChange={(e) => setIvShift(Number(e.target.value))}
-              className="flex-1 max-w-xs"
-            />
-            <span className="font-mono text-amber-300 w-16">
-              {(ivShift * 100 >= 0 ? "+" : "") +
-                (ivShift * 100).toFixed(0)}
-              %
-            </span>
-            {ivShift !== 0 && (
-              <button
-                onClick={() => setIvShift(0)}
-                className="text-[10px] uppercase tracking-widest text-white/45 hover:text-white"
-              >
-                Reset
-              </button>
+        {/* Chart controls — IV shift + price-range zoom side by side. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {/* IV shift slider */}
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <label className="flex items-center gap-3 text-xs flex-wrap">
+              <span className="text-white/55 uppercase tracking-widest">
+                IV shift
+              </span>
+              <input
+                type="range"
+                min={-0.2}
+                max={0.2}
+                step={0.01}
+                value={ivShift}
+                onChange={(e) => setIvShift(Number(e.target.value))}
+                className="flex-1 min-w-[120px]"
+              />
+              <span className="font-mono text-amber-300 w-16">
+                {(ivShift * 100 >= 0 ? "+" : "") +
+                  (ivShift * 100).toFixed(0)}
+                %
+              </span>
+              {ivShift !== 0 && (
+                <button
+                  onClick={() => setIvShift(0)}
+                  className="text-[10px] uppercase tracking-widest text-white/45 hover:text-white"
+                >
+                  Reset
+                </button>
+              )}
+            </label>
+          </div>
+
+          {/* Price-range zoom slider — controls X-axis half-width on
+              the price chart. ±5% to ±100% of spot. Useful when
+              breakevens are far OTM on volatile names (TSLA at ±5%
+              might miss them; ±60% catches the full picture). */}
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <label className="flex items-center gap-3 text-xs flex-wrap">
+              <span className="text-white/55 uppercase tracking-widest">
+                Price zoom
+              </span>
+              <input
+                type="range"
+                min={0.05}
+                max={1.0}
+                step={0.01}
+                value={priceRangePct}
+                onChange={(e) => setPriceRangePct(Number(e.target.value))}
+                className="flex-1 min-w-[120px]"
+              />
+              <span className="font-mono text-amber-300 w-16">
+                ±{(priceRangePct * 100).toFixed(0)}%
+              </span>
+              {/* Quick presets */}
+              <div className="flex gap-1">
+                {[0.10, 0.30, 0.60].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPriceRangePct(p)}
+                    className={[
+                      "text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded border transition-colors",
+                      Math.abs(priceRangePct - p) < 0.005
+                        ? "border-amber-500/60 bg-amber-500/15 text-amber-200"
+                        : "border-white/15 text-white/55 hover:border-white/30 hover:text-white",
+                    ].join(" ")}
+                  >
+                    ±{(p * 100).toFixed(0)}
+                  </button>
+                ))}
+              </div>
+            </label>
+            {chain && (
+              <p className="text-[10px] text-white/45 mt-1.5 font-mono">
+                Range: ${(chain.spot * (1 - priceRangePct)).toFixed(2)} —
+                ${(chain.spot * (1 + priceRangePct)).toFixed(2)}
+              </p>
             )}
-          </label>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-3">

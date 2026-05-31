@@ -174,6 +174,87 @@ export function computeIvSensitivity(legs: Leg[], cfg: IvGridConfig): IvCurve[] 
   });
 }
 
+// ---------------------------------------------------------------------------
+// Quote-type comparison (Natural / Mid / Optimistic).
+// ---------------------------------------------------------------------------
+
+/** A leg with bid/ask captured at construction time. */
+export interface LegWithBidAsk extends Leg {
+  entryBid?: number | null;
+  entryAsk?: number | null;
+}
+
+/** "Natural" = fill at the worst price for the trader (long pays ask,
+ *  short receives bid). "Mid" = midpoint. "Optimistic" = fill at the
+ *  best price (long pays bid, short receives ask). */
+export type QuoteType = "natural" | "mid" | "optimistic";
+
+export interface QuoteScenario {
+  type: QuoteType;
+  label: string;
+  /** Net entry debit (positive = paid; negative = credit received). */
+  entryDebit: number;
+  maxProfit: number;
+  maxRisk: number;
+  riskRewardPct: number | null;
+}
+
+function resolveFillPrice(leg: LegWithBidAsk, type: QuoteType): number {
+  if (type === "mid") return leg.entryPrice;
+  if (type === "natural") {
+    return leg.side === "long"
+      ? (leg.entryAsk ?? leg.entryPrice)
+      : (leg.entryBid ?? leg.entryPrice);
+  }
+  return leg.side === "long"
+    ? (leg.entryBid ?? leg.entryPrice)
+    : (leg.entryAsk ?? leg.entryPrice);
+}
+
+/**
+ * Build the three quote scenarios. Per-leg P&L is linear in entry
+ * price, so the WHOLE curve shifts vertically by the same constant
+ * when we change quote types. No need to recompute the curve three
+ * times — just shift Mid's headline numbers by the debit delta.
+ */
+export function computeQuoteScenarios(
+  legs: LegWithBidAsk[],
+  midMaxProfit: number,
+  midMaxRisk: number,
+): QuoteScenario[] {
+  const types: QuoteType[] = ["natural", "mid", "optimistic"];
+  const labels: Record<QuoteType, string> = {
+    natural: "Natural",
+    mid: "Mid",
+    optimistic: "Optimistic",
+  };
+
+  const debits: Record<QuoteType, number> = { natural: 0, mid: 0, optimistic: 0 };
+  for (const t of types) {
+    let net = 0;
+    for (const leg of legs) {
+      const sign = leg.side === "long" ? +1 : -1;
+      net += sign * leg.qty * resolveFillPrice(leg, t) * 100;
+    }
+    debits[t] = net;
+  }
+
+  const midDebit = debits.mid;
+  return types.map((t) => {
+    const debitDelta = debits[t] - midDebit;
+    const maxProfit = midMaxProfit - debitDelta;
+    const maxRisk = midMaxRisk - debitDelta;
+    return {
+      type: t,
+      label: labels[t],
+      entryDebit: debits[t],
+      maxProfit,
+      maxRisk,
+      riskRewardPct: maxRisk < 0 ? (maxProfit / Math.abs(maxRisk)) * 100 : null,
+    };
+  });
+}
+
 /**
  * Quantity-weighted average of the legs' entry IVs. Used as the
  * baseline on the IV chart's Y axis so absolute IV values are

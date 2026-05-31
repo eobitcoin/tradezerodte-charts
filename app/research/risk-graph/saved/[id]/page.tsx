@@ -11,6 +11,7 @@ import RiskGraphBuilder, {
   type PositionLeg,
 } from "@/components/RiskGraph/RiskGraphBuilder";
 import DeleteTradeButton from "@/components/RiskGraph/DeleteTradeButton";
+import CloseTradeButton from "@/components/RiskGraph/CloseTradeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -153,17 +154,40 @@ export default async function SavedTradeIdeaPage({
             <div className="text-[10px] uppercase tracking-widest text-amber-400">
               Saved trade idea · {row.ticker}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <Link
                 href="/research/risk-graph/saved"
                 className="text-xs text-amber-300 hover:underline"
               >
                 ← All saved
               </Link>
+              {row.status === "open" && (
+                <CloseTradeButton id={row.id} name={row.name} />
+              )}
               <DeleteTradeButton id={row.id} name={row.name} variant="header" />
             </div>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">{row.name}</h1>
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold tracking-tight">{row.name}</h1>
+            {row.status === "closed" && row.realizedPnl != null && (
+              <span
+                className={[
+                  "px-2.5 py-0.5 rounded border text-sm font-mono font-bold uppercase tracking-widest",
+                  Number(row.realizedPnl) >= 0
+                    ? "border-emerald-500/50 text-emerald-300 bg-emerald-500/[0.10]"
+                    : "border-rose-500/50 text-rose-300 bg-rose-500/[0.10]",
+                ].join(" ")}
+              >
+                {Number(row.realizedPnl) >= 0 ? "+" : "−"}$
+                {Math.abs(Number(row.realizedPnl)).toFixed(0)} realized
+              </span>
+            )}
+            {row.status === "expired" && (
+              <span className="px-2.5 py-0.5 rounded border text-sm font-mono font-bold uppercase tracking-widest border-white/20 text-white/55 bg-white/[0.04]">
+                Expired
+              </span>
+            )}
+          </div>
           <p className="text-sm text-white/55">
             Saved {row.createdAt.toLocaleDateString("en-US", {
               month: "long",
@@ -176,6 +200,17 @@ export default async function SavedTradeIdeaPage({
             {Number(row.entryDebit) > 0
               ? `Debit $${Math.abs(Number(row.entryDebit)).toFixed(0)}`
               : `Credit $${Math.abs(Number(row.entryDebit)).toFixed(0)}`}
+            {row.status === "closed" && row.closedAt && (
+              <>
+                {" · "}
+                Closed{" "}
+                {row.closedAt.toLocaleDateString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </>
+            )}
           </p>
           {row.notes && (
             <p className="text-sm text-white/65 max-w-3xl pt-2 italic">

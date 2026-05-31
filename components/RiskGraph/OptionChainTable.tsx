@@ -28,11 +28,25 @@ export interface ChainRow {
   volume: number | null;
 }
 
+/** Subset of PositionLeg used by the chain table to compute net qty
+ *  per strike. Decoupled so OptionChainTable doesn't import from
+ *  RiskGraphBuilder (avoids a circular dep). */
+export interface ChainTableLeg {
+  type: "call" | "put";
+  side: "long" | "short";
+  strike: number;
+  expiration: string;
+  qty: number;
+}
+
 interface Props {
   expiry: string;
   spot: number;
   calls: ChainRow[];
   puts: ChainRow[];
+  /** Current position legs — used to render the # column showing
+   *  current net qty for each strike's calls and puts at this expiry. */
+  legs: ChainTableLeg[];
   onAdd: (
     row: ChainRow,
     expiration: string,
@@ -81,11 +95,46 @@ function WideSpreadIcon({ pct }: { pct: number | null }) {
   );
 }
 
+/** Compute signed net qty for a given (strike, expiry, type) across
+ *  the position. Positive = long; negative = short; 0 = no leg. */
+function netQty(
+  legs: ChainTableLeg[],
+  strike: number,
+  expiration: string,
+  type: "call" | "put",
+): number {
+  let net = 0;
+  for (const l of legs) {
+    if (l.expiration !== expiration || l.type !== type || l.strike !== strike) continue;
+    net += (l.side === "long" ? 1 : -1) * l.qty;
+  }
+  return net;
+}
+
+/** Render the # cell for either calls (left) or puts (right). */
+function QtyCell({ qty }: { qty: number }) {
+  if (qty === 0) {
+    return <span className="text-white/25">·</span>;
+  }
+  const tone =
+    qty > 0
+      ? "text-emerald-300 bg-emerald-500/[0.12] border-emerald-500/40"
+      : "text-rose-300 bg-rose-500/[0.12] border-rose-500/40";
+  return (
+    <span
+      className={`inline-block min-w-[28px] px-1 rounded border font-bold text-[11px] ${tone}`}
+    >
+      {qty > 0 ? `+${qty}` : qty}
+    </span>
+  );
+}
+
 export default function OptionChainTable({
   expiry,
   spot,
   calls,
   puts,
+  legs,
   onAdd,
 }: Props) {
   const [showAll, setShowAll] = useState(false);
@@ -120,14 +169,14 @@ export default function OptionChainTable({
           <thead>
             <tr>
               <th
-                colSpan={7}
+                colSpan={8}
                 className="px-3 py-1.5 text-center text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-300 bg-emerald-500/[0.07] border-b border-emerald-500/30"
               >
                 Calls
               </th>
               <th className="bg-white/[0.06] border-b border-white/10" />
               <th
-                colSpan={7}
+                colSpan={8}
                 className="px-3 py-1.5 text-center text-[10px] uppercase tracking-[0.2em] font-bold text-rose-300 bg-rose-500/[0.07] border-b border-rose-500/30"
               >
                 Puts
@@ -135,6 +184,7 @@ export default function OptionChainTable({
             </tr>
             {/* Column labels */}
             <tr className="text-[9px] uppercase tracking-widest text-white/45 bg-white/[0.02]">
+              <th className="px-2 py-1.5 text-center bg-emerald-500/[0.04] border-r border-emerald-500/20">#</th>
               <th className="px-2 py-1.5 text-left bg-emerald-500/[0.025]" colSpan={2}>Buy / Sell</th>
               <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">Bid</th>
               <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">Ask</th>
@@ -148,6 +198,7 @@ export default function OptionChainTable({
               <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">Bid</th>
               <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">Ask</th>
               <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]" colSpan={2}>Buy / Sell</th>
+              <th className="px-2 py-1.5 text-center bg-rose-500/[0.04] border-l border-rose-500/20">#</th>
             </tr>
           </thead>
           <tbody className="font-mono">
@@ -158,6 +209,8 @@ export default function OptionChainTable({
               const putSpread = spreadPct(put);
               const stepSize = filtered.length > 1 ? filtered[1] - filtered[0] : 1;
               const isAtm = Math.abs(strike - spot) < stepSize / 2;
+              const callQty = netQty(legs, strike, expiry, "call");
+              const putQty = netQty(legs, strike, expiry, "put");
               return (
                 <tr
                   key={strike}
@@ -166,6 +219,10 @@ export default function OptionChainTable({
                     isAtm ? "ring-1 ring-amber-500/30" : "",
                   ].join(" ")}
                 >
+                  {/* CALL # cell */}
+                  <td className="px-2 py-1 text-center bg-emerald-500/[0.04] border-r border-emerald-500/15">
+                    <QtyCell qty={callQty} />
+                  </td>
                   {/* CALL +/- */}
                   <td className="px-1 py-1 bg-emerald-500/[0.025]">
                     <button
@@ -225,6 +282,10 @@ export default function OptionChainTable({
                     >
                       −
                     </button>
+                  </td>
+                  {/* PUT # cell */}
+                  <td className="px-2 py-1 text-center bg-rose-500/[0.04] border-l border-rose-500/15">
+                    <QtyCell qty={putQty} />
                   </td>
                 </tr>
               );

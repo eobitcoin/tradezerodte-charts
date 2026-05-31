@@ -68,6 +68,7 @@ export default async function SavedTradeIdeasPage() {
                   <th className="px-3 py-2 text-left">Legs</th>
                   <th className="px-3 py-2 text-right">Entry</th>
                   <th className="px-3 py-2 text-right">Spot @ entry</th>
+                  <th className="px-3 py-2 text-right">Realized P&amp;L</th>
                   <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2 text-right">Created</th>
                   <th className="px-3 py-2 text-right" />
@@ -113,6 +114,22 @@ export default async function SavedTradeIdeasPage() {
                       </td>
                       <td className="px-3 py-2 text-right font-mono text-white/75">
                         ${Number(r.underlyingSpotAtEntry).toFixed(2)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {r.realizedPnl != null ? (
+                          <span
+                            className={
+                              Number(r.realizedPnl) >= 0
+                                ? "text-emerald-300 font-bold"
+                                : "text-rose-300 font-bold"
+                            }
+                          >
+                            {Number(r.realizedPnl) >= 0 ? "+" : "−"}$
+                            {Math.abs(Number(r.realizedPnl)).toFixed(0)}
+                          </span>
+                        ) : (
+                          <span className="text-white/30">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         <span

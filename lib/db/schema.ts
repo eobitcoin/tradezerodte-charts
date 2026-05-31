@@ -2187,6 +2187,19 @@ export interface TradeIdeaLeg {
   contractTicker?: string;
 }
 
+/** Snapshot of one leg at the moment of close. Stored in
+ *  trade_ideas.closing_legs index-matched against trade_ideas.legs
+ *  so the saved-detail page can render an entry→close breakdown. */
+export interface TradeIdeaClosingLeg {
+  contractTicker: string;
+  closePrice: number;        // mid at close (used for P&L)
+  closeBid: number | null;
+  closeAsk: number | null;
+  closeIv: number | null;
+  /** Per-leg realized P&L in dollars (sign × qty × 100 × (close − entry)). */
+  legPnl: number;
+}
+
 export type TradeIdeaStatus = "open" | "closed" | "expired";
 
 export const tradeIdeas = pgTable(
@@ -2204,6 +2217,11 @@ export const tradeIdeas = pgTable(
     status: text("status").$type<TradeIdeaStatus>().notNull().default("open"),
     notes: text("notes").notNull().default(""),
     meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    /** Close-trade columns (NULL while open). Populated when the user
+     *  clicks Close, snapshotting current chain prices + realized P&L. */
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closingLegs: jsonb("closing_legs").$type<TradeIdeaClosingLeg[]>(),
+    realizedPnl: numeric("realized_pnl", { precision: 16, scale: 2 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -15,11 +15,12 @@
  * tweak re-renders the whole tree in one pass — no prop drilling.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   computeRiskGraph,
   computeIvSensitivity,
+  computeQuoteScenarios,
   baselineIv,
   type Leg,
 } from "@/lib/risk-graph";
@@ -52,6 +53,115 @@ export interface PositionLeg extends Leg {
   contractTicker: string;
   entryBid?: number | null;
   entryAsk?: number | null;
+}
+
+/** Short "May 30" / "Jun 1" style for expiry display in suggestions. */
+function shortExpiry(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Heuristic name for a multi-leg position. Recognises common
+ * structures (vertical, butterfly, condor, straddle, strangle, iron
+ * condor) and falls back to "N-leg" for unusual shapes. The name
+ * always starts with the ticker so a list of saved trades reads as
+ * a typical trade journal.
+ */
+export function suggestTradeName(legs: PositionLeg[], ticker: string): string {
+  if (legs.length === 0 || !ticker) return "";
+
+  const sameExpiry = legs.every((l) => l.expiration === legs[0].expiration);
+  const sameType = legs.every((l) => l.type === legs[0].type);
+  const sorted = [...legs].sort((a, b) => a.strike - b.strike);
+  const calls = sorted.filter((l) => l.type === "call");
+  const puts = sorted.filter((l) => l.type === "put");
+  const exp0 = shortExpiry(legs[0].expiration);
+
+  if (legs.length === 1) {
+    const l = legs[0];
+    return `${ticker} ${formatStrike(l.strike)}${l.type === "call" ? "C" : "P"} ${exp0}`;
+  }
+
+  if (sameExpiry && sameType) {
+    const strikes = sorted.map((l) => formatStrike(l.strike)).join("/");
+    const typeName = legs[0].type === "call" ? "Call" : "Put";
+    const structure =
+      legs.length === 2 ? "vertical"
+      : legs.length === 3 ? "butterfly"
+      : legs.length === 4 ? "condor"
+      : `${legs.length}-leg`;
+    return `${ticker} ${strikes} ${typeName} ${structure} ${exp0}`;
+  }
+
+  // Mixed types
+  if (sameExpiry && calls.length === 1 && puts.length === 1) {
+    if (calls[0].strike === puts[0].strike) {
+      return `${ticker} ${formatStrike(calls[0].strike)} Straddle ${exp0}`;
+    }
+    return `${ticker} ${formatStrike(puts[0].strike)}P/${formatStrike(calls[0].strike)}C Strangle ${exp0}`;
+  }
+  if (sameExpiry && calls.length === 2 && puts.length === 2) {
+    const cs = calls.map((l) => formatStrike(l.strike));
+    const ps = puts.map((l) => formatStrike(l.strike));
+    return `${ticker} ${ps[0]}/${ps[1]}/${cs[0]}/${cs[1]} Iron condor ${exp0}`;
+  }
+
+  if (!sameExpiry) {
+    const expiries = [...new Set(legs.map((l) => l.expiration))].sort();
+    return `${ticker} ${legs.length}-leg ${shortExpiry(expiries[0])}–${shortExpiry(expiries[expiries.length - 1])}`;
+  }
+  return `${ticker} ${legs.length}-leg ${exp0}`;
+}
+
+function formatStrike(s: number): string {
+  return s >= 100 ? s.toFixed(0) : s.toFixed(2);
+}
+
+/**
+ * Auto-generated note body: today's date, spot, per-leg breakdown
+ * (with entry price + IV), net entry economics, max P/L, and
+ * breakevens. The user can edit / delete freely; this is just a
+ * default so saved trades aren't blank.
+ */
+export function suggestTradeNotes(
+  legs: PositionLeg[],
+  ticker: string,
+  spot: number,
+  headline: { entryDebit: number; maxProfit: number; maxRisk: number; breakevens: number[] } | null,
+): string {
+  if (legs.length === 0 || !ticker) return "";
+  const today = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const lines: string[] = [`${ticker} @ $${spot.toFixed(2)} on ${today}`, ""];
+  for (const leg of legs) {
+    const action = leg.side === "long" ? "Buy" : "Sell";
+    lines.push(
+      `${action} ${leg.qty} ${formatStrike(leg.strike)}${leg.type === "call" ? "C" : "P"} ${shortExpiry(leg.expiration)} @ $${leg.entryPrice.toFixed(2)} (IV ${(leg.entryIv * 100).toFixed(0)}%)`,
+    );
+  }
+  if (headline) {
+    lines.push("");
+    if (headline.entryDebit > 0) {
+      lines.push(`Net debit: $${headline.entryDebit.toFixed(0)}`);
+    } else if (headline.entryDebit < 0) {
+      lines.push(`Net credit: $${Math.abs(headline.entryDebit).toFixed(0)}`);
+    }
+    lines.push(`Max profit: +$${headline.maxProfit.toFixed(0)}`);
+    lines.push(`Max risk: −$${Math.abs(headline.maxRisk).toFixed(0)}`);
+    if (headline.breakevens.length > 0) {
+      lines.push(
+        `Breakevens: ${headline.breakevens.map((b) => `$${b.toFixed(b >= 100 ? 0 : 2)}`).join(" / ")}`,
+      );
+    }
+  }
+  return lines.join("\n");
 }
 
 interface Props {
@@ -173,6 +283,50 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
     });
   }, [chain, legs, ivShift, priceRangePct]);
 
+  // ---------- Quote-type scenarios (Natural / Mid / Optimistic) ----------
+  const scenarios = useMemo(() => {
+    if (!result || legs.length === 0) return [];
+    return computeQuoteScenarios(
+      legs,
+      result.headline.maxProfit,
+      result.headline.maxRisk,
+    );
+  }, [result, legs]);
+
+  const totalContracts = useMemo(
+    () => legs.reduce((s, l) => s + Math.abs(l.qty), 0),
+    [legs],
+  );
+
+  // ---------- Auto-suggested name + notes ----------
+  const suggestedName = useMemo(
+    () => (chain ? suggestTradeName(legs, chain.ticker) : ""),
+    [chain, legs],
+  );
+  const suggestedNotes = useMemo(
+    () =>
+      chain ? suggestTradeNotes(legs, chain.ticker, chain.spot, result?.headline ?? null) : "",
+    [chain, legs, result],
+  );
+
+  // Pre-fill name + notes once when the user adds their first leg in
+  // a fresh build (not when re-loading a saved trade — `initial` skips).
+  // After that the user owns the fields. If they clear them, the
+  // placeholder always shows the latest suggestion so they can see it.
+  const prefilledRef = useRef(Boolean(initial?.name));
+  useEffect(() => {
+    if (legs.length === 0) {
+      prefilledRef.current = false; // reset for next session
+      return;
+    }
+    if (!prefilledRef.current && name === "" && notes === "") {
+      setName(suggestedName);
+      setNotes(suggestedNotes);
+      prefilledRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legs.length]);
+
   // ---------- IV sensitivity compute ----------
   const ivResult = useMemo(() => {
     if (!chain || legs.length === 0) return null;
@@ -197,7 +351,10 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
   // ---------- Save ----------
   async function save() {
     if (!chain || legs.length === 0) return;
-    if (!name.trim()) {
+    // Fall back to the suggestion if user left the name blank.
+    const finalName = name.trim() || suggestedName;
+    const finalNotes = notes.trim() || suggestedNotes;
+    if (!finalName) {
       setSaveErr("Give the trade idea a name first.");
       return;
     }
@@ -208,12 +365,12 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(),
+          name: finalName,
           ticker: chain.ticker,
           legs,
           spot: chain.spot,
           entryDebit: result?.headline.entryDebit ?? 0,
-          notes: notes.trim(),
+          notes: finalNotes,
         }),
       });
       const body = await res.json();
@@ -234,7 +391,11 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
   const riskGraphSection =
     result && chain ? (
       <div id="risk-graph" className="space-y-3 scroll-mt-20">
-        <HeadlineStats headline={result.headline} />
+        <HeadlineStats
+          headline={result.headline}
+          scenarios={scenarios}
+          totalContracts={totalContracts}
+        />
 
         {/* Chart controls — IV shift + price-range zoom side by side. */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -407,6 +568,7 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
                 spot={chain.spot}
                 calls={expiryRows.calls}
                 puts={expiryRows.puts}
+                legs={legs}
                 onAdd={addLeg}
               />
             )}
@@ -426,19 +588,41 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
                 <div className="text-xs uppercase tracking-widest text-white/55">
                   Save trade idea
                 </div>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Name (e.g. SPY Jan put fly)"
-                  className="w-full rounded border border-white/20 bg-black/20 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400"
-                />
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder={suggestedName || "Name (e.g. SPY Jan put fly)"}
+                    className="w-full rounded border border-white/20 bg-black/20 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400"
+                  />
+                  {/* "Use suggested" button — only shows when we have a
+                      suggestion that DIFFERS from the current value, so
+                      it's useful when user has edited and wants to revert. */}
+                  {suggestedName && name !== suggestedName && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setName(suggestedName);
+                        if (!notes.trim()) setNotes(suggestedNotes);
+                      }}
+                      className="text-[10px] uppercase tracking-widest text-amber-300/80 hover:text-amber-200"
+                    >
+                      ↻ Use suggested
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Notes (optional)"
-                  rows={2}
-                  className="w-full rounded border border-white/20 bg-black/20 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400 resize-y"
+                  placeholder={
+                    suggestedNotes
+                      ? suggestedNotes.split("\n").slice(0, 3).join("\n") +
+                        (suggestedNotes.split("\n").length > 3 ? "\n…" : "")
+                      : "Notes (optional)"
+                  }
+                  rows={4}
+                  className="w-full rounded border border-white/20 bg-black/20 px-2 py-1 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-amber-400 resize-y font-mono"
                 />
                 {saveErr && (
                   <p className="text-xs text-rose-300">{saveErr}</p>

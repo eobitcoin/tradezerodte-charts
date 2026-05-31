@@ -34,7 +34,7 @@ export default function StocksNavTabs({ active }: { active: StocksNavTab }) {
             className={[
               "px-4 py-2 -mb-px border-b-2 text-sm font-semibold uppercase tracking-wide transition-colors",
               isActive
-                ? "border-emerald-500 text-emerald-700 dark:text-emerald-300"
+                ? "border-amber-500 text-amber-700 dark:text-amber-300"
                 : "border-transparent text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white hover:border-black/20 dark:hover:border-white/20",
             ].join(" ")}
           >

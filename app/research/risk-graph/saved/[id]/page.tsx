@@ -142,6 +142,8 @@ export default async function SavedTradeIdeaPage({
     entryPrice: l.entryPrice,
     entryIv: l.entryIv,
     contractTicker: l.contractTicker ?? "",
+    entryBid: l.entryBid ?? null,
+    entryAsk: l.entryAsk ?? null,
   }));
 
   return (

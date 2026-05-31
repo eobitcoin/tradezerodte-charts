@@ -92,6 +92,8 @@ export async function POST(req: Request) {
       entryIv: l.entryIv,
       contractTicker:
         typeof l.contractTicker === "string" ? l.contractTicker : undefined,
+      entryBid: typeof l.entryBid === "number" ? l.entryBid : null,
+      entryAsk: typeof l.entryAsk === "number" ? l.entryAsk : null,
     });
   }
 

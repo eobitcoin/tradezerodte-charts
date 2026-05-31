@@ -5,6 +5,7 @@ import { tradeIdeas, type TradeIdeaLeg } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
 import OptionsSubNav from "@/components/OptionsSubNav";
 import DeleteTradeButton from "@/components/RiskGraph/DeleteTradeButton";
+import CloseTradeButton from "@/components/RiskGraph/CloseTradeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,7 @@ export default async function SavedTradeIdeasPage() {
                   <th className="px-3 py-2 text-right">Realized P&amp;L</th>
                   <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2 text-right">Created</th>
+                  <th className="px-3 py-2 text-right" />
                   <th className="px-3 py-2 text-right" />
                   <th className="px-3 py-2 text-right" />
                 </tr>
@@ -151,6 +153,17 @@ export default async function SavedTradeIdeasPage() {
                           day: "numeric",
                           year: "numeric",
                         })}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {r.status === "open" ? (
+                          <CloseTradeButton
+                            id={r.id}
+                            name={r.name}
+                            variant="row"
+                          />
+                        ) : (
+                          <span className="text-white/30 text-[10px]">—</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <Link

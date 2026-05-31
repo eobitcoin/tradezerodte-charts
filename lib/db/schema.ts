@@ -2185,6 +2185,11 @@ export interface TradeIdeaLeg {
   /** Optional — the OPRA ticker so wave-2 marks can re-fetch this exact
    *  contract from Polygon. */
   contractTicker?: string;
+  /** Bid/ask at entry, captured from the chain at add-time. Used by
+   *  the multi-quote-scenario panel to compute Natural vs Mid vs
+   *  Optimistic entry costs. NULL when chain didn't have a quote. */
+  entryBid?: number | null;
+  entryAsk?: number | null;
 }
 
 /** Snapshot of one leg at the moment of close. Stored in

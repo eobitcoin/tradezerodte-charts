@@ -1951,3 +1951,68 @@ export const uoaScans = pgTable(
 );
 
 export type UoaScan = typeof uoaScans.$inferSelect;
+
+// ============================================================================
+// DEALER GAMMA EXPOSURE (GEX)
+//
+// 5-min snapshot of the dealer gamma surface per ticker. Persisted by
+// a Railway cron during RTH; consumed by the /research/gex dashboard.
+//
+// Sign convention: dealers assumed long calls + short puts.
+//   netGex(strike) = (callOI · callGamma − putOI · putGamma) · 100 · spot²
+//   totalGex = Σ netGex across all listed strikes and expiries
+//   zeroGammaStrike = strike where the running cumulative netGex
+//                     (from low strikes upward) crosses zero
+//
+// totalGex > 0  → long-gamma regime  (dealers fade moves → low realized vol)
+// totalGex < 0  → short-gamma regime (dealers chase moves → high realized vol)
+// ============================================================================
+
+/** One row in the per-strike GEX profile JSONB. Stored sorted asc by strike. */
+export interface GexStrikeRow {
+  strike: number;
+  /** Sum of (OI · gamma · 100 · spot²) across call expiries at this strike. */
+  callGex: number;
+  /** Same shape for puts, sign-flipped (dealers short puts). */
+  putGex: number;
+  /** callGex + putGex. */
+  netGex: number;
+  /** Running sum of netGex from lowest strike up through this one. */
+  cumulativeGex: number;
+}
+
+export const gexSnapshots = pgTable(
+  "gex_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),
+    ts: timestamp("ts", { withTimezone: true }).notNull().defaultNow(),
+    spot: numeric("spot", { precision: 14, scale: 4 }).notNull(),
+    /** Total net dealer gamma — sign indicates the regime. */
+    totalGex: numeric("total_gex", { precision: 20, scale: 2 }).notNull(),
+    /** The flip strike. NULL when cumulative GEX is monotonic. */
+    zeroGammaStrike: numeric("zero_gamma_strike", {
+      precision: 14,
+      scale: 4,
+    }),
+    /** (zeroGammaStrike − spot) / spot · 100. Convenience for ranking. */
+    zeroGammaPct: numeric("zero_gamma_pct", { precision: 8, scale: 2 }),
+    /** Per-strike profile, sorted asc by strike. */
+    gexByStrike: jsonb("gex_by_strike")
+      .$type<GexStrikeRow[]>()
+      .notNull()
+      .default([]),
+    contractsScanned: integer("contracts_scanned").notNull().default(0),
+    expiriesScanned: integer("expiries_scanned").notNull().default(0),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("gex_snapshots_ticker_ts_desc_idx").on(t.ticker, t.ts.desc()),
+    index("gex_snapshots_ts_idx").on(t.ts),
+  ],
+);
+
+export type GexSnapshot = typeof gexSnapshots.$inferSelect;

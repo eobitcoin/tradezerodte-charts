@@ -58,6 +58,15 @@ export function requireUoaCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("UOA_CRON_TOKEN", req);
 }
 
+/**
+ * GEX snapshot cron token. Used by the 5-minute Dealer Gamma
+ * Exposure refresher. Separate from UOA so a leak is bounded. Set as
+ * `GEX_CRON_TOKEN` in Railway env.
+ */
+export function requireGexCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("GEX_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

@@ -23,6 +23,10 @@ import type {
 interface Props {
   scan: UoaScan;
   archive: Array<{ scanDay: string }>;
+  /** Recently-printed prints from the last hour, populated by the
+   *  5-min intraday cron. Renders as a "Latest intraday" section
+   *  above the day's ranked prints. */
+  latestPrints?: UoaPrintSummary[];
 }
 
 const CLASS_LABEL: Record<UoaClassification, string> = {
@@ -78,7 +82,7 @@ function dteFromExpiry(expiry: string, asOf: string): number {
   return Math.max(0, Math.round((e - a) / 86_400_000));
 }
 
-export default async function UoaScanView({ scan, archive }: Props) {
+export default async function UoaScanView({ scan, archive, latestPrints }: Props) {
   const summaryHtml = scan.summary
     ? await renderMarkdown(scan.summary, [])
     : null;
@@ -87,6 +91,7 @@ export default async function UoaScanView({ scan, archive }: Props) {
   const counts =
     (meta.classificationCounts as Record<UoaClassification, number> | undefined) ?? null;
   const totalPrints = (meta.totalPrints as number | undefined) ?? prints.length;
+  const latest = latestPrints ?? [];
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -124,6 +129,29 @@ export default async function UoaScanView({ scan, archive }: Props) {
         />
       )}
 
+      {/* LATEST INTRADAY — refreshed by the 5-min cron. Only renders
+          when there's actually been a print in the last hour (typical
+          during RTH). The amber pulsing dot signals "live". */}
+      {latest.length > 0 && (
+        <section className="space-y-3 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-500/[0.06] to-amber-500/[0.02] p-4">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-300">
+            <span
+              aria-hidden="true"
+              className="inline-block size-2 rounded-full bg-amber-400 animate-pulse"
+            />
+            Latest intraday
+            <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-white/55">
+              · last hour · refreshed every 5 min
+            </span>
+          </h2>
+          <ul className="space-y-3">
+            {latest.map((p, i) => (
+              <PrintCard key={`latest-${p.contractTicker}-${p.printTs}-${i}`} print={p} asOf={scan.scanDay} />
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-widest text-white/65">
           Ranked prints
@@ -135,72 +163,9 @@ export default async function UoaScanView({ scan, archive }: Props) {
           </p>
         ) : (
           <ul className="space-y-3">
-            {prints.map((p, i) => {
-              const dte = dteFromExpiry(p.expirationDate, scan.scanDay);
-              const sideLabel = p.side === "buy" ? "BOT" : "SLD";
-              const sideTone =
-                p.side === "buy"
-                  ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/[0.08]"
-                  : "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]";
-              return (
-                <li
-                  key={`${p.contractTicker}-${p.printTs}-${i}`}
-                  className="rounded-lg border border-white/10 bg-white/[0.02] p-4 space-y-3"
-                >
-                  {/* Top row */}
-                  <div className="flex items-baseline gap-3 flex-wrap">
-                    <Link
-                      href={`/tickers/${p.underlying}`}
-                      className="font-mono text-xl font-bold tracking-tight hover:underline"
-                    >
-                      {p.underlying}
-                    </Link>
-                    <span className="font-mono text-sm text-white/85">
-                      {fmtStrike(p.strike)}
-                      {p.contractType === "call" ? "C" : "P"}{" "}
-                      <span className="text-white/45">· {dte}d</span>
-                    </span>
-                    <span
-                      className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${sideTone}`}
-                    >
-                      {sideLabel}
-                    </span>
-                    <span
-                      className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${CLASS_TONE[p.classification]}`}
-                    >
-                      {CLASS_LABEL[p.classification]}
-                    </span>
-                    {p.isSweep && (
-                      <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 bg-violet-500/[0.08]">
-                        Sweep
-                      </span>
-                    )}
-                    <span className="ml-auto font-mono text-sm">
-                      <span className="text-white/55">premium</span>{" "}
-                      <span className="font-bold text-white/95">
-                        {fmtUsd(p.premiumUsd)}
-                      </span>
-                    </span>
-                  </div>
-
-                  {/* Detail row */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                    <Cell label="Size" value={`${p.size.toLocaleString()}`} />
-                    <Cell label="Price" value={`$${p.price.toFixed(2)}`} />
-                    <Cell
-                      label="OI mult"
-                      value={
-                        p.oiMultiplier != null
-                          ? `${p.oiMultiplier.toFixed(1)}×`
-                          : "—"
-                      }
-                    />
-                    <Cell label="Strike vs spot" value={fmtPct(p.pctFromSpot)} />
-                    <Cell label="Tape time" value={fmtPrintTime(p.printTs)} />
-                  </div>
-                </li>
-              );
-            })}
+            {prints.map((p, i) => (
+              <PrintCard key={`${p.contractTicker}-${p.printTs}-${i}`} print={p} asOf={scan.scanDay} />
+            ))}
           </ul>
         )}
       </section>
@@ -236,5 +201,70 @@ function Cell({ label, value }: { label: string; value: string }) {
       </div>
       <div className="font-mono text-white/85 mt-0.5">{value}</div>
     </div>
+  );
+}
+
+/** One print card — used for both the Ranked prints list and the
+ *  Latest intraday banner. Identical layout in both contexts; the
+ *  surrounding section provides the visual differentiation. */
+function PrintCard({
+  print: p,
+  asOf,
+}: {
+  print: UoaPrintSummary;
+  asOf: string;
+}) {
+  const dte = dteFromExpiry(p.expirationDate, asOf);
+  const sideLabel = p.side === "buy" ? "BOT" : "SLD";
+  const sideTone =
+    p.side === "buy"
+      ? "border-emerald-500/40 text-emerald-300 bg-emerald-500/[0.08]"
+      : "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]";
+  return (
+    <li className="rounded-lg border border-white/10 bg-white/[0.02] p-4 space-y-3">
+      <div className="flex items-baseline gap-3 flex-wrap">
+        <Link
+          href={`/tickers/${p.underlying}`}
+          className="font-mono text-xl font-bold tracking-tight hover:underline"
+        >
+          {p.underlying}
+        </Link>
+        <span className="font-mono text-sm text-white/85">
+          {fmtStrike(p.strike)}
+          {p.contractType === "call" ? "C" : "P"}{" "}
+          <span className="text-white/45">· {dte}d</span>
+        </span>
+        <span
+          className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${sideTone}`}
+        >
+          {sideLabel}
+        </span>
+        <span
+          className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${CLASS_TONE[p.classification]}`}
+        >
+          {CLASS_LABEL[p.classification]}
+        </span>
+        {p.isSweep && (
+          <span className="text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border border-violet-500/40 text-violet-300 bg-violet-500/[0.08]">
+            Sweep
+          </span>
+        )}
+        <span className="ml-auto font-mono text-sm">
+          <span className="text-white/55">premium</span>{" "}
+          <span className="font-bold text-white/95">{fmtUsd(p.premiumUsd)}</span>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+        <Cell label="Size" value={`${p.size.toLocaleString()}`} />
+        <Cell label="Price" value={`$${p.price.toFixed(2)}`} />
+        <Cell
+          label="OI mult"
+          value={p.oiMultiplier != null ? `${p.oiMultiplier.toFixed(1)}×` : "—"}
+        />
+        <Cell label="Strike vs spot" value={fmtPct(p.pctFromSpot)} />
+        <Cell label="Tape time" value={fmtPrintTime(p.printTs)} />
+      </div>
+    </li>
   );
 }

@@ -304,6 +304,49 @@ export async function runUoaScan(opts: {
 }
 
 /**
+ * Read the most recent intraday prints (last N minutes), newest first.
+ * Drives the "Latest intraday" banner on /research/unusual-activity.
+ * Returns at most `limit` rows mapped to the UoaPrintSummary shape so
+ * the view can render them with the same card component as the EOD
+ * top-N. Returns [] if nothing has printed in the window.
+ */
+export async function fetchLatestIntradayPrints(opts: {
+  lookbackMinutes?: number;
+  limit?: number;
+} = {}): Promise<UoaPrintSummary[]> {
+  const minutes = opts.lookbackMinutes ?? 60;
+  const limit = opts.limit ?? 10;
+  const rows = await db
+    .select()
+    .from(uoaPrints)
+    .where(
+      sql`${uoaPrints.printTs} >= now() - (${minutes} * interval '1 minute')`,
+    )
+    .orderBy(desc(uoaPrints.printTs))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    printTs: r.printTs.toISOString(),
+    underlying: r.underlying,
+    contractTicker: r.contractTicker,
+    expirationDate: r.expirationDate,
+    strike: Number(r.strike),
+    contractType: r.contractType as "call" | "put",
+    side: r.side as "buy" | "sell",
+    size: r.size,
+    price: Number(r.price),
+    premiumUsd: Number(r.premiumUsd),
+    isSweep: r.isSweep,
+    oiMultiplier: r.oiMultiplier ? Number(r.oiMultiplier) : null,
+    classification: r.classification as UoaClassification,
+    pctFromSpot: r.pctFromSpot ? Number(r.pctFromSpot) : null,
+    underlyingPriceAtTrade: r.underlyingPriceAtTrade
+      ? Number(r.underlyingPriceAtTrade)
+      : null,
+  }));
+}
+
+/**
  * Publish (UPSERT) the day's UOA scan summary row. Called by the EOD
  * cron after runUoaScan completes. Pulls the top prints from
  * uoa_prints for the current scan_day so the summary stays in sync

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { uoaScans } from "@/lib/db/schema";
+import { fetchLatestIntradayPrints } from "@/lib/uoa";
 import SiteHeader from "@/components/SiteHeader";
 import OptionsSubNav from "@/components/OptionsSubNav";
 import UoaScanView from "@/components/UoaScanView";
@@ -25,6 +26,13 @@ export default async function UnusualActivityLandingPage() {
     .from(uoaScans)
     .orderBy(desc(uoaScans.scanDay))
     .limit(12);
+
+  // Last-hour intraday prints. Only relevant during RTH; outside it,
+  // returns [] and the banner just doesn't render.
+  const latestPrints = await fetchLatestIntradayPrints({
+    lookbackMinutes: 60,
+    limit: 10,
+  });
 
   if (!latest) {
     return (
@@ -58,6 +66,7 @@ export default async function UnusualActivityLandingPage() {
       <UoaScanView
         scan={latest}
         archive={archive.filter((a) => a.scanDay !== latest.scanDay)}
+        latestPrints={latestPrints}
       />
     </>
   );

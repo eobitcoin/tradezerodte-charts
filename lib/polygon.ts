@@ -493,6 +493,34 @@ export function computeHv30d(prices: number[]): number | null {
  * `asOf` is the date the HV is "as of"; we look back 45 calendar days
  * to ensure we have ~31 trading sessions.
  */
+/**
+ * Fetch the current value of a Polygon index ticker (e.g. "I:SPX",
+ * "I:NDX", "I:VIX"). Equity option chain responses embed
+ * `underlying_asset.price` on each contract; index chain responses
+ * do NOT — so we hit the indices snapshot endpoint separately when
+ * we need spot for a cash-settled index.
+ *
+ * Returns null if Polygon returns no usable value (entitlement issue,
+ * stale data, etc.). Caller should skip GEX computation when null.
+ */
+interface PolygonIndexSnapshotResponse {
+  results?: Array<{
+    ticker?: string;
+    value?: number;
+    session?: { close?: number; previous_close?: number };
+  }>;
+}
+export async function fetchIndexSpot(indexTicker: string): Promise<number | null> {
+  const body: PolygonIndexSnapshotResponse = await polygonGet(
+    `/v3/snapshot/indices?tickers=${encodeURIComponent(indexTicker)}`,
+  );
+  const r = body.results?.[0];
+  // Prefer the live `value` field; fall back to session close (last
+  // settled value) when markets are closed and `value` is stale.
+  const v = r?.value ?? r?.session?.close ?? r?.session?.previous_close ?? null;
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null;
+}
+
 export async function hv30dForDate(
   ticker: string,
   asOf: string,

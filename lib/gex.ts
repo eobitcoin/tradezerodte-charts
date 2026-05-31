@@ -29,8 +29,20 @@
  *      noisy at the tails.
  */
 
-import { fetchOptionChain } from "@/lib/polygon";
+import { fetchOptionChain, fetchIndexSpot } from "@/lib/polygon";
 import type { GexStrikeRow } from "@/lib/db/schema";
+
+/**
+ * Tickers in our watchlist that are cash-settled indexes — their
+ * option chain responses don't include `underlying_asset.price`, so
+ * we have to fetch spot from Polygon's dedicated indices endpoint.
+ *
+ * Maps display ticker → Polygon "I:" prefix used by both the chain
+ * endpoint and the indices snapshot endpoint.
+ */
+const INDEX_TICKERS: Record<string, string> = {
+  SPX: "I:SPX",
+};
 
 /** GEX watchlist — indexes + the most-traded single names. Locked
  *  list to match the cron's Polygon usage profile. SPX in particular
@@ -55,8 +67,7 @@ export type GexTicker = (typeof GEX_WATCHLIST)[number];
  * translating only at fetch time keeps the data model clean.
  */
 function polygonUnderlyingFor(ticker: string): string {
-  if (ticker === "SPX") return "I:SPX";
-  return ticker;
+  return INDEX_TICKERS[ticker] ?? ticker;
 }
 
 /** Computed snapshot ready for INSERT. */
@@ -89,17 +100,24 @@ export interface GexSnapshotResult {
 export async function computeGexSnapshot(
   ticker: string,
 ): Promise<GexSnapshotResult | null> {
-  const chain = await fetchOptionChain(polygonUnderlyingFor(ticker));
+  const polygonTicker = polygonUnderlyingFor(ticker);
+  const chain = await fetchOptionChain(polygonTicker);
   if (chain.length === 0) return null;
 
-  // Pull the underlying spot from the first contract that has it.
-  // Polygon embeds spot in each chain entry's `underlying_asset.price`.
+  // Resolve spot. Equity chains embed `underlying_asset.price` on
+  // every contract — index chains do not. For indexes we have to
+  // hit Polygon's indices snapshot endpoint separately. Both paths
+  // tolerate "no spot found" by returning null upstream.
   let spot: number | null = null;
-  for (const c of chain) {
-    const p = c.underlying_asset?.price;
-    if (typeof p === "number" && Number.isFinite(p) && p > 0) {
-      spot = p;
-      break;
+  if (INDEX_TICKERS[ticker]) {
+    spot = await fetchIndexSpot(INDEX_TICKERS[ticker]);
+  } else {
+    for (const c of chain) {
+      const p = c.underlying_asset?.price;
+      if (typeof p === "number" && Number.isFinite(p) && p > 0) {
+        spot = p;
+        break;
+      }
     }
   }
   if (spot == null) return null;

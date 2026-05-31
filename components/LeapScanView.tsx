@@ -2,6 +2,7 @@ import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { renderMarkdown } from "@/lib/markdown";
+import { legsToUrlParams } from "@/lib/earnings-trade-builder";
 import {
   leapPicks,
   type LeapScan,
@@ -165,11 +166,27 @@ export default async function LeapScanView({ scan, archive }: Props) {
                         · {fmtExpiry(p.expirationDate)} ({p.dteDays}d)
                       </span>
                     </span>
-                    <span className="ml-auto font-mono text-sm">
-                      <span className="text-white/55">composite</span>{" "}
-                      <span className="font-bold text-amber-300">
-                        {p.compositeScore.toFixed(0)}
+                    <span className="ml-auto font-mono text-sm flex items-center gap-3">
+                      <span>
+                        <span className="text-white/55">composite</span>{" "}
+                        <span className="font-bold text-amber-300">
+                          {p.compositeScore.toFixed(0)}
+                        </span>
                       </span>
+                      <Link
+                        href={`/research/risk-graph?${legsToUrlParams({
+                          ticker: p.ticker,
+                          strategy: "leap",
+                          expiry: p.expirationDate,
+                          legs: [
+                            { side: "buy", type: "call", strike: p.strike },
+                          ],
+                        })}`}
+                        className="inline-block rounded border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/15 transition-colors"
+                        title={`Open Risk Graph with this LEAP pre-loaded (buy 1× ${p.strike}C, ${p.expirationDate})`}
+                      >
+                        Build →
+                      </Link>
                     </span>
                   </div>
 

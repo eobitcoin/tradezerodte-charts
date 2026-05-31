@@ -614,7 +614,7 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
       {prefillStatus === "applied" && prefill && (
         <div className="rounded border border-emerald-500/40 bg-emerald-500/[0.06] px-3 py-2 text-xs flex items-center gap-2">
           <span className="font-bold text-emerald-200 uppercase tracking-widest text-[10px]">
-            ✓ Loaded from Earnings Scans
+            ✓ Prefilled position
           </span>
           <span className="text-white/65">
             {prefill.strategy} · {prefill.legs.length}{" "}

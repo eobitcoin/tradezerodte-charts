@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { renderMarkdown, extractSection } from "@/lib/markdown";
 import OptionsSubNav from "@/components/OptionsSubNav";
+import { legsToUrlParams } from "@/lib/earnings-trade-builder";
 import type {
   OptionsEdgeScan,
   OptionsEdgeAnomaly,
@@ -68,6 +69,51 @@ function fmtScanDate(day: string): string {
 function directionLabel(d: "high" | "low"): string {
   return d === "high" ? "Stretched high" : "Stretched low";
 }
+/**
+ * Convert an OptionsEdge anomaly's leg list + DTE into a Risk Graph
+ * BUILD link. The anomaly's strikes are already snap-to-grid via the
+ * delta-target inversion at publish time, so they should match the
+ * live chain almost always. Expiry is approximated as today + DTE
+ * (Risk Graph will fall back to the closest listed expiry if exact).
+ *
+ * For mixed-DTE structures (calendar spreads — rare), we pick the
+ * earliest DTE leg as the "primary" expiry and pass all legs at that
+ * expiry. The user can adjust the back-month leg manually after
+ * landing in Risk Graph.
+ */
+function OptionsEdgeBuildButton({
+  anomaly,
+}: {
+  anomaly: OptionsEdgeAnomaly;
+}) {
+  if (!anomaly.legs || anomaly.legs.length === 0) return null;
+  const dtes = anomaly.legs.map((l) => l.dte).filter((d) => d > 0);
+  if (dtes.length === 0) return null;
+  const primaryDte = Math.min(...dtes);
+  const today = new Date();
+  const expiryMs = today.getTime() + primaryDte * 86_400_000;
+  const expiry = new Date(expiryMs).toISOString().slice(0, 10);
+  const href = `/research/risk-graph?${legsToUrlParams({
+    ticker: anomaly.ticker,
+    strategy: "iv-anomaly",
+    expiry,
+    legs: anomaly.legs.map((l) => ({
+      side: l.side,
+      type: l.type,
+      strike: l.strike,
+    })),
+  })}`;
+  return (
+    <Link
+      href={href}
+      className="inline-block rounded border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-0.5 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/15 transition-colors ml-1"
+      title={`Open Risk Graph with this ${anomaly.legs.length}-leg structure pre-loaded`}
+    >
+      Build →
+    </Link>
+  );
+}
+
 function directionTone(d: "high" | "low"): string {
   return d === "high"
     ? "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]"
@@ -202,7 +248,7 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
                       bid/ask intuition. Hidden when no legs (older posts or
                       missing surface data). */}
                   {a.legs && a.legs.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
                       {a.legs.map((leg, j) => (
                         <span
                           key={`${leg.side}-${leg.type}-${leg.strike}-${leg.dte}-${j}`}
@@ -224,6 +270,7 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
                           <span className="text-white/55">{leg.dte}d</span>
                         </span>
                       ))}
+                      <OptionsEdgeBuildButton anomaly={a} />
                     </div>
                   )}
 

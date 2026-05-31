@@ -352,18 +352,23 @@ export interface PrefillLeg {
 }
 
 export interface PrefillPayload {
-  strategy: "straddle" | "condor" | "breakout" | "rush";
+  /** Free-form label for the banner ("condor", "leap", "iv-anomaly",
+   *  etc). Display-only — no behavior keyed off it. */
+  strategy: string;
   expiry: string;
   legs: PrefillLeg[];
 }
 
-/** Encode a ProposedTrade for the Risk Graph BUILD link. Returns a
- *  query-string fragment (no leading "?"). */
-export function tradeToUrlParams(
-  trade: ProposedTrade,
-  ticker: string,
-): string {
-  const legsStr = trade.legs
+/** Generic encoder used by every source that hands off to Risk Graph
+ *  (earnings scans, LEAPs, options edge anomalies, future surfaces).
+ *  Returns a query-string fragment (no leading "?"). */
+export function legsToUrlParams(opts: {
+  ticker: string;
+  strategy: string;
+  expiry: string;
+  legs: PrefillLeg[];
+}): string {
+  const legsStr = opts.legs
     .map((l) => {
       const side = l.side === "buy" ? "L" : "S";
       const type = l.type === "call" ? "C" : "P";
@@ -371,17 +376,31 @@ export function tradeToUrlParams(
     })
     .join(",");
   const qs = new URLSearchParams({
-    ticker,
-    prefillStrategy: trade.strategy,
-    prefillExpiry: trade.expiry,
+    ticker: opts.ticker,
+    prefillStrategy: opts.strategy,
+    prefillExpiry: opts.expiry,
     prefillLegs: legsStr,
   });
   return qs.toString();
 }
 
+/** Convenience: encode a full ProposedTrade for the Risk Graph BUILD
+ *  link. Thin wrapper over `legsToUrlParams`. */
+export function tradeToUrlParams(
+  trade: ProposedTrade,
+  ticker: string,
+): string {
+  return legsToUrlParams({
+    ticker,
+    strategy: trade.strategy,
+    expiry: trade.expiry,
+    legs: trade.legs,
+  });
+}
+
 /** Parse the URL-encoded prefill payload. Returns null if the params
  *  are missing or malformed (no error — caller proceeds with a blank
- *  builder). */
+ *  builder). Strategy is accepted as any non-empty string. */
 export function urlParamsToPrefill(
   searchParams: URLSearchParams,
 ): PrefillPayload | null {
@@ -389,14 +408,6 @@ export function urlParamsToPrefill(
   const expiry = searchParams.get("prefillExpiry");
   const legsStr = searchParams.get("prefillLegs");
   if (!strategy || !expiry || !legsStr) return null;
-  if (
-    strategy !== "straddle" &&
-    strategy !== "condor" &&
-    strategy !== "breakout" &&
-    strategy !== "rush"
-  ) {
-    return null;
-  }
   const legs: PrefillLeg[] = [];
   for (const part of legsStr.split(",")) {
     const [sideS, typeS, strikeS] = part.split("-");

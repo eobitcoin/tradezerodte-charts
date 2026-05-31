@@ -30,7 +30,7 @@ export default async function UnusualActivityLandingPage() {
     return (
       <>
         <SiteHeader />
-        <div className="max-w-6xl mx-auto px-4 pt-6">
+        <div className="max-w-7xl mx-auto px-4 pt-6">
           <OptionsSubNav active="unusual" />
         </div>
         <main className="max-w-5xl mx-auto px-4 py-12 space-y-4 text-center">
@@ -55,7 +55,7 @@ export default async function UnusualActivityLandingPage() {
   return (
     <>
       <SiteHeader />
-      <div className="max-w-6xl mx-auto px-4 pt-6">
+      <div className="max-w-7xl mx-auto px-4 pt-6">
         <OptionsSubNav active="unusual" />
       </div>
       <UoaScanView

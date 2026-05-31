@@ -39,7 +39,7 @@ export default async function UnusualActivityArchivePage({
   return (
     <>
       <SiteHeader />
-      <div className="max-w-6xl mx-auto px-4 pt-6">
+      <div className="max-w-7xl mx-auto px-4 pt-6">
         <OptionsSubNav active="unusual" />
       </div>
       <UoaScanView scan={scan} archive={archive} />

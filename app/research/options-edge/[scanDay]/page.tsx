@@ -43,7 +43,7 @@ export default async function OptionsEdgeArchivePage({
   return (
     <>
       <SiteHeader />
-      <div className="max-w-6xl mx-auto px-4 pt-6">
+      <div className="max-w-7xl mx-auto px-4 pt-6">
         <OptionsSubNav active="edge" />
       </div>
       <OptionsEdgeScanView scan={scan} archive={archive} />

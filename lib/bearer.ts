@@ -67,6 +67,16 @@ export function requireGexCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("GEX_CRON_TOKEN", req);
 }
 
+/**
+ * Cheap LEAPs scanner cron token. Used by the weekly Sunday scanner
+ * that ranks low-IV-rank quality names with healthy pullbacks.
+ * Separate from the other crons so a leak is bounded. Set as
+ * `LEAP_CRON_TOKEN` in Railway env.
+ */
+export function requireLeapCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("LEAP_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

@@ -2016,3 +2016,113 @@ export const gexSnapshots = pgTable(
 );
 
 export type GexSnapshot = typeof gexSnapshots.$inferSelect;
+
+// ============================================================================
+// CHEAP LEAPS SCANNER
+//
+// Weekly scan that finds 14-20 month calls where IV is in the bottom
+// quartile of its 1-year range AND the underlying has solid
+// fundamentals (revenue growth, positive operating income, cash
+// buffer) AND the stock has pulled back but isn't in free fall.
+// Vega-positive long-term position: two ways to win (delta + vega).
+// ============================================================================
+
+/** Denormalized pick summary stored in `leap_scans.picks`. */
+export interface LeapPickSummary {
+  ticker: string;
+  contractTicker: string;
+  expirationDate: string;       // YYYY-MM-DD
+  strike: number;
+  dteDays: number;
+  underlyingPrice: number;
+  premiumMid: number | null;
+  premiumBid: number | null;
+  premiumAsk: number | null;
+  iv: number | null;
+  delta: number | null;
+  gamma: number | null;
+  theta: number | null;
+  vega: number | null;
+  openInterest: number | null;
+  ivRank: number | null;
+  qualityScore: number | null;
+  setupScore: number | null;
+  compositeScore: number;
+  fundamentals: Record<string, unknown>;
+}
+
+export const leapPicks = pgTable(
+  "leap_picks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull(),
+    ticker: text("ticker").notNull(),
+
+    contractTicker: text("contract_ticker").notNull(),
+    expirationDate: date("expiration_date").notNull(),
+    strike: numeric("strike", { precision: 14, scale: 4 }).notNull(),
+    dteDays: integer("dte_days").notNull(),
+
+    underlyingPrice: numeric("underlying_price", { precision: 14, scale: 4 }).notNull(),
+    premiumMid: numeric("premium_mid", { precision: 14, scale: 4 }),
+    premiumBid: numeric("premium_bid", { precision: 14, scale: 4 }),
+    premiumAsk: numeric("premium_ask", { precision: 14, scale: 4 }),
+    iv: numeric("iv", { precision: 8, scale: 6 }),
+    delta: numeric("delta", { precision: 6, scale: 4 }),
+    gamma: numeric("gamma", { precision: 10, scale: 8 }),
+    theta: numeric("theta", { precision: 10, scale: 4 }),
+    vega: numeric("vega", { precision: 10, scale: 4 }),
+    openInterest: integer("open_interest"),
+
+    ivRank: numeric("iv_rank", { precision: 5, scale: 2 }),
+    qualityScore: numeric("quality_score", { precision: 5, scale: 2 }),
+    setupScore: numeric("setup_score", { precision: 5, scale: 2 }),
+    compositeScore: numeric("composite_score", {
+      precision: 5,
+      scale: 2,
+    }).notNull(),
+
+    fundamentals: jsonb("fundamentals")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("leap_picks_scan_day_desc_idx").on(
+      t.scanDay.desc(),
+      t.compositeScore.desc(),
+    ),
+    index("leap_picks_ticker_scan_day_idx").on(t.ticker, t.scanDay.desc()),
+  ],
+);
+
+export type LeapPick = typeof leapPicks.$inferSelect;
+
+export const leapScans = pgTable(
+  "leap_scans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanDay: date("scan_day").notNull().unique(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull().default(""),
+    picks: jsonb("picks").$type<LeapPickSummary[]>().notNull().default([]),
+    universeSize: integer("universe_size").notNull(),
+    runAt: timestamp("run_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("leap_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type LeapScan = typeof leapScans.$inferSelect;

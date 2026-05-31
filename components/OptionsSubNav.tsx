@@ -10,12 +10,13 @@ import Link from "next/link";
  * the sub-tabs keep the descriptive product names ("Options Edge",
  * "Unusual Activity") that read like a content shelf.
  */
-export type OptionsSubNavTab = "edge" | "unusual" | "gex";
+export type OptionsSubNavTab = "edge" | "unusual" | "gex" | "leaps";
 
 const TABS: Array<{ id: OptionsSubNavTab; label: string; href: string }> = [
   { id: "edge", label: "Options Edge", href: "/research/options-edge" },
   { id: "unusual", label: "Unusual Activity", href: "/research/unusual-activity" },
   { id: "gex", label: "GEX", href: "/research/gex" },
+  { id: "leaps", label: "LEAPs", href: "/research/leaps" },
 ];
 
 export default function OptionsSubNav({ active }: { active: OptionsSubNavTab }) {

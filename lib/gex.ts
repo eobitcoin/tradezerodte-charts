@@ -35,26 +35,25 @@ import type { GexStrikeRow } from "@/lib/db/schema";
 /**
  * Tickers in our watchlist that are cash-settled indexes — their
  * option chain responses don't include `underlying_asset.price`, so
- * we have to fetch spot from Polygon's dedicated indices endpoint.
- *
- * Maps display ticker → Polygon "I:" prefix used by both the chain
- * endpoint and the indices snapshot endpoint.
+ * we'd have to fetch spot from Polygon's dedicated indices endpoint
+ * (which requires the "Indices" entitlement on top of Options
+ * Advanced). Currently empty — all watchlist members are equity ETFs
+ * or single names where spot comes free with the chain. The
+ * scaffolding stays so adding NDX/RUT/SPX is a one-line change if
+ * the entitlement ever lands.
  */
-const INDEX_TICKERS: Record<string, string> = {
-  SPX: "I:SPX",
-};
+const INDEX_TICKERS: Record<string, string> = {};
 
-/** GEX watchlist — indexes + the most-traded single names. Locked
- *  list to match the cron's Polygon usage profile. SPX in particular
- *  has a much heavier chain than the ETFs so the cron runtime budget
- *  needs to be respected (still well under the 4-min cap). */
+/** GEX watchlist — index ETFs + the most-traded single names. */
 export const GEX_WATCHLIST = [
-  // Indexes / index-equivalent ETFs
-  "SPX", "SPY", "QQQ", "IWM",
+  // Index ETFs
+  "SPY", "QQQ", "IWM",
   // Mega-cap tech
   "AAPL", "MSFT", "NVDA", "TSLA", "META", "AMZN", "GOOGL",
-  // Semis + high-flow single names
-  "AMD", "MU", "COIN", "PLTR",
+  // Semis
+  "AMD", "MU", "QCOM",
+  // High-flow single names
+  "COIN", "PLTR",
 ] as const;
 
 export type GexTicker = (typeof GEX_WATCHLIST)[number];

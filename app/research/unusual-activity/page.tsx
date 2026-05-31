@@ -55,9 +55,6 @@ export default async function UnusualActivityLandingPage() {
   return (
     <>
       <SiteHeader />
-      <div className="max-w-6xl mx-auto px-4 pt-6">
-        <OptionsSubNav active="unusual" />
-      </div>
       <UoaScanView
         scan={latest}
         archive={archive.filter((a) => a.scanDay !== latest.scanDay)}

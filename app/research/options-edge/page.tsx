@@ -6,6 +6,11 @@ import SiteHeader from "@/components/SiteHeader";
 import OptionsSubNav from "@/components/OptionsSubNav";
 import OptionsEdgeScanView from "@/components/OptionsEdgeScanView";
 
+// OptionsSubNav is rendered inside OptionsEdgeScanView's <main>
+// for populated scans (so it shares the same max-w container as
+// the title — guarantees same left edge). Imported here only for
+// the empty-state branch below, where there's no scan view yet.
+
 export const dynamic = "force-dynamic";
 
 /**
@@ -53,9 +58,6 @@ export default async function OptionsEdgeLandingPage() {
   return (
     <>
       <SiteHeader />
-      <div className="max-w-6xl mx-auto px-4 pt-6">
-        <OptionsSubNav active="edge" />
-      </div>
       <OptionsEdgeScanView
         scan={latest}
         archive={archive.filter((a) => a.scanDay !== latest.scanDay)}

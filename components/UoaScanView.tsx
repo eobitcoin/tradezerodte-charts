@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { renderMarkdown } from "@/lib/markdown";
+import OptionsSubNav from "@/components/OptionsSubNav";
 import type {
   UoaScan,
   UoaPrintSummary,
@@ -89,6 +90,7 @@ export default async function UoaScanView({ scan, archive }: Props) {
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
+      <OptionsSubNav active="unusual" />
       <header className="space-y-2">
         <div className="text-[10px] uppercase tracking-widest text-amber-400">
           Unusual Activity · End-of-day smart-money flow

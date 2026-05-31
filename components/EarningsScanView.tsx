@@ -30,6 +30,7 @@ import {
 } from "@/lib/earnings-analyst";
 import {
   proposeTrade,
+  tradeToUrlParams,
   type ProposedTrade,
 } from "@/lib/earnings-trade-builder";
 
@@ -270,13 +271,7 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
                     </td>
                   )}
                   <td className="px-3 py-2 text-right">
-                    <Link
-                      href={`/research/risk-graph?ticker=${t.symbol}`}
-                      className="inline-block rounded border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/15 transition-colors"
-                      title="Open Risk Graph builder with this ticker pre-loaded"
-                    >
-                      Build →
-                    </Link>
+                    <BuildButton entry={t} tab={tab} />
                   </td>
                 </tr>
               ))}
@@ -564,6 +559,40 @@ function AnalystNoteLine({ note }: { note: AnalystNote }) {
     >
       {icon} {note.text}
     </p>
+  );
+}
+
+/** BUILD button — passes the full proposed-trade structure to Risk
+ *  Graph as URL params when one exists; falls back to ticker-only for
+ *  rows without a backtested trade. */
+function BuildButton({
+  entry,
+  tab,
+}: {
+  entry: EarningsTickerEntry;
+  tab: StrategyKey;
+}) {
+  // For backtested tabs, derive a proposed trade when the ticker has
+  // current spot+IV. Falls back to ticker-only.
+  const strategy =
+    tab === "straddle" || tab === "condor" || tab === "breakout" || tab === "rush"
+      ? tab
+      : null;
+  const trade = strategy ? proposeTrade(entry, strategy) : null;
+  const href = trade
+    ? `/research/risk-graph?${tradeToUrlParams(trade, entry.symbol)}`
+    : `/research/risk-graph?ticker=${entry.symbol}`;
+  const title = trade
+    ? `Open Risk Graph with ${trade.legs.length}-leg ${strategy} pre-loaded`
+    : "Open Risk Graph builder with this ticker pre-loaded";
+  return (
+    <Link
+      href={href}
+      className="inline-block rounded border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/15 transition-colors"
+      title={title}
+    >
+      Build →
+    </Link>
   );
 }
 

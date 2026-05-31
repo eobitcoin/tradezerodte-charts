@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   computeRiskGraph,
   computeIvSensitivity,
@@ -24,6 +24,10 @@ import {
   baselineIv,
   type Leg,
 } from "@/lib/risk-graph";
+import {
+  urlParamsToPrefill,
+  type PrefillPayload,
+} from "@/lib/earnings-trade-builder";
 import OptionChainTable, { type ChainRow } from "./OptionChainTable";
 import PositionBuilderPanel from "./PositionBuilderPanel";
 import RiskGraphChart from "./RiskGraphChart";
@@ -53,6 +57,89 @@ export interface PositionLeg extends Leg {
   contractTicker: string;
   entryBid?: number | null;
   entryAsk?: number | null;
+}
+
+/**
+ * Match prefill payload to the freshly-loaded chain and push the legs
+ * into builder state.
+ *
+ * Expiry matching: exact date first; falls back to the chain expiry
+ *   closest to the requested date.
+ * Strike matching: exact strike first; falls back to closest listed
+ *   strike of the same type within ±10% of requested.
+ *
+ * Returns true if at least one leg was added; false if the chain
+ * couldn't satisfy ANY leg (rare — wrong ticker or empty chain).
+ */
+function applyPrefill(
+  chain: ChainResponse,
+  payload: PrefillPayload,
+  setLegs: (next: PositionLeg[]) => void,
+  setSelectedExpiry: (e: string) => void,
+): boolean {
+  if (chain.expiries.length === 0) return false;
+  // Pick expiry: exact, then closest by absolute date diff.
+  let expiry = chain.expiries.find(
+    (e) => e.expiration === payload.expiry,
+  );
+  if (!expiry) {
+    const target = new Date(`${payload.expiry}T00:00:00Z`).getTime();
+    let best = chain.expiries[0];
+    let bestDiff = Math.abs(
+      new Date(`${best.expiration}T00:00:00Z`).getTime() - target,
+    );
+    for (const e of chain.expiries) {
+      const diff = Math.abs(
+        new Date(`${e.expiration}T00:00:00Z`).getTime() - target,
+      );
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = e;
+      }
+    }
+    expiry = best;
+  }
+  setSelectedExpiry(expiry.expiration);
+
+  const builtLegs: PositionLeg[] = [];
+  for (const leg of payload.legs) {
+    const candidates =
+      leg.type === "call" ? expiry.calls : expiry.puts;
+    if (candidates.length === 0) continue;
+    // Exact strike, else closest within ±10%.
+    let row = candidates.find((r) => r.strike === leg.strike);
+    if (!row) {
+      const tol = leg.strike * 0.1;
+      let closest: ChainRow | null = null;
+      let closestDiff = Infinity;
+      for (const r of candidates) {
+        const d = Math.abs(r.strike - leg.strike);
+        if (d <= tol && d < closestDiff) {
+          closestDiff = d;
+          closest = r;
+        }
+      }
+      row = closest ?? undefined;
+    }
+    if (!row) continue;
+    const entryPrice = row.mid ?? row.ask ?? row.bid ?? 0;
+    const entryIv = row.iv ?? 0.3;
+    builtLegs.push({
+      contractTicker: row.contractTicker,
+      type: leg.type,
+      side: leg.side === "buy" ? "long" : "short",
+      strike: row.strike,
+      expiration: expiry.expiration,
+      qty: 1,
+      entryPrice,
+      entryIv,
+      entryBid: row.bid,
+      entryAsk: row.ask,
+    });
+  }
+  if (builtLegs.length === 0) return false;
+  setLegs(builtLegs);
+  return true;
 }
 
 /** Short "May 30" / "Jun 1" style for expiry display in suggestions. */
@@ -201,6 +288,38 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
   const [priceRangePct, setPriceRangePct] = useState(0.30);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  // ---------- Earnings Scans hand-off ----------
+  // When opened with prefill URL params from /research/earnings-scans,
+  // auto-fetch the chain and add legs once it loads. Single-shot —
+  // tracked by `prefillApplied` so it doesn't re-trigger if the user
+  // later edits the position.
+  const searchParams = useSearchParams();
+  const [prefill, setPrefill] = useState<PrefillPayload | null>(null);
+  const [prefillStatus, setPrefillStatus] = useState<
+    "idle" | "applied" | "failed"
+  >("idle");
+  const prefillAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (!searchParams) return;
+    const tickerParam = searchParams.get("ticker");
+    if (tickerParam && !chain && !tickerInput) {
+      setTickerInput(tickerParam.toUpperCase());
+      void loadChain(tickerParam.toUpperCase());
+    }
+    const payload = urlParamsToPrefill(searchParams);
+    if (payload) setPrefill(payload);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    // Apply prefill once chain is loaded.
+    if (!prefill || !chain || prefillAppliedRef.current) return;
+    prefillAppliedRef.current = true;
+    const applied = applyPrefill(chain, prefill, setLegs, setSelectedExpiry);
+    setPrefillStatus(applied ? "applied" : "failed");
+  }, [chain, prefill]);
 
   // ---------- Chain fetch ----------
   async function loadChain(ticker: string) {
@@ -492,6 +611,30 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
 
   return (
     <div className="space-y-4">
+      {prefillStatus === "applied" && prefill && (
+        <div className="rounded border border-emerald-500/40 bg-emerald-500/[0.06] px-3 py-2 text-xs flex items-center gap-2">
+          <span className="font-bold text-emerald-200 uppercase tracking-widest text-[10px]">
+            ✓ Loaded from Earnings Scans
+          </span>
+          <span className="text-white/65">
+            {prefill.strategy} · {prefill.legs.length}{" "}
+            {prefill.legs.length === 1 ? "leg" : "legs"} · expiry{" "}
+            {prefill.expiry}
+          </span>
+        </div>
+      )}
+      {prefillStatus === "failed" && prefill && (
+        <div className="rounded border border-amber-500/40 bg-amber-500/[0.05] px-3 py-2 text-xs">
+          <span className="font-bold text-amber-300 uppercase tracking-widest text-[10px] mr-2">
+            ⚠ Prefill partial
+          </span>
+          <span className="text-white/65">
+            Couldn&apos;t match all {prefill.strategy} legs to the live
+            chain (strikes may not be listed at the proposed expiry).
+            Build manually using the chain below.
+          </span>
+        </div>
+      )}
       {/* Ticker input */}
       <div className="flex items-baseline gap-3 flex-wrap">
         <label className="text-xs uppercase tracking-widest text-white/55">

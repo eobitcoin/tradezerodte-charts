@@ -323,6 +323,95 @@ export function proposeRushTrade(
 }
 
 // ---------------------------------------------------------------------------
+// URL encoding for Risk Graph hand-off
+// ---------------------------------------------------------------------------
+//
+// The Earnings Scans BUILD button drops the user into Risk Graph with
+// the proposed trade pre-loaded. We encode the trade as URL query
+// params so the destination page can rebuild the position once it
+// fetches the live chain.
+//
+// Format:
+//   ?ticker=AAPL
+//    &prefillStrategy=condor
+//    &prefillExpiry=2026-06-06
+//    &prefillLegs=L-P-420,S-P-430,S-C-450,L-C-460
+//
+// Each leg is `side-type-strike` where:
+//   side  = L (buy / long) | S (sell / short)
+//   type  = C (call) | P (put)
+//   strike = decimal number
+//
+// Compact enough for clean URLs, readable enough to debug from the
+// browser bar, and forward-compatible (extra params are ignored).
+
+export interface PrefillLeg {
+  side: "buy" | "sell";
+  type: "call" | "put";
+  strike: number;
+}
+
+export interface PrefillPayload {
+  strategy: "straddle" | "condor" | "breakout" | "rush";
+  expiry: string;
+  legs: PrefillLeg[];
+}
+
+/** Encode a ProposedTrade for the Risk Graph BUILD link. Returns a
+ *  query-string fragment (no leading "?"). */
+export function tradeToUrlParams(
+  trade: ProposedTrade,
+  ticker: string,
+): string {
+  const legsStr = trade.legs
+    .map((l) => {
+      const side = l.side === "buy" ? "L" : "S";
+      const type = l.type === "call" ? "C" : "P";
+      return `${side}-${type}-${l.strike}`;
+    })
+    .join(",");
+  const qs = new URLSearchParams({
+    ticker,
+    prefillStrategy: trade.strategy,
+    prefillExpiry: trade.expiry,
+    prefillLegs: legsStr,
+  });
+  return qs.toString();
+}
+
+/** Parse the URL-encoded prefill payload. Returns null if the params
+ *  are missing or malformed (no error — caller proceeds with a blank
+ *  builder). */
+export function urlParamsToPrefill(
+  searchParams: URLSearchParams,
+): PrefillPayload | null {
+  const strategy = searchParams.get("prefillStrategy");
+  const expiry = searchParams.get("prefillExpiry");
+  const legsStr = searchParams.get("prefillLegs");
+  if (!strategy || !expiry || !legsStr) return null;
+  if (
+    strategy !== "straddle" &&
+    strategy !== "condor" &&
+    strategy !== "breakout" &&
+    strategy !== "rush"
+  ) {
+    return null;
+  }
+  const legs: PrefillLeg[] = [];
+  for (const part of legsStr.split(",")) {
+    const [sideS, typeS, strikeS] = part.split("-");
+    if (!sideS || !typeS || !strikeS) return null;
+    const side = sideS === "L" ? "buy" : sideS === "S" ? "sell" : null;
+    const type = typeS === "C" ? "call" : typeS === "P" ? "put" : null;
+    const strike = Number(strikeS);
+    if (!side || !type || !Number.isFinite(strike)) return null;
+    legs.push({ side, type, strike });
+  }
+  if (legs.length === 0) return null;
+  return { strategy, expiry, legs };
+}
+
+// ---------------------------------------------------------------------------
 // Generic dispatcher
 // ---------------------------------------------------------------------------
 

@@ -77,8 +77,8 @@ export default async function EarningsScansPage() {
             For each company reporting next week, compares the historical
             earnings move magnitude against the current IV-implied move
             and scores all four earnings-options strategies. Straddle
-            tab is gated by a real 6-cycle Polygon-priced backtest;
-            Rush / Condor / Breakout still on V1 heuristic scores.
+            and Condor tabs are gated by real 6-cycle Polygon-priced
+            backtests; Rush and Breakout still on V1 heuristic scores.
           </p>
         </header>
 

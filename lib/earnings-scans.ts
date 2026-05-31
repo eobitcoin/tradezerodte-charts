@@ -43,7 +43,7 @@ import type {
   EarningsStrategySuggestion,
   EarningsTickerEntry,
 } from "@/lib/db/schema";
-import { backtestStraddle } from "@/lib/earnings-backtest";
+import { backtestCondor, backtestStraddle } from "@/lib/earnings-backtest";
 
 // ---------------------------------------------------------------------------
 // Liquidity bar — without options volume there's nothing to scan.
@@ -425,8 +425,13 @@ export async function computeEarningsTickerEntry(opts: {
   const stats = summarize(history.map((h) => h.pricePctChange));
   const strategies = scoreStrategies(history, stats, snap.impliedMovePct);
 
-  // V3 backtest — Straddle only in phase 1. We pass the underlying
-  // bars we already pulled to avoid a redundant fetch.
+  // V3 backtests. Each strategy's price simulation is independent; the
+  // chain + underlying bars are passed in to avoid redundant fetches.
+  //
+  //   V3.1 Straddle  — shipped
+  //   V3.2 Condor    — shipped
+  //   V3.3 Breakout  — pending
+  //   V3.4 Rush      — pending
   let straddleBacktest: EarningsBacktestStats | undefined;
   try {
     const result = await backtestStraddle(symbol, earningsHistory, bars);
@@ -458,6 +463,43 @@ export async function computeEarningsTickerEntry(opts: {
     );
   }
 
+  let condorBacktest: EarningsBacktestStats | undefined;
+  try {
+    const result = await backtestCondor(
+      symbol,
+      earningsHistory,
+      bars,
+      snap.impliedMovePct,
+    );
+    const cycles: EarningsBacktestCycle[] = result.cycles.map((c) => ({
+      earningsDate: c.earningsDate,
+      hour: c.hour,
+      entryDate: c.entryDate,
+      exitDate: c.exitDate,
+      entryPrice: c.entryPrice,
+      exitPrice: c.exitPrice,
+      pnlDollar: c.pnlDollar,
+      roiPct: c.roiPct,
+      underlyingMove: c.underlyingMove,
+      skipReason: c.skipReason,
+    }));
+    condorBacktest = {
+      kind: "backtest",
+      avgRoiPct: result.avgRoiPct,
+      winRate: result.winRate,
+      wins: result.wins,
+      losses: result.losses,
+      cyclesUsed: result.cyclesUsed,
+      totalCycles: result.totalCycles,
+      cycles,
+    };
+  } catch (err) {
+    notes.push(
+      `Condor backtest failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const anyBacktest = straddleBacktest || condorBacktest;
   return {
     symbol,
     earningsDate: event.date,
@@ -468,7 +510,12 @@ export async function computeEarningsTickerEntry(opts: {
     history,
     historyStats: stats,
     strategies,
-    backtests: straddleBacktest ? { straddle: straddleBacktest } : undefined,
+    backtests: anyBacktest
+      ? {
+          straddle: straddleBacktest,
+          condor: condorBacktest,
+        }
+      : undefined,
     notes,
   };
 }

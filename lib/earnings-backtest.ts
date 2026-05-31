@@ -1,5 +1,5 @@
 /**
- * Earnings backtest engine (V3 phase 1: Straddle).
+ * Earnings backtest engine.
  *
  * For each past earnings date, simulate the strategy's entry and exit
  * against real Polygon historical option chains. Returns per-cycle
@@ -11,10 +11,11 @@
  * the last 6 earnings cycles for this ticker, returned X% on average
  * with a Y% win rate."
  *
- * Phase 1 covers Straddle only because (a) it's the simplest to
- * verify visually — buy ATM call + ATM put, hold through earnings,
- * exit at the next-day close — and (b) it's the most-traded earnings
- * strategy. Condor / Breakout / Rush in phases 2-4.
+ * Phase coverage:
+ *   V3.1 — Straddle      (shipped)
+ *   V3.2 — Iron Condor   (this file)
+ *   V3.3 — Breakout      (pending)
+ *   V3.4 — Earnings Rush (pending)
  */
 
 import {
@@ -327,6 +328,306 @@ function nextFridayAfter(iso: string): string {
   else daysToAdd = 6; // Saturday
   d.setUTCDate(d.getUTCDate() + daysToAdd);
   return d.toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// V3.2 — Iron Condor backtest
+// ---------------------------------------------------------------------------
+//
+// Strategy: short an iron condor sized to current implied move.
+//   short put  at 1.0× implied move OTM
+//   long  put  at 1.5× implied move OTM (the put-side wing)
+//   short call at 1.0× implied move OTM
+//   long  call at 1.5× implied move OTM (the call-side wing)
+//
+// Entry: same as straddle (4 trading days pre-EE — sell into IV ramp).
+// Exit:  same as straddle (1 trading day post-EE — close after IV crush).
+//
+// ROI denominator is MAX LOSS, not entry credit. A credit-spread's ROI
+// is meaningful only against capital at risk:
+//   max_loss = wing_width − net_credit
+//   roi      = (entry_credit − exit_debit) / max_loss
+//
+// Wing width assumption: we force PUT-side and CALL-side wing widths to
+// be equal — that's the standard iron-condor construction and keeps the
+// max-loss math symmetric.
+
+export interface CondorCyclePnl {
+  earningsDate: string;
+  hour: "bmo" | "amc" | "dmh";
+  entryDate: string;
+  exitDate: string;
+  /** Net credit received per spread (per share). */
+  entryPrice: number | null;
+  /** Net debit paid to close per spread (per share). */
+  exitPrice: number | null;
+  /** Per-spread P&L in dollars (= 100 × (credit − debit)). */
+  pnlDollar: number | null;
+  /** P&L / max loss × 100. Negative if losing. */
+  roiPct: number | null;
+  underlyingMove: number | null;
+  skipReason: string | null;
+}
+
+export interface CondorBacktest {
+  cycles: CondorCyclePnl[];
+  avgRoiPct: number | null;
+  winRate: number | null;
+  wins: number;
+  losses: number;
+  cyclesUsed: number;
+  totalCycles: number;
+}
+
+/** Strike grid step inferred from underlying price. Matches what
+ *  Polygon's chain typically lists for each price tier. Used to snap
+ *  computed strikes to plausible listed strikes. */
+function strikeStep(spot: number): number {
+  if (spot < 25) return 0.5;
+  if (spot < 100) return 1;
+  if (spot < 250) return 2.5;
+  return 5;
+}
+
+function snapStrike(target: number, step: number): number {
+  return Math.round(target / step) * step;
+}
+
+export async function backtestCondor(
+  ticker: string,
+  events: FinnhubEarningsEvent[],
+  underlyingBars: Map<string, number>,
+  impliedMovePct: number | null,
+): Promise<CondorBacktest> {
+  // Without current implied move we can't size strikes — bail early so
+  // we don't waste API calls fetching contracts we'd then skip.
+  if (impliedMovePct == null || impliedMovePct <= 0) {
+    return {
+      cycles: events.map((ev) => ({
+        earningsDate: ev.date,
+        hour: ev.hour,
+        entryDate: "",
+        exitDate: "",
+        entryPrice: null,
+        exitPrice: null,
+        pnlDollar: null,
+        roiPct: null,
+        underlyingMove: null,
+        skipReason: "No implied move — can't size condor strikes",
+      })),
+      avgRoiPct: null,
+      winRate: null,
+      wins: 0,
+      losses: 0,
+      cyclesUsed: 0,
+      totalCycles: events.length,
+    };
+  }
+
+  let expiries: string[] = [];
+  try {
+    const chain = await fetchOptionChain(ticker);
+    expiries = [...new Set(chain.map((c) => c.details.expiration_date))].sort();
+  } catch {
+    // Same fallback path as straddle — empty expiries → cycles all skip.
+  }
+
+  const cycles: CondorCyclePnl[] = [];
+  for (const ev of events) {
+    const cycle = await backtestCondorOneCycle(
+      ticker,
+      ev,
+      underlyingBars,
+      expiries,
+      impliedMovePct,
+    );
+    cycles.push(cycle);
+  }
+
+  const usable = cycles.filter((c) => c.pnlDollar != null && c.roiPct != null);
+  const wins = usable.filter((c) => (c.pnlDollar ?? 0) > 0).length;
+  const losses = usable.length - wins;
+  const avgRoi =
+    usable.length > 0
+      ? usable.reduce((s, c) => s + (c.roiPct ?? 0), 0) / usable.length
+      : null;
+  const winRate = usable.length > 0 ? wins / usable.length : null;
+
+  return {
+    cycles,
+    avgRoiPct: avgRoi,
+    winRate,
+    wins,
+    losses,
+    cyclesUsed: usable.length,
+    totalCycles: cycles.length,
+  };
+}
+
+async function backtestCondorOneCycle(
+  ticker: string,
+  event: FinnhubEarningsEvent,
+  underlyingBars: Map<string, number>,
+  currentExpiries: string[],
+  impliedMovePct: number,
+): Promise<CondorCyclePnl> {
+  const eeDate = event.date;
+  const entryDate = shiftTradingDays(eeDate, -ENTRY_DAYS_BEFORE);
+  const exitDate =
+    event.hour === "bmo" ? eeDate : shiftTradingDays(eeDate, EXIT_DAYS_AFTER);
+
+  const baseline: CondorCyclePnl = {
+    earningsDate: eeDate,
+    hour: event.hour,
+    entryDate,
+    exitDate,
+    entryPrice: null,
+    exitPrice: null,
+    pnlDollar: null,
+    roiPct: null,
+    underlyingMove: null,
+    skipReason: null,
+  };
+
+  const allDates = [...underlyingBars.keys()].sort();
+  const findClose = (target: string): number | null => {
+    if (underlyingBars.has(target)) return underlyingBars.get(target)!;
+    let idx = allDates.length - 1;
+    while (idx >= 0 && allDates[idx] > target) idx--;
+    return idx >= 0 ? underlyingBars.get(allDates[idx]) ?? null : null;
+  };
+  const entrySpot = findClose(entryDate);
+  const exitSpot = findClose(exitDate);
+  if (entrySpot == null || exitSpot == null) {
+    return { ...baseline, skipReason: "No underlying bars in window" };
+  }
+  baseline.underlyingMove = ((exitSpot - entrySpot) / entrySpot) * 100;
+
+  if (currentExpiries.length === 0) {
+    return { ...baseline, skipReason: "No current expiries" };
+  }
+  const histExpiry = nextFridayAfter(eeDate);
+
+  // Strike sizing: implied move width × spot. Inner shorts at 1.0×,
+  // outer longs at 1.5× — i.e. wing width = 0.5× implied move.
+  // Enforce minimum 2-step wings so tight strike grids don't collapse.
+  const step = strikeStep(entrySpot);
+  const ivWidth = entrySpot * (impliedMovePct / 100);
+  const wingWidthDollars = Math.max(ivWidth * 0.5, step * 2);
+
+  const shortPutStrike = snapStrike(entrySpot - ivWidth, step);
+  const longPutStrike = snapStrike(shortPutStrike - wingWidthDollars, step);
+  const shortCallStrike = snapStrike(entrySpot + ivWidth, step);
+  const longCallStrike = snapStrike(shortCallStrike + wingWidthDollars, step);
+
+  // Sanity: ensure short < long on call side, short > long on put side
+  // after snapping (rounding can collapse them on cheap stocks).
+  if (
+    shortPutStrike <= longPutStrike ||
+    longCallStrike <= shortCallStrike ||
+    shortPutStrike <= 0 ||
+    longPutStrike <= 0
+  ) {
+    return { ...baseline, skipReason: "Strikes collapsed after snap" };
+  }
+
+  const tickers = {
+    shortPut: formatOpraTicker(ticker, histExpiry, "P", shortPutStrike),
+    longPut: formatOpraTicker(ticker, histExpiry, "P", longPutStrike),
+    shortCall: formatOpraTicker(ticker, histExpiry, "C", shortCallStrike),
+    longCall: formatOpraTicker(ticker, histExpiry, "C", longCallStrike),
+  };
+
+  let bars: Record<keyof typeof tickers, Map<string, number>>;
+  try {
+    const [sp, lp, sc, lc] = await Promise.all([
+      fetchOptionContractBars(tickers.shortPut, entryDate, exitDate),
+      fetchOptionContractBars(tickers.longPut, entryDate, exitDate),
+      fetchOptionContractBars(tickers.shortCall, entryDate, exitDate),
+      fetchOptionContractBars(tickers.longCall, entryDate, exitDate),
+    ]);
+    bars = { shortPut: sp, longPut: lp, shortCall: sc, longCall: lc };
+  } catch (err) {
+    return {
+      ...baseline,
+      skipReason: `Contract bars: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const findContractClose = (
+    barMap: Map<string, number>,
+    target: string,
+    direction: "forward" | "backward",
+  ): number | null => {
+    if (barMap.has(target)) return barMap.get(target)!;
+    const sorted = [...barMap.keys()].sort();
+    if (direction === "backward") {
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i] <= target) return barMap.get(sorted[i])!;
+      }
+    } else {
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i] >= target) return barMap.get(sorted[i])!;
+      }
+    }
+    return null;
+  };
+
+  const entryPrices = {
+    shortPut: findContractClose(bars.shortPut, entryDate, "backward"),
+    longPut: findContractClose(bars.longPut, entryDate, "backward"),
+    shortCall: findContractClose(bars.shortCall, entryDate, "backward"),
+    longCall: findContractClose(bars.longCall, entryDate, "backward"),
+  };
+  const exitPrices = {
+    shortPut: findContractClose(bars.shortPut, exitDate, "forward"),
+    longPut: findContractClose(bars.longPut, exitDate, "forward"),
+    shortCall: findContractClose(bars.shortCall, exitDate, "forward"),
+    longCall: findContractClose(bars.longCall, exitDate, "forward"),
+  };
+
+  if (
+    Object.values(entryPrices).some((p) => p == null) ||
+    Object.values(exitPrices).some((p) => p == null)
+  ) {
+    return { ...baseline, skipReason: "Missing some leg prices" };
+  }
+
+  // Credit at entry: sell shorts, buy longs.
+  const entryCredit =
+    (entryPrices.shortPut! + entryPrices.shortCall!) -
+    (entryPrices.longPut! + entryPrices.longCall!);
+  const exitDebit =
+    (exitPrices.shortPut! + exitPrices.shortCall!) -
+    (exitPrices.longPut! + exitPrices.longCall!);
+
+  if (entryCredit <= 0) {
+    return { ...baseline, skipReason: "Entry credit ≤ 0 (degenerate condor)" };
+  }
+  const realWingWidth = Math.max(
+    shortPutStrike - longPutStrike,
+    longCallStrike - shortCallStrike,
+  );
+  const maxLoss = realWingWidth - entryCredit;
+  if (maxLoss <= 0) {
+    return { ...baseline, skipReason: "Credit > wing width (impossible)" };
+  }
+
+  const pnlDollar = (entryCredit - exitDebit) * 100;
+  const roiPct = (pnlDollar / (maxLoss * 100)) * 100;
+
+  return {
+    earningsDate: eeDate,
+    hour: event.hour,
+    entryDate,
+    exitDate,
+    entryPrice: entryCredit,
+    exitPrice: exitDebit,
+    pnlDollar,
+    roiPct,
+    underlyingMove: baseline.underlyingMove,
+    skipReason: null,
+  };
 }
 
 /** Convenience wrapper for the cron — fetches everything we need

@@ -227,7 +227,7 @@ function pickScore(stats: EarningsBacktestStats): number {
  */
 export function composeWeeklyRead(
   rows: WeeklyReadInput[],
-  strategyLabel: "Straddle" | "Condor" | "Breakout",
+  strategyLabel: "Straddle" | "Condor" | "Breakout" | "Rush",
 ): WeeklyRead | null {
   const strong = rows.filter((r) => r.stats.cyclesUsed >= 4);
   if (strong.length === 0) return null;

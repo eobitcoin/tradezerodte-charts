@@ -50,7 +50,7 @@ const TABS: Array<{ id: StrategyKey; label: string }> = [
 ];
 
 const STRATEGY_DESC: Record<Exclude<StrategyKey, "all">, string> = {
-  rush: "Pre-earnings IV expansion (long vega, exit before EE) · heuristic",
+  rush: "Pre-earnings IV expansion (long vega, exit before EE) · V3 BACKTEST",
   condor: "Iron condor through EE — collect IV crush + bounded move · V3 BACKTEST",
   straddle: "ATM straddle through EE — bet move exceeds implied · V3 BACKTEST",
   breakout: "Pre-EE directional bet for post-EE follow-through · V3 BACKTEST",
@@ -110,27 +110,22 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
           );
           return bMax - aMax;
         })
-      : tab === "straddle" || tab === "condor" || tab === "breakout"
-        ? // V3.1/V3.2: Straddle + Condor tabs are gated by backtest data,
-          // not heuristic score. Sort priority:
-          //   1. Tier: strong (≥4 cycles) > weak (2-3) > thin (1) > none (0)
-          //      so a 100% win on 1 cycle never outranks a 60% on 5.
-          //   2. Within tier: avg ROI desc.
-          //   3. Tie-break: V1 heuristic score desc.
-          [...tickers].sort((a, b) => {
-            const at = signalTier(a.backtests?.[tab]);
-            const bt = signalTier(b.backtests?.[tab]);
-            if (at !== bt) return bt - at;
-            const ar = a.backtests?.[tab]?.avgRoiPct;
-            const br = b.backtests?.[tab]?.avgRoiPct;
-            const av = typeof ar === "number" ? ar : -Infinity;
-            const bv = typeof br === "number" ? br : -Infinity;
-            if (av !== bv) return bv - av;
-            return b.strategies[tab].score - a.strategies[tab].score;
-          })
-        : [...tickers]
-            .filter((t) => t.strategies[tab].score >= 50)
-            .sort((a, b) => b.strategies[tab].score - a.strategies[tab].score);
+      : // V3.1-V3.4: every non-"all" tab is gated by backtest data, not
+        // heuristic score. Sort priority:
+        //   1. Tier: STRONG (≥4 cycles) > WEAK (2-3) > THIN (1) > none
+        //   2. Within tier: avg ROI desc.
+        //   3. Tie-break: V1 heuristic score desc.
+        [...tickers].sort((a, b) => {
+          const at = signalTier(a.backtests?.[tab]);
+          const bt = signalTier(b.backtests?.[tab]);
+          if (at !== bt) return bt - at;
+          const ar = a.backtests?.[tab]?.avgRoiPct;
+          const br = b.backtests?.[tab]?.avgRoiPct;
+          const av = typeof ar === "number" ? ar : -Infinity;
+          const bv = typeof br === "number" ? br : -Infinity;
+          if (av !== bv) return bv - av;
+          return b.strategies[tab].score - a.strategies[tab].score;
+        });
 
   return (
     <section className="space-y-4">
@@ -164,7 +159,7 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
         <p className="text-xs text-white/55 italic">{STRATEGY_DESC[tab]}</p>
       )}
 
-      {(tab === "straddle" || tab === "condor" || tab === "breakout") && (
+      {(tab === "straddle" || tab === "condor" || tab === "breakout" || tab === "rush") && (
         <>
           <WeeklyReadBox tickers={tickers} strategy={tab} />
           <BacktestSignalBanner tickers={tickers} strategy={tab} />
@@ -250,7 +245,7 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
                         );
                       })}
                     </>
-                  ) : (tab === "straddle" || tab === "condor" || tab === "breakout") &&
+                  ) : (tab === "straddle" || tab === "condor" || tab === "breakout" || tab === "rush") &&
                     t.backtests?.[tab] ? (
                     // V3.1/V3.2/V3.3: real backtest data.
                     <td className="px-3 py-2" colSpan={1}>
@@ -291,13 +286,14 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
       )}
 
       <p className="text-[11px] text-white/45 leading-relaxed">
-        <strong className="text-emerald-300">V3.3 SHIPPED:</strong>{" "}
-        Straddle, Condor, and Breakout tabs now show actual Polygon-priced
-        backtest results (Win %, Avg ROI, Wins:Losses) across the past
-        ~6-10 earnings cycles. Breakout uses a rolling-window directional
-        bias (no look-ahead) to pick the call vs. put at each historical
-        cycle. Rush still uses V1 heuristic pending V3.4. Verify every
-        pick against your broker before trading.
+        <strong className="text-emerald-300">V3.4 SHIPPED:</strong> all four
+        strategies now run real Polygon-priced backtests across ~6-10 past
+        earnings cycles per ticker. Straddle and Rush bet on long vol
+        (Rush exits before EE); Condor sells premium through the event;
+        Breakout takes a directional view based on rolling historical
+        bias (no look-ahead). Win % / Avg ROI / Wins:Losses are shown
+        per ticker; STRONG-tier rows ship a proposed trade structure.
+        Verify every pick against your broker before trading.
       </p>
     </section>
   );
@@ -324,7 +320,7 @@ function BacktestSignalBanner({
   strategy,
 }: {
   tickers: EarningsTickerEntry[];
-  strategy: "straddle" | "condor" | "breakout";
+  strategy: "straddle" | "condor" | "breakout" | "rush";
 }) {
   let strong = 0;
   let weak = 0;
@@ -338,7 +334,8 @@ function BacktestSignalBanner({
   const label =
     strategy === "straddle" ? "Straddle"
     : strategy === "condor" ? "Condor"
-    : "Breakout";
+    : strategy === "breakout" ? "Breakout"
+    : "Rush";
 
   if (strong > 0) {
     return (
@@ -409,7 +406,7 @@ function BacktestCell({
 }: {
   stats: EarningsBacktestStats;
   entry: EarningsTickerEntry;
-  strategy: "straddle" | "condor" | "breakout";
+  strategy: "straddle" | "condor" | "breakout" | "rush";
 }) {
   const { avgRoiPct, winRate, wins, losses, cyclesUsed, totalCycles, cycles } = stats;
   if (cyclesUsed === 0) {
@@ -551,7 +548,7 @@ function ProposedTradeCard({
   compact = false,
 }: {
   entry: EarningsTickerEntry;
-  strategy: "straddle" | "condor" | "breakout";
+  strategy: "straddle" | "condor" | "breakout" | "rush";
   compact?: boolean;
 }) {
   const trade = proposeTrade(entry, strategy);
@@ -655,7 +652,7 @@ function WeeklyReadBox({
   strategy,
 }: {
   tickers: EarningsTickerEntry[];
-  strategy: "straddle" | "condor" | "breakout";
+  strategy: "straddle" | "condor" | "breakout" | "rush";
 }) {
   const rows = tickers
     .filter((t) => t.backtests?.[strategy] != null)
@@ -663,7 +660,8 @@ function WeeklyReadBox({
   const label =
     strategy === "straddle" ? "Straddle"
     : strategy === "condor" ? "Condor"
-    : "Breakout";
+    : strategy === "breakout" ? "Breakout"
+    : "Rush";
   const read = composeWeeklyRead(rows, label);
   if (!read) return null;
 

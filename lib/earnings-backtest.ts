@@ -884,6 +884,236 @@ async function backtestBreakoutOneCycle(
   };
 }
 
+// ---------------------------------------------------------------------------
+// V3.4 — Earnings Rush backtest (long IV before earnings, exit before EE)
+// ---------------------------------------------------------------------------
+//
+// Strategy: buy an ATM straddle ~10 trading days pre-EE to ride the IV
+// expansion ramp, then exit BEFORE the announcement to avoid the IV
+// crush. The bet is on vega, not directional move.
+//
+// Entry: 10 trading days pre-EE.
+// Exit:  for AMC reporters → EE date close (before AMC announcement).
+//        for BMO reporters → trading day before EE (close before BMO).
+//        for DMH (during market hours) → trading day before EE.
+//
+// Expiry: first Friday at least 21 CALENDAR days after EE. Critical —
+// using a weekly that expires ~4 DTE at entry means vega is tiny and
+// theta wipes out any IV gain. The 21+ day cushion mirrors real Rush
+// practice where traders pick the monthly that expires after earnings.
+//
+// Win/loss: ROI = (exit_straddle - entry_straddle) / entry × 100.
+
+export interface RushCyclePnl {
+  earningsDate: string;
+  hour: "bmo" | "amc" | "dmh";
+  entryDate: string;
+  exitDate: string;
+  /** Straddle debit paid at entry (per share). */
+  entryPrice: number | null;
+  /** Straddle value at exit, before EE announcement (per share). */
+  exitPrice: number | null;
+  pnlDollar: number | null;
+  roiPct: number | null;
+  /** Underlying drift over the holding window — should be small for a
+   *  successful Rush trade (most P&L is from vega, not delta). */
+  underlyingMove: number | null;
+  skipReason: string | null;
+}
+
+export interface RushBacktest {
+  cycles: RushCyclePnl[];
+  avgRoiPct: number | null;
+  winRate: number | null;
+  wins: number;
+  losses: number;
+  cyclesUsed: number;
+  totalCycles: number;
+}
+
+const RUSH_ENTRY_DAYS_BEFORE = 10;
+const RUSH_MIN_DAYS_TO_EXPIRY_AFTER_EE = 21;
+
+/** First Friday at least `minDays` after the given date. Different
+ *  from `nextFridayAfter` (used by other strategies for their next-week
+ *  contracts) — Rush needs longer-dated contracts to have meaningful
+ *  vega over a 9-day holding window. */
+function fridayAtLeastAfter(iso: string, minDays: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + minDays);
+  // Walk forward to the next Friday.
+  const dow = d.getUTCDay();
+  const add = dow <= 5 ? 5 - dow : 6;
+  d.setUTCDate(d.getUTCDate() + add);
+  return d.toISOString().slice(0, 10);
+}
+
+export async function backtestRush(
+  ticker: string,
+  events: FinnhubEarningsEvent[],
+  underlyingBars: Map<string, number>,
+): Promise<RushBacktest> {
+  let expiries: string[] = [];
+  try {
+    const chain = await fetchOptionChain(ticker);
+    expiries = [...new Set(chain.map((c) => c.details.expiration_date))].sort();
+  } catch {
+    // Empty → cycles all skip.
+  }
+
+  const cycles: RushCyclePnl[] = [];
+  for (const ev of events) {
+    const cycle = await backtestRushOneCycle(
+      ticker,
+      ev,
+      underlyingBars,
+      expiries,
+    );
+    cycles.push(cycle);
+  }
+
+  const usable = cycles.filter((c) => c.pnlDollar != null && c.roiPct != null);
+  const wins = usable.filter((c) => (c.pnlDollar ?? 0) > 0).length;
+  const losses = usable.length - wins;
+  const avgRoi =
+    usable.length > 0
+      ? usable.reduce((s, c) => s + (c.roiPct ?? 0), 0) / usable.length
+      : null;
+  const winRate = usable.length > 0 ? wins / usable.length : null;
+
+  return {
+    cycles,
+    avgRoiPct: avgRoi,
+    winRate,
+    wins,
+    losses,
+    cyclesUsed: usable.length,
+    totalCycles: cycles.length,
+  };
+}
+
+async function backtestRushOneCycle(
+  ticker: string,
+  event: FinnhubEarningsEvent,
+  underlyingBars: Map<string, number>,
+  currentExpiries: string[],
+): Promise<RushCyclePnl> {
+  const eeDate = event.date;
+  const entryDate = shiftTradingDays(eeDate, -RUSH_ENTRY_DAYS_BEFORE);
+  // Exit: hold to close JUST BEFORE the announcement.
+  //   AMC → EE date close (sell before the after-close announcement).
+  //   BMO → prior trading day's close (sell before the next-morning announcement).
+  //   DMH/unknown → safer to assume BMO behavior and exit prior day.
+  const exitDate =
+    event.hour === "amc" ? eeDate : shiftTradingDays(eeDate, -1);
+
+  const baseline: RushCyclePnl = {
+    earningsDate: eeDate,
+    hour: event.hour,
+    entryDate,
+    exitDate,
+    entryPrice: null,
+    exitPrice: null,
+    pnlDollar: null,
+    roiPct: null,
+    underlyingMove: null,
+    skipReason: null,
+  };
+
+  const allDates = [...underlyingBars.keys()].sort();
+  const findClose = (target: string): number | null => {
+    if (underlyingBars.has(target)) return underlyingBars.get(target)!;
+    let idx = allDates.length - 1;
+    while (idx >= 0 && allDates[idx] > target) idx--;
+    return idx >= 0 ? underlyingBars.get(allDates[idx]) ?? null : null;
+  };
+  const entrySpot = findClose(entryDate);
+  const exitSpot = findClose(exitDate);
+  if (entrySpot == null || exitSpot == null) {
+    return { ...baseline, skipReason: "No underlying bars in window" };
+  }
+  baseline.underlyingMove = ((exitSpot - entrySpot) / entrySpot) * 100;
+
+  if (currentExpiries.length === 0) {
+    return { ...baseline, skipReason: "No current expiries" };
+  }
+
+  // Pick the monthly-or-later expiry — first Friday at least 21 days
+  // after the past EE. Gives ~30-40 DTE at entry, ~21-31 DTE at exit.
+  const histExpiry = fridayAtLeastAfter(eeDate, RUSH_MIN_DAYS_TO_EXPIRY_AFTER_EE);
+
+  // ATM strike at entry, snapped to price-tier grid.
+  const step =
+    entrySpot < 25 ? 0.5 : entrySpot < 100 ? 1 : entrySpot < 250 ? 2.5 : 5;
+  const atmStrike = Math.round(entrySpot / step) * step;
+  const callTicker = formatOpraTicker(ticker, histExpiry, "C", atmStrike);
+  const putTicker = formatOpraTicker(ticker, histExpiry, "P", atmStrike);
+
+  let callBars: Map<string, number>;
+  let putBars: Map<string, number>;
+  try {
+    [callBars, putBars] = await Promise.all([
+      fetchOptionContractBars(callTicker, entryDate, exitDate),
+      fetchOptionContractBars(putTicker, entryDate, exitDate),
+    ]);
+  } catch (err) {
+    return {
+      ...baseline,
+      skipReason: `Contract bars: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const findContractClose = (
+    barMap: Map<string, number>,
+    target: string,
+    direction: "forward" | "backward",
+  ): number | null => {
+    if (barMap.has(target)) return barMap.get(target)!;
+    const sorted = [...barMap.keys()].sort();
+    if (direction === "backward") {
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i] <= target) return barMap.get(sorted[i])!;
+      }
+    } else {
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i] >= target) return barMap.get(sorted[i])!;
+      }
+    }
+    return null;
+  };
+  const callEntry = findContractClose(callBars, entryDate, "backward");
+  const putEntry = findContractClose(putBars, entryDate, "backward");
+  const callExit = findContractClose(callBars, exitDate, "forward");
+  const putExit = findContractClose(putBars, exitDate, "forward");
+
+  if (callEntry == null || putEntry == null) {
+    return { ...baseline, skipReason: "Missing entry contract prices" };
+  }
+  if (callExit == null || putExit == null) {
+    return { ...baseline, skipReason: "Missing exit contract prices" };
+  }
+  const entryPrice = callEntry + putEntry;
+  const exitPrice = callExit + putExit;
+  if (entryPrice <= 0) {
+    return { ...baseline, skipReason: "Zero/negative entry price" };
+  }
+  const pnlDollar = (exitPrice - entryPrice) * 100;
+  const roiPct = (pnlDollar / (entryPrice * 100)) * 100;
+
+  return {
+    earningsDate: eeDate,
+    hour: event.hour,
+    entryDate,
+    exitDate,
+    entryPrice,
+    exitPrice,
+    pnlDollar,
+    roiPct,
+    underlyingMove: baseline.underlyingMove,
+    skipReason: null,
+  };
+}
+
 /** Convenience wrapper for the cron — fetches everything we need
  *  (history + underlying bars), runs the backtest, returns the result. */
 export async function backtestStraddleForTicker(

@@ -37,7 +37,7 @@ export interface ProposedTradeLeg {
 }
 
 export interface ProposedTrade {
-  strategy: "straddle" | "condor" | "breakout";
+  strategy: "straddle" | "condor" | "breakout" | "rush";
   expiry: string;            // YYYY-MM-DD
   legs: ProposedTradeLeg[];
   /** Net debit (positive = pay) or credit (negative = collect), per
@@ -266,12 +266,69 @@ export function proposeBreakoutTrade(
 }
 
 // ---------------------------------------------------------------------------
+// Rush — long ATM straddle, longer-dated expiry, EXIT BEFORE EE
+// ---------------------------------------------------------------------------
+//
+// Same leg structure as Straddle (ATM call + put) but with a key
+// difference: the expiry is the first Friday at least 21 calendar days
+// after the earnings date. Short-dated weeklies have tiny vega — Rush
+// needs a longer-dated contract for the IV ramp to outweigh theta.
+//
+// The "exit before EE" rule isn't encoded in the proposed-trade card
+// itself (the card is just the structure to enter). The summary text
+// reminds the trader to exit before the announcement.
+
+function fridayAtLeastAfter(iso: string, minDays: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + minDays);
+  const dow = d.getUTCDay();
+  const add = dow <= 5 ? 5 - dow : 6;
+  d.setUTCDate(d.getUTCDate() + add);
+  return d.toISOString().slice(0, 10);
+}
+
+const RUSH_MIN_DAYS_TO_EXPIRY = 21;
+const RUSH_DTE_MIN = 7;     // would skip if EE is too close (no room for ramp)
+const RUSH_DTE_MAX = 90;
+
+export function proposeRushTrade(
+  entry: EarningsTickerEntry,
+): ProposedTrade | null {
+  if (entry.spot == null || entry.atmIv == null) return null;
+  const expiry = fridayAtLeastAfter(entry.earningsDate, RUSH_MIN_DAYS_TO_EXPIRY);
+  const today = new Date().toISOString().slice(0, 10);
+  const dte = daysBetween(today, expiry);
+  if (dte < RUSH_DTE_MIN || dte > RUSH_DTE_MAX) return null;
+
+  const step = strikeStep(entry.spot);
+  const atmStrike = snapStrike(entry.spot, step);
+  const iv = entry.atmIv;
+
+  const callPx = priceLeg(entry.spot, atmStrike, "call", iv, dte);
+  const putPx = priceLeg(entry.spot, atmStrike, "put", iv, dte);
+  const netPerShare = callPx + putPx;
+
+  return {
+    strategy: "rush",
+    expiry,
+    legs: [
+      { side: "buy", type: "call", strike: atmStrike, estPrice: callPx },
+      { side: "buy", type: "put", strike: atmStrike, estPrice: putPx },
+    ],
+    netDollar: netPerShare * 100,
+    maxLossDollar: netPerShare * 100,
+    summary: `Long ${atmStrike} straddle · ${expiry} (${dte}d) — EXIT BEFORE EE on ${entry.earningsDate}`,
+    estimateCaveat: ESTIMATE_CAVEAT,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Generic dispatcher
 // ---------------------------------------------------------------------------
 
 export function proposeTrade(
   entry: EarningsTickerEntry,
-  strategy: "straddle" | "condor" | "breakout",
+  strategy: "straddle" | "condor" | "breakout" | "rush",
 ): ProposedTrade | null {
   switch (strategy) {
     case "straddle":
@@ -280,5 +337,7 @@ export function proposeTrade(
       return proposeCondorTrade(entry);
     case "breakout":
       return proposeBreakoutTrade(entry);
+    case "rush":
+      return proposeRushTrade(entry);
   }
 }

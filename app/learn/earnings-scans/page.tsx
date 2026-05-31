@@ -60,6 +60,11 @@ export default function Page() {
             "Trust the row when: (1) tier is STRONG (≥4 cycles), (2) win rate is decisive — ≥60% or ≤30%, not random-looking 45-55%, (3) Avg ROI is materially positive or negative, not near zero, (4) the sparkline shows mostly one color rather than alternating wildly. Ignore the row when: tier is THIN or WEAK, win rate is near 50% with low avg ROI, or the sparkline is 50/50 noise. The Strategy Score column (the 0-100 number) is V1 heuristic only — it doesn't tell you whether the backtest is reliable. Always cross-check it with the backtest tier.",
         },
         {
+          question: "How is the Rush backtest different from Straddle?",
+          answer:
+            "Two key differences. (1) Holding window: Rush enters 10 trading days pre-EE and EXITS BEFORE the announcement — close of EE day for AMC reporters, prior-day close for BMO. Straddle holds through EE and exits 1 day post-EE. Rush bets on the IV ramp into earnings; Straddle bets on the realized move exceeding implied. (2) Expiry: Rush uses a longer-dated contract — the first Friday at least 21 calendar days after EE — because 5-DTE weeklies have tiny vega and theta wipes any IV gain. Straddle uses the next-Friday weekly, which is fine because Straddle profits from the actual stock move (delta) rather than vega expansion. Practical implication: Rush wins more often when IV rank is low going into earnings (room to ramp); loses when IV is already elevated (priced in) or when theta exceeds the vega gain.",
+        },
+        {
           question: "How does the Breakout backtest pick call vs. put?",
           answer:
             "Rolling-window directional bias with no look-ahead leakage. For each past cycle the backtest simulates, the trade direction is decided by the mean post-EE move of the OLDER cycles only — the current cycle's outcome isn't peeked at. If the prior mean is > +0.5%, buy an ATM call; if < -0.5%, buy an ATM put; if it falls in the ±0.5% neutral band, skip the cycle (no clear bias). This avoids the classic backtest bug where using full-period stats to decide direction makes the strategy look profitable just because it's secretly trading the answer. We need at least 2 prior cycles before a cycle can be backtested, so the first 2 (oldest) cycles always skip.",
@@ -127,12 +132,14 @@ export default function Page() {
       <p>
         IV typically expands into earnings as uncertainty builds, then crushes
         the morning after the report. Rush plays the expansion: enter a long
-        call or long straddle 5-10 trading days pre-EE,{" "}
-        <strong>close BEFORE the announcement</strong>. Wins on vega regardless
-        of which way the underlying moves. The V1 score is high when implied
-        move is materially elevated (≥3%) AND the ticker historically delivers
-        decent move magnitude — both inputs are needed for the IV expansion to
-        be reliably tradeable.
+        ATM straddle ~10 trading days pre-EE,{" "}
+        <strong>close BEFORE the announcement</strong>. Wins on vega
+        regardless of which way the underlying moves; loses when IV doesn&apos;t
+        rise (already pricing in the event) or theta exceeds vega. The V3.4
+        backtest uses a longer-dated expiry (first Friday ≥21 days post-EE)
+        because short weeklies have tiny vega and theta wipes out any IV
+        gain. Exit is the close BEFORE the announcement: EE-day close for
+        AMC reporters, prior-day close for BMO.
       </p>
 
       <h3>Iron Condor — short premium through the event</h3>

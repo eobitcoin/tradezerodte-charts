@@ -46,6 +46,7 @@ import type {
 import {
   backtestBreakout,
   backtestCondor,
+  backtestRush,
   backtestStraddle,
 } from "@/lib/earnings-backtest";
 
@@ -435,7 +436,7 @@ export async function computeEarningsTickerEntry(opts: {
   //   V3.1 Straddle  — shipped
   //   V3.2 Condor    — shipped
   //   V3.3 Breakout  — shipped
-  //   V3.4 Rush      — pending
+  //   V3.4 Rush      — shipped
   let straddleBacktest: EarningsBacktestStats | undefined;
   try {
     const result = await backtestStraddle(symbol, earningsHistory, bars);
@@ -539,7 +540,39 @@ export async function computeEarningsTickerEntry(opts: {
     );
   }
 
-  const anyBacktest = straddleBacktest || condorBacktest || breakoutBacktest;
+  let rushBacktest: EarningsBacktestStats | undefined;
+  try {
+    const result = await backtestRush(symbol, earningsHistory, bars);
+    const cycles: EarningsBacktestCycle[] = result.cycles.map((c) => ({
+      earningsDate: c.earningsDate,
+      hour: c.hour,
+      entryDate: c.entryDate,
+      exitDate: c.exitDate,
+      entryPrice: c.entryPrice,
+      exitPrice: c.exitPrice,
+      pnlDollar: c.pnlDollar,
+      roiPct: c.roiPct,
+      underlyingMove: c.underlyingMove,
+      skipReason: c.skipReason,
+    }));
+    rushBacktest = {
+      kind: "backtest",
+      avgRoiPct: result.avgRoiPct,
+      winRate: result.winRate,
+      wins: result.wins,
+      losses: result.losses,
+      cyclesUsed: result.cyclesUsed,
+      totalCycles: result.totalCycles,
+      cycles,
+    };
+  } catch (err) {
+    notes.push(
+      `Rush backtest failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const anyBacktest =
+    straddleBacktest || condorBacktest || breakoutBacktest || rushBacktest;
   return {
     symbol,
     earningsDate: event.date,
@@ -555,6 +588,7 @@ export async function computeEarningsTickerEntry(opts: {
           straddle: straddleBacktest,
           condor: condorBacktest,
           breakout: breakoutBacktest,
+          rush: rushBacktest,
         }
       : undefined,
     notes,

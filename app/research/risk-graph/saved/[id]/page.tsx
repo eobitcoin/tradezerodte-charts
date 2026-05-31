@@ -10,6 +10,7 @@ import RiskGraphBuilder, {
   type ChainResponse,
   type PositionLeg,
 } from "@/components/RiskGraph/RiskGraphBuilder";
+import DeleteTradeButton from "@/components/RiskGraph/DeleteTradeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -152,12 +153,15 @@ export default async function SavedTradeIdeaPage({
             <div className="text-[10px] uppercase tracking-widest text-amber-400">
               Saved trade idea · {row.ticker}
             </div>
-            <Link
-              href="/research/risk-graph/saved"
-              className="text-xs text-amber-300 hover:underline"
-            >
-              ← All saved
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                href="/research/risk-graph/saved"
+                className="text-xs text-amber-300 hover:underline"
+              >
+                ← All saved
+              </Link>
+              <DeleteTradeButton id={row.id} name={row.name} variant="header" />
+            </div>
           </div>
           <h1 className="text-3xl font-bold tracking-tight">{row.name}</h1>
           <p className="text-sm text-white/55">
@@ -183,6 +187,7 @@ export default async function SavedTradeIdeaPage({
         {chain ? (
           <RiskGraphBuilder
             initial={{ chain, legs, name: row.name }}
+            resultsFirst
           />
         ) : (
           <div className="rounded border border-rose-500/40 bg-rose-500/10 p-4 text-sm text-rose-300">

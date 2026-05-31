@@ -3,13 +3,12 @@
 /**
  * Option chain table — calls left, strikes middle, puts right.
  *
- * Each row shows (call) bid/ask/mid, IV, delta, OI, vol — strike —
- * (put) bid/ask/mid, IV, delta, OI, vol. The +/− buttons on each
- * side bubble up an add-leg event to the builder.
- *
- * Strikes are filtered to ±20% of spot by default so the table
- * doesn't blow up to 100+ rows on liquid names. User can toggle to
- * see all strikes.
+ *   - Bold "CALLS" / "PUTS" headers above each side so column ownership
+ *     is unmistakable
+ *   - Subtle emerald/rose column tint reinforces it visually
+ *   - Wide-spread warning chip (▲) on rows where (ask − bid) / mid > 20%
+ *     — flags contracts where the displayed mid is unreliable
+ *   - Strikes filtered to ±20% of spot by default; toggle to show all
  */
 
 import { useState } from "react";
@@ -42,6 +41,8 @@ interface Props {
   ) => void;
 }
 
+const WIDE_SPREAD_THRESHOLD = 0.20; // 20%
+
 function fmtUsd(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v.toFixed(2);
@@ -53,6 +54,31 @@ function fmtPct(v: number | null, decimals = 0): string {
 function fmtNum(v: number | null): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v.toLocaleString();
+}
+
+/** Spread % from bid/ask/mid. Returns null when math is degenerate. */
+function spreadPct(row: ChainRow | undefined): number | null {
+  if (!row) return null;
+  if (
+    typeof row.bid !== "number" || row.bid <= 0 ||
+    typeof row.ask !== "number" || row.ask <= row.bid ||
+    typeof row.mid !== "number" || row.mid <= 0
+  ) {
+    return null;
+  }
+  return (row.ask - row.bid) / row.mid;
+}
+
+function WideSpreadIcon({ pct }: { pct: number | null }) {
+  if (pct == null || pct < WIDE_SPREAD_THRESHOLD) return null;
+  return (
+    <span
+      className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-amber-500/50 text-amber-300 text-[8px] font-bold leading-none"
+      title={`Wide spread: ${(pct * 100).toFixed(0)}% — bid/ask are far apart, so the displayed mid is unreliable. Verify on your broker.`}
+    >
+      !
+    </span>
+  );
 }
 
 export default function OptionChainTable({
@@ -90,42 +116,58 @@ export default function OptionChainTable({
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
-          <thead className="text-[9px] uppercase tracking-widest text-white/45 bg-white/[0.02]">
+          {/* Section header: CALLS · STRIKE · PUTS */}
+          <thead>
             <tr>
-              {/* Calls (LEFT) */}
-              <th className="px-2 py-1.5 text-left" colSpan={2}>Buy / Sell</th>
-              <th className="px-2 py-1.5 text-right">Bid</th>
-              <th className="px-2 py-1.5 text-right">Ask</th>
-              <th className="px-2 py-1.5 text-right">Δ</th>
-              <th className="px-2 py-1.5 text-right">IV</th>
-              <th className="px-2 py-1.5 text-right">OI</th>
-              {/* Strike */}
-              <th className="px-3 py-1.5 text-center bg-white/[0.04]">Strike</th>
-              {/* Puts (RIGHT) */}
-              <th className="px-2 py-1.5 text-right">OI</th>
-              <th className="px-2 py-1.5 text-right">IV</th>
-              <th className="px-2 py-1.5 text-right">Δ</th>
-              <th className="px-2 py-1.5 text-right">Bid</th>
-              <th className="px-2 py-1.5 text-right">Ask</th>
-              <th className="px-2 py-1.5 text-right" colSpan={2}>Buy / Sell</th>
+              <th
+                colSpan={7}
+                className="px-3 py-1.5 text-center text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-300 bg-emerald-500/[0.07] border-b border-emerald-500/30"
+              >
+                Calls
+              </th>
+              <th className="bg-white/[0.06] border-b border-white/10" />
+              <th
+                colSpan={7}
+                className="px-3 py-1.5 text-center text-[10px] uppercase tracking-[0.2em] font-bold text-rose-300 bg-rose-500/[0.07] border-b border-rose-500/30"
+              >
+                Puts
+              </th>
+            </tr>
+            {/* Column labels */}
+            <tr className="text-[9px] uppercase tracking-widest text-white/45 bg-white/[0.02]">
+              <th className="px-2 py-1.5 text-left bg-emerald-500/[0.025]" colSpan={2}>Buy / Sell</th>
+              <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">Bid</th>
+              <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">Ask</th>
+              <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">Δ</th>
+              <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">IV</th>
+              <th className="px-2 py-1.5 text-right bg-emerald-500/[0.025]">OI</th>
+              <th className="px-3 py-1.5 text-center bg-white/[0.06]">Strike</th>
+              <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">OI</th>
+              <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">IV</th>
+              <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">Δ</th>
+              <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">Bid</th>
+              <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]">Ask</th>
+              <th className="px-2 py-1.5 text-right bg-rose-500/[0.025]" colSpan={2}>Buy / Sell</th>
             </tr>
           </thead>
           <tbody className="font-mono">
             {filtered.map((strike) => {
               const call = callByStrike.get(strike);
               const put = putByStrike.get(strike);
-              const isAtm =
-                Math.abs(strike - spot) < (filtered[1] - filtered[0]) / 2 || false;
+              const callSpread = spreadPct(call);
+              const putSpread = spreadPct(put);
+              const stepSize = filtered.length > 1 ? filtered[1] - filtered[0] : 1;
+              const isAtm = Math.abs(strike - spot) < stepSize / 2;
               return (
                 <tr
                   key={strike}
                   className={[
                     "border-t border-white/5",
-                    isAtm ? "bg-amber-500/[0.05]" : "",
+                    isAtm ? "ring-1 ring-amber-500/30" : "",
                   ].join(" ")}
                 >
                   {/* CALL +/- */}
-                  <td className="px-1 py-1">
+                  <td className="px-1 py-1 bg-emerald-500/[0.025]">
                     <button
                       onClick={() => call && onAdd(call, expiry, "call", "long")}
                       disabled={!call}
@@ -135,7 +177,7 @@ export default function OptionChainTable({
                       +
                     </button>
                   </td>
-                  <td className="px-1 py-1">
+                  <td className="px-1 py-1 bg-emerald-500/[0.025]">
                     <button
                       onClick={() => call && onAdd(call, expiry, "call", "short")}
                       disabled={!call}
@@ -145,22 +187,26 @@ export default function OptionChainTable({
                       −
                     </button>
                   </td>
-                  <td className="px-2 py-1 text-right text-white/85">{fmtUsd(call?.bid ?? null)}</td>
-                  <td className="px-2 py-1 text-right text-white/85">{fmtUsd(call?.ask ?? null)}</td>
-                  <td className="px-2 py-1 text-right text-white/65">{call?.delta != null ? call.delta.toFixed(2) : "—"}</td>
-                  <td className="px-2 py-1 text-right text-white/65">{fmtPct(call?.iv ?? null)}</td>
-                  <td className="px-2 py-1 text-right text-white/45">{fmtNum(call?.openInterest ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/85 bg-emerald-500/[0.025]">{fmtUsd(call?.bid ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/85 bg-emerald-500/[0.025]">{fmtUsd(call?.ask ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/65 bg-emerald-500/[0.025]">{call?.delta != null ? call.delta.toFixed(2) : "—"}</td>
+                  <td className="px-2 py-1 text-right text-white/65 bg-emerald-500/[0.025]">{fmtPct(call?.iv ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/45 bg-emerald-500/[0.025]">{fmtNum(call?.openInterest ?? null)}</td>
                   {/* STRIKE */}
-                  <td className="px-3 py-1 text-center bg-white/[0.04] font-bold text-white">
-                    {strike >= 100 ? strike.toFixed(0) : strike.toFixed(2)}
+                  <td className="px-3 py-1 text-center bg-white/[0.06] font-bold text-white">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <WideSpreadIcon pct={callSpread} />
+                      <span>{strike >= 100 ? strike.toFixed(0) : strike.toFixed(2)}</span>
+                      <WideSpreadIcon pct={putSpread} />
+                    </div>
                   </td>
                   {/* PUT side mirror */}
-                  <td className="px-2 py-1 text-right text-white/45">{fmtNum(put?.openInterest ?? null)}</td>
-                  <td className="px-2 py-1 text-right text-white/65">{fmtPct(put?.iv ?? null)}</td>
-                  <td className="px-2 py-1 text-right text-white/65">{put?.delta != null ? put.delta.toFixed(2) : "—"}</td>
-                  <td className="px-2 py-1 text-right text-white/85">{fmtUsd(put?.bid ?? null)}</td>
-                  <td className="px-2 py-1 text-right text-white/85">{fmtUsd(put?.ask ?? null)}</td>
-                  <td className="px-1 py-1">
+                  <td className="px-2 py-1 text-right text-white/45 bg-rose-500/[0.025]">{fmtNum(put?.openInterest ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/65 bg-rose-500/[0.025]">{fmtPct(put?.iv ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/65 bg-rose-500/[0.025]">{put?.delta != null ? put.delta.toFixed(2) : "—"}</td>
+                  <td className="px-2 py-1 text-right text-white/85 bg-rose-500/[0.025]">{fmtUsd(put?.bid ?? null)}</td>
+                  <td className="px-2 py-1 text-right text-white/85 bg-rose-500/[0.025]">{fmtUsd(put?.ask ?? null)}</td>
+                  <td className="px-1 py-1 bg-rose-500/[0.025]">
                     <button
                       onClick={() => put && onAdd(put, expiry, "put", "long")}
                       disabled={!put}
@@ -170,7 +216,7 @@ export default function OptionChainTable({
                       +
                     </button>
                   </td>
-                  <td className="px-1 py-1">
+                  <td className="px-1 py-1 bg-rose-500/[0.025]">
                     <button
                       onClick={() => put && onAdd(put, expiry, "put", "short")}
                       disabled={!put}
@@ -185,6 +231,12 @@ export default function OptionChainTable({
             })}
           </tbody>
         </table>
+      </div>
+      <div className="px-3 py-2 border-t border-white/10 text-[10px] text-white/45 flex items-center gap-2">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-amber-500/50 text-amber-300 text-[8px] font-bold leading-none">
+          !
+        </span>
+        <span>= bid/ask spread &gt; 20% — the displayed mid is unreliable, especially outside market hours</span>
       </div>
     </div>
   );

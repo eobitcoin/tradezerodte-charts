@@ -17,10 +17,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { computeRiskGraph, type Leg } from "@/lib/risk-graph";
+import {
+  computeRiskGraph,
+  computeIvSensitivity,
+  baselineIv,
+  type Leg,
+} from "@/lib/risk-graph";
 import OptionChainTable, { type ChainRow } from "./OptionChainTable";
 import PositionBuilderPanel from "./PositionBuilderPanel";
 import RiskGraphChart from "./RiskGraphChart";
+import IvSensitivityChart from "./IvSensitivityChart";
 import HeadlineStats from "./HeadlineStats";
 
 export interface ChainExpiry {
@@ -39,9 +45,13 @@ export interface ChainResponse {
 
 /** Position builder state. Each entry corresponds to a Leg in the
  *  risk-graph math, with the contract ticker stored separately so we
- *  can re-fetch the same contract on the saved-idea detail page. */
+ *  can re-fetch the same contract on the saved-idea detail page.
+ *  bid/ask captured at add time so the position panel can flag
+ *  legs whose mid is unreliable (wide weekend quotes etc.). */
 export interface PositionLeg extends Leg {
   contractTicker: string;
+  entryBid?: number | null;
+  entryAsk?: number | null;
 }
 
 interface Props {
@@ -53,9 +63,13 @@ interface Props {
     legs: PositionLeg[];
     name?: string;
   };
+  /** When true, render the Risk Graph + headline + IV slider ABOVE
+   *  the chain table. Used on saved-idea detail pages so the chart
+   *  is the hero element rather than buried below the builder. */
+  resultsFirst?: boolean;
 }
 
-export default function RiskGraphBuilder({ initial }: Props) {
+export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
   const router = useRouter();
 
   const [tickerInput, setTickerInput] = useState(initial?.chain.ticker ?? "");
@@ -117,6 +131,8 @@ export default function RiskGraphBuilder({ initial }: Props) {
         qty: 1,
         entryPrice,
         entryIv,
+        entryBid: chainRow.bid,
+        entryAsk: chainRow.ask,
       },
     ]);
   }
@@ -136,23 +152,42 @@ export default function RiskGraphBuilder({ initial }: Props) {
   // ---------- Risk graph compute ----------
   const result = useMemo(() => {
     if (!chain || legs.length === 0) return null;
-    return computeRiskGraph(
-      legs.map((l) => ({
-        type: l.type,
-        side: l.side,
-        strike: l.strike,
-        expiration: l.expiration,
-        qty: l.qty,
-        entryPrice: l.entryPrice,
-        entryIv: l.entryIv,
-      })),
-      {
+    const cleanLegs: Leg[] = legs.map((l) => ({
+      type: l.type,
+      side: l.side,
+      strike: l.strike,
+      expiration: l.expiration,
+      qty: l.qty,
+      entryPrice: l.entryPrice,
+      entryIv: l.entryIv,
+    }));
+    return computeRiskGraph(cleanLegs, {
+      spot: chain.spot,
+      asOf: chain.asOf,
+      ivShift,
+    });
+  }, [chain, legs, ivShift]);
+
+  // ---------- IV sensitivity compute ----------
+  const ivResult = useMemo(() => {
+    if (!chain || legs.length === 0) return null;
+    const cleanLegs: Leg[] = legs.map((l) => ({
+      type: l.type,
+      side: l.side,
+      strike: l.strike,
+      expiration: l.expiration,
+      qty: l.qty,
+      entryPrice: l.entryPrice,
+      entryIv: l.entryIv,
+    }));
+    return {
+      curves: computeIvSensitivity(cleanLegs, {
         spot: chain.spot,
         asOf: chain.asOf,
-        ivShift,
-      },
-    );
-  }, [chain, legs, ivShift]);
+      }),
+      baselineIv: baselineIv(cleanLegs),
+    };
+  }, [chain, legs]);
 
   // ---------- Save ----------
   async function save() {
@@ -187,6 +222,57 @@ export default function RiskGraphBuilder({ initial }: Props) {
   }
 
   const expiryRows = chain?.expiries.find((e) => e.expiration === selectedExpiry);
+
+  // Risk graph section — extracted so we can place it ABOVE or BELOW
+  // the chain/builder depending on `resultsFirst`. Saved-trade detail
+  // views use resultsFirst so the chart is the immediate hero.
+  const riskGraphSection =
+    result && chain ? (
+      <div id="risk-graph" className="space-y-3 scroll-mt-20">
+        <HeadlineStats headline={result.headline} />
+
+        {/* IV shift slider */}
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <label className="flex items-center gap-3 text-xs">
+            <span className="text-white/55 uppercase tracking-widest">
+              IV shift
+            </span>
+            <input
+              type="range"
+              min={-0.2}
+              max={0.2}
+              step={0.01}
+              value={ivShift}
+              onChange={(e) => setIvShift(Number(e.target.value))}
+              className="flex-1 max-w-xs"
+            />
+            <span className="font-mono text-amber-300 w-16">
+              {(ivShift * 100 >= 0 ? "+" : "") +
+                (ivShift * 100).toFixed(0)}
+              %
+            </span>
+            {ivShift !== 0 && (
+              <button
+                onClick={() => setIvShift(0)}
+                className="text-[10px] uppercase tracking-widest text-white/45 hover:text-white"
+              >
+                Reset
+              </button>
+            )}
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-3">
+          <RiskGraphChart curves={result.curves} spot={chain.spot} />
+          {ivResult && ivResult.curves.length > 0 && (
+            <IvSensitivityChart
+              curves={ivResult.curves}
+              baselineIv={ivResult.baselineIv}
+            />
+          )}
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div className="space-y-4">
@@ -229,6 +315,9 @@ export default function RiskGraphBuilder({ initial }: Props) {
           {error}
         </div>
       )}
+
+      {/* Chart first when invoked from a saved-trade detail view. */}
+      {resultsFirst && riskGraphSection}
 
       {chain && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
@@ -312,45 +401,9 @@ export default function RiskGraphBuilder({ initial }: Props) {
         </div>
       )}
 
-      {/* RISK GRAPH at bottom (full width) */}
-      {result && chain && (
-        <div className="space-y-3">
-          <HeadlineStats headline={result.headline} />
-
-          {/* IV shift slider */}
-          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-            <label className="flex items-center gap-3 text-xs">
-              <span className="text-white/55 uppercase tracking-widest">
-                IV shift
-              </span>
-              <input
-                type="range"
-                min={-0.2}
-                max={0.2}
-                step={0.01}
-                value={ivShift}
-                onChange={(e) => setIvShift(Number(e.target.value))}
-                className="flex-1 max-w-xs"
-              />
-              <span className="font-mono text-amber-300 w-16">
-                {(ivShift * 100 >= 0 ? "+" : "") +
-                  (ivShift * 100).toFixed(0)}
-                %
-              </span>
-              {ivShift !== 0 && (
-                <button
-                  onClick={() => setIvShift(0)}
-                  className="text-[10px] uppercase tracking-widest text-white/45 hover:text-white"
-                >
-                  Reset
-                </button>
-              )}
-            </label>
-          </div>
-
-          <RiskGraphChart curves={result.curves} spot={chain.spot} />
-        </div>
-      )}
+      {/* When NOT in results-first mode, the risk graph renders at
+          the BOTTOM (canonical builder flow: chain → builder → chart). */}
+      {!resultsFirst && riskGraphSection}
     </div>
   );
 }

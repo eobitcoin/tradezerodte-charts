@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { tradeIdeas, type TradeIdeaLeg } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
 import OptionsSubNav from "@/components/OptionsSubNav";
+import DeleteTradeButton from "@/components/RiskGraph/DeleteTradeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,8 @@ export default async function SavedTradeIdeasPage() {
                   <th className="px-3 py-2 text-right">Spot @ entry</th>
                   <th className="px-3 py-2 text-left">Status</th>
                   <th className="px-3 py-2 text-right">Created</th>
+                  <th className="px-3 py-2 text-right" />
+                  <th className="px-3 py-2 text-right" />
                 </tr>
               </thead>
               <tbody>
@@ -131,6 +134,39 @@ export default async function SavedTradeIdeasPage() {
                           day: "numeric",
                           year: "numeric",
                         })}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Link
+                          href={`/research/risk-graph/saved/${r.id}#risk-graph`}
+                          className="inline-flex items-center gap-1.5 rounded border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/15 transition-colors"
+                          title="Open the risk graph for this trade"
+                        >
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 12 12"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                          >
+                            <path
+                              d="M1 10 L4 7 L7 9 L11 2"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              fill="none"
+                            />
+                          </svg>
+                          Risk Graph
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <DeleteTradeButton
+                          id={r.id}
+                          name={r.name}
+                          variant="row"
+                        />
                       </td>
                     </tr>
                   );

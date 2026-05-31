@@ -27,6 +27,21 @@ function fmtExpiry(iso: string): string {
   });
 }
 
+/** True when bid/ask exists and (ask − bid) / mid > 20% — i.e. the
+ *  midpoint is unreliable and we should flag the leg. */
+function wideSpread(leg: PositionLeg): boolean {
+  const bid = leg.entryBid;
+  const ask = leg.entryAsk;
+  if (
+    typeof bid !== "number" || bid <= 0 ||
+    typeof ask !== "number" || ask <= bid ||
+    !leg.entryPrice || leg.entryPrice <= 0
+  ) {
+    return false;
+  }
+  return (ask - bid) / leg.entryPrice > 0.20;
+}
+
 export default function PositionBuilderPanel({
   legs,
   onUpdateLeg,
@@ -97,7 +112,7 @@ export default function PositionBuilderPanel({
                   ×
                 </button>
               </div>
-              <div className="flex items-baseline gap-2 text-[10px] text-white/55">
+              <div className="flex items-baseline gap-2 text-[10px] text-white/55 flex-wrap">
                 <label className="flex items-baseline gap-1">
                   <span className="uppercase tracking-widest text-white/45">
                     Entry $
@@ -117,6 +132,14 @@ export default function PositionBuilderPanel({
                 </label>
                 <span className="text-white/40">·</span>
                 <span>IV {(leg.entryIv * 100).toFixed(0)}%</span>
+                {wideSpread(leg) && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-300 bg-amber-500/[0.08] text-[9px] uppercase tracking-widest"
+                    title={`Bid ${leg.entryBid?.toFixed(2)} / Ask ${leg.entryAsk?.toFixed(2)} — spread is ${((((leg.entryAsk ?? 0) - (leg.entryBid ?? 0)) / leg.entryPrice) * 100).toFixed(0)}% of mid. The mid is unreliable; verify on your broker before trading.`}
+                  >
+                    ! wide
+                  </span>
+                )}
               </div>
             </li>
           ))}

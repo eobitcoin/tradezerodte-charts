@@ -104,6 +104,95 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((to - from) / 86_400_000);
 }
 
+// ---------------------------------------------------------------------------
+// IV sensitivity (vega-time chart).
+// ---------------------------------------------------------------------------
+
+export interface IvCurvePoint {
+  /** Additive IV shift applied to every leg's entry IV (decimal). */
+  ivShift: number;
+  /** Total P&L at this (fixed spot, shifted IV, daysOut). */
+  pnl: number;
+}
+
+export interface IvCurve {
+  daysOut: number;
+  label: string;
+  points: IvCurvePoint[];
+}
+
+export interface IvGridConfig
+  extends Omit<GridConfig, "priceRangePct" | "pricePoints" | "ivShift"> {
+  /** Lower bound of additive IV shift (decimal). Default −0.20 (−20 pts). */
+  ivShiftMin?: number;
+  /** Upper bound of additive IV shift (decimal). Default +0.20. */
+  ivShiftMax?: number;
+  /** Number of IV grid points. Default 41 (1-point resolution). */
+  ivPoints?: number;
+}
+
+/**
+ * Vega-time chart data: at a fixed spot, walk IV shift from min to
+ * max and compute total P&L for each snapshot time (today, halfway,
+ * near expiry, expiry). One curve per snapshot.
+ *
+ * For a long-vol position, P&L rises with IV → curves slope up-right.
+ * For short-vol, opposite. At expiry, IV doesn't matter (intrinsic
+ * only) → the expiry curve is FLAT.
+ *
+ * Use this paired with the price chart to understand whether your
+ * thesis is directional (price), vol (IV), time (theta), or some mix.
+ */
+export function computeIvSensitivity(legs: Leg[], cfg: IvGridConfig): IvCurve[] {
+  if (legs.length === 0) return [];
+
+  const ivShiftMin = cfg.ivShiftMin ?? -0.2;
+  const ivShiftMax = cfg.ivShiftMax ?? 0.2;
+  const ivPoints = cfg.ivPoints ?? 41;
+  const r = cfg.r ?? 0.04;
+
+  const step = (ivShiftMax - ivShiftMin) / (ivPoints - 1);
+  const ivGrid = Array.from(
+    { length: ivPoints },
+    (_, i) => ivShiftMin + i * step,
+  );
+
+  const maxDte = Math.max(...legs.map((l) => daysBetween(cfg.asOf, l.expiration)));
+  const snapshots: Array<{ daysOut: number; label: string }> = [
+    { daysOut: 0, label: "Today" },
+    { daysOut: Math.floor(maxDte * 0.5), label: `${Math.floor(maxDte * 0.5)}d` },
+    { daysOut: Math.floor(maxDte * 0.9), label: `${Math.floor(maxDte * 0.9)}d` },
+    { daysOut: maxDte, label: "Expiry" },
+  ].filter((s, i, arr) => arr.findIndex((x) => x.daysOut === s.daysOut) === i);
+
+  return snapshots.map((snap) => {
+    const points: IvCurvePoint[] = ivGrid.map((shift) => ({
+      ivShift: shift,
+      pnl: totalPnlAt(legs, cfg.spot, snap.daysOut, cfg.asOf, shift, r),
+    }));
+    return { daysOut: snap.daysOut, label: snap.label, points };
+  });
+}
+
+/**
+ * Quantity-weighted average of the legs' entry IVs. Used as the
+ * baseline on the IV chart's Y axis so absolute IV values are
+ * displayable (e.g. "baseline 30% ± 20pt → range 10% to 50%").
+ *
+ * Weighting is by |qty| (sign doesn't matter for IV averaging).
+ */
+export function baselineIv(legs: Leg[]): number {
+  if (legs.length === 0) return 0;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const leg of legs) {
+    const w = Math.abs(leg.qty);
+    weightedSum += leg.entryIv * w;
+    totalWeight += w;
+  }
+  return totalWeight > 0 ? weightedSum / totalWeight : legs[0].entryIv;
+}
+
 /**
  * Net entry debit. Positive = paid; negative = received credit.
  * Per CONTRACT (× 100). Sums across legs.

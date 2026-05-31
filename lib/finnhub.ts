@@ -199,14 +199,46 @@ export async function fetchUpcomingEarnings(opts: {
  * is the announcement date; `hour` indicates BMO/AMC so we can offset
  * the price-change window correctly (BMO uses prior close → same-day
  * close; AMC uses same-day close → next-day close).
+ *
+ * Source preference:
+ *   1. Polygon /vX/reference/financials — covers 5+ years of history
+ *      via 10-Q/10-K filing dates. Free under our Options Advanced
+ *      plan. Used as primary because Finnhub's free tier caps at ~1y.
+ *   2. Finnhub /calendar/earnings — fallback for tickers Polygon
+ *      doesn't have (rare: foreign issuers, very recent IPOs, OTC
+ *      names). Capped at ~1y on free tier.
+ *
+ * Both sources are normalized to the same FinnhubEarningsEvent shape
+ * so callers don't need to change.
  */
 export async function fetchEarningsHistory(
   symbol: string,
   limit = 10,
 ): Promise<FinnhubEarningsEvent[]> {
-  // Finnhub's earnings calendar endpoint with a symbol filter returns
-  // all known events for that company — we just need to give a
-  // generous date range backward.
+  // Primary: Polygon financials (5+ years history)
+  try {
+    const { fetchEarningsHistoryFromPolygon } = await import("@/lib/polygon");
+    const polyEvents = await fetchEarningsHistoryFromPolygon(symbol, limit);
+    if (polyEvents.length > 0) {
+      return polyEvents.map((e) => ({
+        symbol,
+        date: e.earningsDate,
+        hour: e.hour,
+        epsEstimate: null,
+        epsActual: null,
+        revenueEstimate: null,
+        revenueActual: null,
+        quarter: e.fiscalPeriod
+          ? Number(e.fiscalPeriod.replace(/\D/g, "")) || null
+          : null,
+        year: e.fiscalYear ? Number(e.fiscalYear) || null : null,
+      }));
+    }
+  } catch {
+    // Fall through to Finnhub.
+  }
+
+  // Fallback: Finnhub (1 year max on free tier)
   const today = new Date();
   const past = new Date();
   past.setUTCFullYear(today.getUTCFullYear() - 5);
@@ -215,7 +247,6 @@ export async function fetchEarningsHistory(
     from: past.toISOString().slice(0, 10),
     to: today.toISOString().slice(0, 10),
   });
-  // Newest first, cap at limit.
   return events
     .filter((e) => e.date <= today.toISOString().slice(0, 10))
     .sort((a, b) => b.date.localeCompare(a.date))

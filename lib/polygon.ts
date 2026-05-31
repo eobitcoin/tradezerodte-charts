@@ -706,3 +706,129 @@ export function classifyAggressor(
   if (price <= bid + eps) return "sell";
   return "ambiguous";
 }
+
+// ---------------------------------------------------------------------------
+// Earnings history from SEC financials reference data
+// ---------------------------------------------------------------------------
+//
+// Polygon's /vX/reference/financials endpoint returns every 10-Q / 10-K
+// filing for a ticker with a `filing_date`. That filing date is when the
+// company filed with SEC — almost always same-day or 1 trading day after
+// the earnings announcement (10-Qs are typically filed the morning after
+// an AMC report; same-morning after a BMO report).
+//
+// We use this as the primary source for the Earnings Scans backtest's
+// historical earnings dates because Finnhub's free tier only returns ~1
+// year of calendar history, which leaves established tickers with 0-1
+// past EE — not enough cycles for the backtest to produce STRONG tier.
+//
+// Polygon goes back 5+ years per ticker. One call per ticker. Free under
+// the Options Advanced plan (verified empirically on a Personal account).
+
+interface PolygonFinancialsResponse {
+  status?: string;
+  results?: Array<{
+    /** Period start (quarter or fiscal year start). */
+    start_date?: string;
+    /** Period end. */
+    end_date?: string;
+    /** YYYY-MM-DD — when the 10-Q / 10-K hit SEC. */
+    filing_date?: string;
+    /** RFC3339 — exact filing timestamp. Used to infer BMO/AMC. */
+    acceptance_datetime?: string;
+    /** "quarterly" | "annual" | "ttm" — we want quarterly + annual only. */
+    timeframe?: string;
+    fiscal_period?: string;
+    fiscal_year?: string;
+    company_name?: string;
+    tickers?: string[];
+  }>;
+  next_url?: string;
+}
+
+export interface PolygonEarningsEvent {
+  /** YYYY-MM-DD — our best estimate of the actual earnings announcement
+   *  date (filing_date − 1 trading day if AMC filing, same day if BMO). */
+  earningsDate: string;
+  /** "bmo" | "amc" — inferred from filing time. AMC by default since most
+   *  large-cap reporters announce after close. */
+  hour: "bmo" | "amc";
+  /** Underlying filing_date as Polygon reported it. */
+  filingDate: string;
+  /** "quarterly" | "annual". */
+  timeframe: "quarterly" | "annual";
+  fiscalPeriod: string | null;
+  fiscalYear: string | null;
+}
+
+/**
+ * Walk N trading days backward from a date (skips weekends).
+ * Local to this module to avoid cross-imports with earnings-backtest.
+ */
+function tradingDaysBefore(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  let remaining = days;
+  while (remaining > 0) {
+    d.setUTCDate(d.getUTCDate() - 1);
+    const dow = d.getUTCDay();
+    if (dow !== 0 && dow !== 6) remaining--;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Fetch the last `limit` earnings events for a ticker from Polygon's
+ * financials reference endpoint. Newest first. Filters out TTM aggregates
+ * and entries without a filing_date (some preliminary entries).
+ *
+ * Approximation: actual EE date = filing_date − 1 trading day. This is
+ * accurate for AMC reporters (the majority of large caps); BMO reporters
+ * file the same morning, so we'd be off by 1 day — close enough for the
+ * backtest's 4-day-pre / 1-day-post entry/exit window to still capture
+ * the right move.
+ *
+ * Returns empty array on any error (caller falls back to Finnhub).
+ */
+export async function fetchEarningsHistoryFromPolygon(
+  ticker: string,
+  limit = 10,
+): Promise<PolygonEarningsEvent[]> {
+  const path = `/vX/reference/financials?ticker=${encodeURIComponent(ticker)}&limit=${Math.max(limit * 2, 20)}&order=desc&sort=filing_date`;
+  let body: PolygonFinancialsResponse;
+  try {
+    body = await polygonGet(path);
+  } catch {
+    // Plan doesn't include the endpoint, or upstream blip. Caller will
+    // fall back to Finnhub.
+    return [];
+  }
+  const out: PolygonEarningsEvent[] = [];
+  for (const r of body.results ?? []) {
+    if (!r.filing_date) continue;
+    if (r.timeframe !== "quarterly" && r.timeframe !== "annual") continue;
+    // Infer BMO vs AMC from filing time (UTC). 10-Qs filed before
+    // ~13:00 UTC (~9 AM ET) suggest the company reported BMO that
+    // morning; otherwise AMC the prior day.
+    let hour: "bmo" | "amc" = "amc";
+    let earningsDate = tradingDaysBefore(r.filing_date, 1);
+    if (r.acceptance_datetime) {
+      const t = new Date(r.acceptance_datetime);
+      const utcHour = t.getUTCHours();
+      if (utcHour < 13) {
+        // Filed before 9 AM ET — likely BMO the same day.
+        hour = "bmo";
+        earningsDate = r.filing_date;
+      }
+    }
+    out.push({
+      earningsDate,
+      hour,
+      filingDate: r.filing_date,
+      timeframe: r.timeframe,
+      fiscalPeriod: r.fiscal_period ?? null,
+      fiscalYear: r.fiscal_year ?? null,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}

@@ -134,7 +134,8 @@ export async function POST(req: Request) {
 export const GET = POST;
 
 export const runtime = "nodejs";
-// ~150 tickers × ~3-5s each (chain + bars + earnings history) ≈ 8-12 min
-// max during heavy weeks. 10-min cap fits the typical case; tight weeks
-// might need a chunked re-run.
-export const maxDuration = 600;
+// V3.1 added Polygon-priced backtest per ticker (~12 extra calls each).
+// Worst-case 150 tickers × ~8s each ≈ 20 min. Bump cap to 25 min.
+// (Railway's app-tier services don't impose a hard ceiling beyond what
+// we set here; the edge keeps the connection open for the full duration.)
+export const maxDuration = 1500;

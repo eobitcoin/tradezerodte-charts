@@ -92,9 +92,27 @@ export async function backtestStraddle(
   events: FinnhubEarningsEvent[],
   underlyingBars: Map<string, number>,
 ): Promise<StraddleBacktest> {
+  // Fetch the chain ONCE per ticker — was previously fetched per
+  // cycle, causing 6× the Polygon calls per ticker (and on a
+  // 50-ticker scan, ~300 redundant chain fetches that pushed total
+  // runtime past Railway's edge timeout).
+  let expiries: string[] = [];
+  try {
+    const chain = await fetchOptionChain(ticker);
+    expiries = [...new Set(chain.map((c) => c.details.expiration_date))].sort();
+  } catch {
+    // Whole-ticker chain failure — all cycles will skip with the
+    // same reason. Cheaper than 6 redundant attempts.
+  }
+
   const cycles: StraddleCyclePnl[] = [];
   for (const ev of events) {
-    const cycle = await backtestStraddleOneCycle(ticker, ev, underlyingBars);
+    const cycle = await backtestStraddleOneCycle(
+      ticker,
+      ev,
+      underlyingBars,
+      expiries,
+    );
     cycles.push(cycle);
   }
 
@@ -122,6 +140,9 @@ async function backtestStraddleOneCycle(
   ticker: string,
   event: FinnhubEarningsEvent,
   underlyingBars: Map<string, number>,
+  /** Sorted-ascending list of currently-listed expiries for this ticker.
+   *  Pre-fetched once per ticker in the parent so cycles don't redo it. */
+  currentExpiries: string[],
 ): Promise<StraddleCyclePnl> {
   const eeDate = event.date;
   const entryDate = shiftTradingDays(eeDate, -ENTRY_DAYS_BEFORE);
@@ -160,48 +181,39 @@ async function backtestStraddleOneCycle(
   }
   baseline.underlyingMove = ((exitSpot - entrySpot) / entrySpot) * 100;
 
-  // Pick an expiry: the earliest LISTED expiry on/after EE within 30
-  // trading days. We use the CURRENT chain to find the ticker's typical
-  // expiry grid (weekly / monthly cadence) and project backwards to
-  // construct a plausible historical contract symbol. This is a
-  // heuristic — Polygon's historical contracts endpoint would be more
-  // accurate, but the cost is much higher and the cadence is sticky.
+  // Pick an expiry. Project the current chain's cadence backwards to
+  // construct a plausible historical contract symbol. Note: this uses
+  // the CURRENT-listed expiry pattern only to find the right offset
+  // from EE date (monthly/weekly cadences are sticky).
+  if (currentExpiries.length === 0) {
+    return { ...baseline, skipReason: "No current expiries" };
+  }
   let pickExpiry: string | null = null;
-  try {
-    const chain = await fetchOptionChain(ticker);
-    const expiries = [...new Set(chain.map((c) => c.details.expiration_date))].sort();
-    // The MM/DD/YYYY pattern of weekly expiries is constant; pick the
-    // soonest expiry whose calendar slot is N days after the past EE.
-    const eeTime = new Date(`${eeDate}T00:00:00Z`).getTime();
-    for (const e of expiries) {
-      const t = new Date(`${e}T00:00:00Z`).getTime();
-      const diffDays = (t - eeTime) / 86_400_000;
-      // Look for an expiry that's currently 0-30 days ahead. Project
-      // backwards by setting the YEAR field to match the past EE's
-      // window — this gets us the cadence-matched historical expiry.
-      if (diffDays >= MIN_EXPIRY_DAYS_AFTER_EE && diffDays <= MAX_EXPIRY_DAYS_AFTER_EE) {
-        pickExpiry = e;
-        break;
-      }
+  const todayMs = Date.now();
+  for (const e of currentExpiries) {
+    const t = new Date(`${e}T00:00:00Z`).getTime();
+    const diffDays = (t - todayMs) / 86_400_000;
+    if (diffDays >= MIN_EXPIRY_DAYS_AFTER_EE && diffDays <= MAX_EXPIRY_DAYS_AFTER_EE) {
+      pickExpiry = e;
+      break;
     }
-  } catch {
-    return { ...baseline, skipReason: "Chain fetch failed" };
   }
   if (!pickExpiry) {
     return { ...baseline, skipReason: "No expiry in 0-30d window" };
   }
 
-  // Project the current expiry's offset backwards to the past EE's
-  // year. e.g. if current EE is 2026-08-05 and the matching expiry is
-  // 2026-08-15 (10 days later), and the past EE was 2025-08-04, we
-  // construct the historical expiry as 2025-08-14. This works because
-  // monthly/weekly expiry cadences are stable.
-  const currentEeTime = new Date(`${eeDate}T00:00:00Z`).getTime();
-  const currentExpiryTime = new Date(`${pickExpiry}T00:00:00Z`).getTime();
-  const expiryOffsetDays = Math.round(
-    (currentExpiryTime - currentEeTime) / 86_400_000,
-  );
-  const histExpiry = shiftCalendarDays(eeDate, expiryOffsetDays);
+  // Historical expiry heuristic: the next Friday at least 1 day AFTER
+  // the past EE date. Weekly-expiry tickers (every major earnings
+  // name) list a Friday-of-that-week expiry; if there is no Friday
+  // listing that week, Polygon's contract aggregates will return empty
+  // bars and we'll mark the cycle as missing-contract.
+  //
+  // The current-chain check above told us this ticker has SOMETHING in
+  // the 0-30d window today — that's our confirmation the ticker DOES
+  // list short-dated options. The projection back to the past EE uses
+  // the weekly cadence.
+  void pickExpiry; // currentExpiries was only used as the cadence check above
+  const histExpiry = nextFridayAfter(eeDate);
 
   // ATM strike — closest to entry-day underlying close, snapped to
   // $1 grid (good enough for most names). High-priced stocks would
@@ -293,10 +305,27 @@ function formatOpraTicker(
   return `O:${underlying}${yymmdd}${type}${strikeStr}`;
 }
 
-/** Plain calendar-days shift (vs trading-days shift above). */
+/** Plain calendar-days shift (vs trading-days shift above). Kept for
+ *  future strategy backtests (Condor/Breakout/Rush) that need
+ *  multi-day windows. Marked void to silence the unused warning. */
 function shiftCalendarDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+void shiftCalendarDays;
+
+/** Next Friday strictly AFTER the given date. Weekly options expire
+ *  on Fridays; for any past EE, this is the first listed weekly
+ *  expiry available to trade through earnings. */
+function nextFridayAfter(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const dow = d.getUTCDay(); // 0=Sun, 1=Mon ... 5=Fri, 6=Sat
+  let daysToAdd: number;
+  if (dow < 5) daysToAdd = 5 - dow;
+  else if (dow === 5) daysToAdd = 7;
+  else daysToAdd = 6; // Saturday
+  d.setUTCDate(d.getUTCDate() + daysToAdd);
   return d.toISOString().slice(0, 10);
 }
 

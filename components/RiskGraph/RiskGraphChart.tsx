@@ -23,11 +23,16 @@ interface Props {
   height?: number;
 }
 
+// Full-opacity, high-contrast palette. Order is the same as the
+// snapshot order from computeRiskGraph: Today (pink) → halfway
+// (amber) → near-expiry (blue) → expiry (white). Brighter and more
+// saturated than the previous 0.85-alpha versions so they pop against
+// the dark card background.
 const COLORS = [
-  "rgba(244, 114, 182, 0.85)",  // pink (today)
-  "rgba(251, 191, 36, 0.85)",   // amber (halfway)
-  "rgba(96, 165, 250, 0.85)",   // blue (near expiry)
-  "rgba(255, 255, 255, 0.95)",  // white (expiry)
+  "#f472b6",  // pink-400  (today)
+  "#fbbf24",  // amber-400 (halfway)
+  "#60a5fa",  // blue-400  (near expiry)
+  "#ffffff",  // white     (expiry — the canonical outcome curve)
 ];
 
 export default function RiskGraphChart({
@@ -91,19 +96,19 @@ export default function RiskGraphChart({
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-xs uppercase tracking-widest text-white/55">
+        <h2 className="text-xs uppercase tracking-widest text-white/75 font-semibold">
           Profit / Loss vs underlying
         </h2>
         {/* Curve legend */}
-        <div className="flex flex-wrap gap-3 text-[10px]">
+        <div className="flex flex-wrap gap-3 text-[11px]">
           {curves.map((c, i) => (
-            <span key={c.label} className="flex items-center gap-1">
+            <span key={c.label} className="flex items-center gap-1.5">
               <span
                 aria-hidden="true"
-                className="inline-block w-3 h-[2px]"
+                className="inline-block w-4 h-[3px] rounded-full"
                 style={{ backgroundColor: COLORS[i % COLORS.length] }}
               />
-              <span className="text-white/70">{c.label}</span>
+              <span className="text-white/90 font-medium">{c.label}</span>
             </span>
           ))}
         </div>
@@ -122,16 +127,17 @@ export default function RiskGraphChart({
               x2={width - padding.right}
               y1={t.y}
               y2={t.y}
-              stroke="rgba(255,255,255,0.05)"
+              stroke="rgba(255,255,255,0.10)"
               strokeWidth={1}
             />
             <text
               x={padding.left - 6}
               y={t.y + 3}
               textAnchor="end"
-              fontSize="10"
-              fill="rgba(255,255,255,0.5)"
+              fontSize="11"
+              fill="rgba(255,255,255,0.78)"
               fontFamily="ui-monospace, monospace"
+              fontWeight="500"
             >
               {fmtAxis(t.v)}
             </text>
@@ -145,9 +151,10 @@ export default function RiskGraphChart({
             x={t.x}
             y={height - padding.bottom + 16}
             textAnchor="middle"
-            fontSize="10"
-            fill="rgba(255,255,255,0.5)"
+            fontSize="11"
+            fill="rgba(255,255,255,0.78)"
             fontFamily="ui-monospace, monospace"
+            fontWeight="500"
           >
             ${t.v.toFixed(t.v >= 200 ? 0 : 1)}
           </text>
@@ -159,21 +166,26 @@ export default function RiskGraphChart({
           x2={width - padding.right}
           y1={yZero}
           y2={yZero}
-          stroke="rgba(255,255,255,0.25)"
-          strokeWidth={1.5}
+          stroke="rgba(255,255,255,0.5)"
+          strokeWidth={2}
         />
 
         {/* Curves */}
-        {curves.map((c, i) => (
-          <path
-            key={c.label}
-            d={pathFor(c.points)}
-            fill="none"
-            stroke={COLORS[i % COLORS.length]}
-            strokeWidth={i === curves.length - 1 ? 2 : 1.5}
-            strokeDasharray={i === curves.length - 1 ? "" : "3 2"}
-          />
-        ))}
+        {curves.map((c, i) => {
+          const isExpiry = i === curves.length - 1;
+          return (
+            <path
+              key={c.label}
+              d={pathFor(c.points)}
+              fill="none"
+              stroke={COLORS[i % COLORS.length]}
+              strokeWidth={isExpiry ? 3 : 2.25}
+              strokeDasharray={isExpiry ? "" : "5 3"}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        })}
 
         {/* Spot marker */}
         {spot >= xMin && spot <= xMax && (
@@ -183,15 +195,15 @@ export default function RiskGraphChart({
               x2={xScale(spot)}
               y1={padding.top}
               y2={height - padding.bottom}
-              stroke="rgba(255,255,255,0.6)"
-              strokeWidth={1.5}
+              stroke="rgba(255,255,255,0.9)"
+              strokeWidth={2}
             />
             <text
               x={xScale(spot)}
               y={padding.top - 6}
               textAnchor="middle"
-              fontSize="10"
-              fill="rgba(255,255,255,0.8)"
+              fontSize="11"
+              fill="#ffffff"
               fontFamily="ui-monospace, monospace"
               fontWeight="bold"
             >

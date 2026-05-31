@@ -104,7 +104,7 @@ export default function GexProfileChart({
             x2={width - padding.right}
             y1={t.y}
             y2={t.y}
-            stroke="rgba(255,255,255,0.08)"
+            stroke="rgba(255,255,255,0.12)"
             strokeWidth={1}
             strokeDasharray={i === 1 ? "" : "2 3"}
           />
@@ -112,9 +112,10 @@ export default function GexProfileChart({
             x={padding.left - 6}
             y={t.y + 3}
             textAnchor="end"
-            fontSize="10"
-            fill="rgba(255,255,255,0.5)"
+            fontSize="11"
+            fill="rgba(255,255,255,0.78)"
             fontFamily="ui-monospace, monospace"
+            fontWeight="500"
           >
             {t.label}
           </text>
@@ -128,25 +129,23 @@ export default function GexProfileChart({
           x={t.x}
           y={height - padding.bottom + 16}
           textAnchor="middle"
-          fontSize="10"
-          fill="rgba(255,255,255,0.5)"
+          fontSize="11"
+          fill="rgba(255,255,255,0.78)"
           fontFamily="ui-monospace, monospace"
+          fontWeight="500"
         >
           ${t.strike.toFixed(t.strike >= 200 ? 0 : 1)}
         </text>
       ))}
 
-      {/* Bars */}
+      {/* Bars — full opacity for sharper contrast against the dark card. */}
       {visible.map((r) => {
         const x = xScale(r.strike) - barW / 2;
         const y0 = yMid;
         const y1 = yScale(r.netGex);
         const y = Math.min(y0, y1);
         const h = Math.abs(y1 - y0);
-        const fill =
-          r.netGex >= 0
-            ? "rgba(16, 185, 129, 0.75)"
-            : "rgba(244, 63, 94, 0.75)";
+        const fill = r.netGex >= 0 ? "#10b981" : "#f43f5e";
         return (
           <rect
             key={r.strike}
@@ -168,16 +167,16 @@ export default function GexProfileChart({
             x2={xScale(zeroGammaStrike)}
             y1={padding.top}
             y2={height - padding.bottom}
-            stroke="rgb(251, 191, 36)"
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
+            stroke="#fbbf24"
+            strokeWidth={2}
+            strokeDasharray="5 3"
           />
           <text
             x={xScale(zeroGammaStrike)}
-            y={padding.top + 10}
+            y={padding.top + 11}
             textAnchor="middle"
-            fontSize="9"
-            fill="rgb(251, 191, 36)"
+            fontSize="10"
+            fill="#fbbf24"
             fontFamily="ui-monospace, monospace"
             fontWeight="bold"
           >
@@ -193,15 +192,15 @@ export default function GexProfileChart({
           x2={xScale(spot)}
           y1={padding.top}
           y2={height - padding.bottom}
-          stroke="rgba(255,255,255,0.7)"
-          strokeWidth={1.5}
+          stroke="#ffffff"
+          strokeWidth={2}
         />
         <text
           x={xScale(spot)}
           y={height - padding.bottom - 4}
           textAnchor="middle"
-          fontSize="9"
-          fill="rgba(255,255,255,0.85)"
+          fontSize="11"
+          fill="#ffffff"
           fontFamily="ui-monospace, monospace"
           fontWeight="bold"
         >

@@ -2126,3 +2126,39 @@ export const leapScans = pgTable(
 );
 
 export type LeapScan = typeof leapScans.$inferSelect;
+
+/**
+ * Time-series mark of an individual leap_pick's current market state.
+ * Populated daily by /api/cron/leap-marks for every pick whose expiry
+ * is still in the future. Drives the Performance section on
+ * /research/leaps — tracks P&L vs entry over time.
+ */
+export const leapPickMarks = pgTable(
+  "leap_pick_marks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    leapPickId: uuid("leap_pick_id")
+      .notNull()
+      .references(() => leapPicks.id, { onDelete: "cascade" }),
+    markTs: timestamp("mark_ts", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    underlyingPrice: numeric("underlying_price", { precision: 14, scale: 4 }),
+    premiumMid: numeric("premium_mid", { precision: 14, scale: 4 }),
+    premiumBid: numeric("premium_bid", { precision: 14, scale: 4 }),
+    premiumAsk: numeric("premium_ask", { precision: 14, scale: 4 }),
+    iv: numeric("iv", { precision: 8, scale: 6 }),
+    delta: numeric("delta", { precision: 6, scale: 4 }),
+    openInterest: integer("open_interest"),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("leap_pick_marks_pick_ts_idx").on(t.leapPickId, t.markTs.desc()),
+    index("leap_pick_marks_ts_idx").on(t.markTs),
+  ],
+);
+
+export type LeapPickMark = typeof leapPickMarks.$inferSelect;

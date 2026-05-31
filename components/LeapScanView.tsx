@@ -1,6 +1,16 @@
 import Link from "next/link";
+import { desc } from "drizzle-orm";
+import { db } from "@/lib/db";
 import { renderMarkdown } from "@/lib/markdown";
-import type { LeapScan, LeapPickSummary } from "@/lib/db/schema";
+import {
+  leapPicks,
+  type LeapScan,
+  type LeapPickSummary,
+} from "@/lib/db/schema";
+import { fetchLatestMarksForPicks } from "@/lib/leap-marks";
+import LeapPerformanceTable, {
+  type LeapPickWithMark,
+} from "@/components/LeapPerformanceTable";
 
 /**
  * Renders one published Cheap LEAPs scan.
@@ -70,6 +80,19 @@ export default async function LeapScanView({ scan, archive }: Props) {
     ? await renderMarkdown(scan.summary, [])
     : null;
   const picks = (scan.picks as LeapPickSummary[]) ?? [];
+
+  // Performance tracker: every historical leap_pick + its latest mark.
+  // One query gets all picks, one DISTINCT ON query gets all the
+  // latest marks. The table component handles sort + display.
+  const allPicks = await db
+    .select()
+    .from(leapPicks)
+    .orderBy(desc(leapPicks.scanDay));
+  const markMap = await fetchLatestMarksForPicks(allPicks.map((p) => p.id));
+  const picksWithMarks: LeapPickWithMark[] = allPicks.map((p) => ({
+    ...p,
+    latestMark: markMap.get(p.id) ?? null,
+  }));
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
@@ -216,6 +239,23 @@ export default async function LeapScanView({ scan, archive }: Props) {
             })}
           </ul>
         )}
+      </section>
+
+      {/* PERFORMANCE — every historical pick + its latest mark.
+          Populated as the daily mark cron runs. Shows winners /
+          losers / avg P&L summary up top. */}
+      <section className="space-y-3 border-t border-white/10 pt-6">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-white/65">
+          Performance tracker
+        </h2>
+        <LeapPerformanceTable picks={picksWithMarks} />
+        <p className="text-xs text-white/45">
+          P&amp;L = (current mid − entry mid) / entry mid. Current
+          mid refreshes daily at 5 PM ET via the leap-marks cron.
+          Open positions only (expired contracts drop off). Past
+          performance is not predictive of future returns; LEAPs can
+          go to zero.
+        </p>
       </section>
 
       {archive.length > 0 && (

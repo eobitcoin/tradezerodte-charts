@@ -494,6 +494,33 @@ export function computeHv30d(prices: number[]): number | null {
  * to ensure we have ~31 trading sessions.
  */
 /**
+ * Fetch the current snapshot for a single option contract. Used by
+ * the LEAPs mark cron to refresh historical picks' market data
+ * without re-pulling the entire chain.
+ *
+ * Polygon path: `/v3/snapshot/options/{underlying}/{contract_ticker}`
+ *
+ * Returns null when the contract is unknown/expired or Polygon
+ * returns no usable result. Caller skips and logs.
+ */
+interface PolygonContractSnapshotResponse {
+  results?: PolygonContract;
+}
+export async function fetchContractSnapshot(
+  underlying: string,
+  contractTicker: string,
+): Promise<PolygonContract | null> {
+  try {
+    const body: PolygonContractSnapshotResponse = await polygonGet(
+      `/v3/snapshot/options/${encodeURIComponent(underlying)}/${encodeURIComponent(contractTicker)}`,
+    );
+    return body.results ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetch the current value of a Polygon index ticker (e.g. "I:SPX",
  * "I:NDX", "I:VIX"). Equity option chain responses embed
  * `underlying_asset.price` on each contract; index chain responses

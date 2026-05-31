@@ -539,27 +539,34 @@ export default function RiskGraphBuilder({ initial, resultsFirst }: Props) {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
           {/* LEFT: chain table */}
           <div className="space-y-3 min-w-0">
-            {/* Expiry tabs */}
+            {/* Expiry tabs — full chain, no cap. Polygon returns every
+                listed expiry from front-month weeklies through LEAPs;
+                we show them all so users can find any contract they
+                want to trade. flex-wrap naturally pushes overflow to
+                additional rows. */}
             <div className="flex flex-wrap gap-1.5 border-b border-white/10 pb-2">
-              {chain.expiries.slice(0, 16).map((e) => (
-                <button
-                  key={e.expiration}
-                  onClick={() => setSelectedExpiry(e.expiration)}
-                  className={[
-                    "px-2.5 py-1 rounded border text-[11px] font-mono transition-colors",
-                    e.expiration === selectedExpiry
-                      ? "border-amber-500/60 bg-amber-500/15 text-amber-200"
-                      : "border-white/15 text-white/55 hover:border-white/30 hover:text-white",
-                  ].join(" ")}
-                >
-                  {e.expiration} <span className="text-white/40">· {e.dteDays}d</span>
-                </button>
-              ))}
-              {chain.expiries.length > 16 && (
-                <span className="text-[11px] text-white/45 self-center">
-                  +{chain.expiries.length - 16} more
-                </span>
-              )}
+              {chain.expiries.map((e) => {
+                // Highlight LEAP-range expiries (≥ 365d) with a faint
+                // amber tint so they stand out from the busy weeklies.
+                const isLeap = e.dteDays >= 365;
+                return (
+                  <button
+                    key={e.expiration}
+                    onClick={() => setSelectedExpiry(e.expiration)}
+                    className={[
+                      "px-2.5 py-1 rounded border text-[11px] font-mono transition-colors",
+                      e.expiration === selectedExpiry
+                        ? "border-amber-500/60 bg-amber-500/15 text-amber-200"
+                        : isLeap
+                          ? "border-amber-500/25 text-amber-300/75 hover:border-amber-500/50 hover:text-amber-200"
+                          : "border-white/15 text-white/55 hover:border-white/30 hover:text-white",
+                    ].join(" ")}
+                    title={isLeap ? "LEAP (>1 year)" : undefined}
+                  >
+                    {e.expiration} <span className="text-white/40">· {e.dteDays}d</span>
+                  </button>
+                );
+              })}
             </div>
 
             {expiryRows && (

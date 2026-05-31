@@ -75,17 +75,24 @@ export default function RiskGraphChart({
   const yScale = (y: number) => padding.top + ((yMax - y) / (yMax - yMin)) * plotH;
   const yZero = yScale(0);
 
-  // Y ticks — 5 evenly spaced.
+  // Y ticks — fixed 5 (P&L axis, which always works at 5 marks).
   const yTicks = Array.from({ length: 5 }, (_, i) => {
     const v = yMin + (i / 4) * (yMax - yMin);
     return { v, y: yScale(v) };
   });
 
-  // X ticks — 5 evenly spaced.
-  const xTicks = Array.from({ length: 5 }, (_, i) => {
-    const v = xMin + (i / 4) * (xMax - xMin);
-    return { v, x: xScale(v) };
-  });
+  // X ticks — "nice" round numbers that scale with the range. When
+  // you zoom in tight (e.g. ±5% on TSLA), the ticks step in $5 / $10
+  // increments instead of arbitrary fractional dollars. When zoomed
+  // out wide, ticks are $25 / $50 / $100. This is what makes the
+  // zoom slider actually useful.
+  const xStep = niceStep(xMax - xMin, 8);
+  const xPrecision = xStep >= 1 ? 0 : xStep >= 0.1 ? 1 : 2;
+  const xTickFirst = Math.ceil(xMin / xStep) * xStep;
+  const xTicks: Array<{ v: number; x: number }> = [];
+  for (let v = xTickFirst; v <= xMax + 1e-9; v += xStep) {
+    xTicks.push({ v, x: xScale(v) });
+  }
 
   function pathFor(points: { underlying: number; pnl: number }[]): string {
     return points
@@ -144,20 +151,30 @@ export default function RiskGraphChart({
           </g>
         ))}
 
-        {/* X-axis labels */}
+        {/* X-axis gridlines + labels — "nice" tick spacing
+            (see niceStep). Gridlines make zoomed-in views readable. */}
         {xTicks.map((t, i) => (
-          <text
-            key={`xt-${i}`}
-            x={t.x}
-            y={height - padding.bottom + 16}
-            textAnchor="middle"
-            fontSize="11"
-            fill="rgba(255,255,255,0.78)"
-            fontFamily="ui-monospace, monospace"
-            fontWeight="500"
-          >
-            ${t.v.toFixed(t.v >= 200 ? 0 : 1)}
-          </text>
+          <g key={`xt-${i}`}>
+            <line
+              x1={t.x}
+              x2={t.x}
+              y1={padding.top}
+              y2={height - padding.bottom}
+              stroke="rgba(255,255,255,0.06)"
+              strokeWidth={1}
+            />
+            <text
+              x={t.x}
+              y={height - padding.bottom + 16}
+              textAnchor="middle"
+              fontSize="11"
+              fill="rgba(255,255,255,0.78)"
+              fontFamily="ui-monospace, monospace"
+              fontWeight="500"
+            >
+              ${t.v.toFixed(xPrecision)}
+            </text>
+          </g>
         ))}
 
         {/* Zero line (heavier) */}
@@ -214,6 +231,31 @@ export default function RiskGraphChart({
       </svg>
     </div>
   );
+}
+
+/**
+ * Pick a "nice" tick step from {1, 2, 2.5, 5, 10} × 10^N that yields
+ * approximately `targetCount` ticks across the range. This is the
+ * canonical D3-style algorithm — produces $5, $10, $25, $50, $100
+ * step sizes instead of arbitrary fractional values.
+ *
+ *   range=44 (TSLA ±5%):  step=5  → ticks at $420, $425, $430, ...
+ *   range=264 (TSLA ±30%): step=50 → ticks at $300, $350, $400, ...
+ *   range=880 (TSLA ±100%): step=100 → ticks at $0, $100, ..., $900
+ */
+function niceStep(range: number, targetCount: number): number {
+  if (range <= 0 || !Number.isFinite(range)) return 1;
+  const roughStep = range / targetCount;
+  const exp = Math.floor(Math.log10(roughStep));
+  const base = Math.pow(10, exp);
+  const fraction = roughStep / base;
+  let nice: number;
+  if (fraction <= 1) nice = 1;
+  else if (fraction <= 2) nice = 2;
+  else if (fraction <= 2.5) nice = 2.5;
+  else if (fraction <= 5) nice = 5;
+  else nice = 10;
+  return nice * base;
 }
 
 function fmtAxis(v: number): string {

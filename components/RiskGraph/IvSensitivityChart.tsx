@@ -86,17 +86,27 @@ export default function IvSensitivityChart({
     padding.left + ((pnl - xMin) / (xMax - xMin)) * plotW;
   const xZero = xScale(0);
 
-  // Y ticks — 5 evenly-spaced absolute IV labels.
-  const yTicks = Array.from({ length: 5 }, (_, i) => {
-    const shift = yMinShift + (i / 4) * (yMaxShift - yMinShift);
-    return { shift, absIv: baselineIv + shift, y: yScale(shift) };
-  });
+  // Y ticks — "nice" round absolute-IV % values (every 5%, 10%, etc).
+  const yAbsMin = baselineIv + yMinShift;
+  const yAbsMax = baselineIv + yMaxShift;
+  const yStep = niceStep(yAbsMax - yAbsMin, 6);
+  const yPrecision = yStep >= 0.01 ? 0 : 1;
+  const yTickFirst = Math.ceil(yAbsMin / yStep) * yStep;
+  const yTicks: Array<{ absIv: number; y: number }> = [];
+  for (let v = yTickFirst; v <= yAbsMax + 1e-9; v += yStep) {
+    yTicks.push({ absIv: v, y: yScale(v - baselineIv) });
+  }
 
-  // X ticks — 5 evenly-spaced P&L labels.
-  const xTicks = Array.from({ length: 5 }, (_, i) => {
-    const v = xMin + (i / 4) * (xMax - xMin);
-    return { v, x: xScale(v) };
-  });
+  // X ticks — "nice" round P&L values.
+  const xStep = niceStep(xMax - xMin, 6);
+  const xPrecision = 0;
+  const xTickFirst = Math.ceil(xMin / xStep) * xStep;
+  const xTicks: Array<{ v: number; x: number }> = [];
+  for (let v = xTickFirst; v <= xMax + 1e-9; v += xStep) {
+    xTicks.push({ v, x: xScale(v) });
+  }
+  void yPrecision;
+  void xPrecision;
 
   function pathFor(points: { ivShift: number; pnl: number }[]): string {
     return points
@@ -253,6 +263,22 @@ export default function IvSensitivityChart({
       </svg>
     </div>
   );
+}
+
+/** D3-style "nice" tick step. See RiskGraphChart for full docstring. */
+function niceStep(range: number, targetCount: number): number {
+  if (range <= 0 || !Number.isFinite(range)) return 1;
+  const roughStep = range / targetCount;
+  const exp = Math.floor(Math.log10(roughStep));
+  const base = Math.pow(10, exp);
+  const fraction = roughStep / base;
+  let nice: number;
+  if (fraction <= 1) nice = 1;
+  else if (fraction <= 2) nice = 2;
+  else if (fraction <= 2.5) nice = 2.5;
+  else if (fraction <= 5) nice = 5;
+  else nice = 10;
+  return nice * base;
 }
 
 function fmtPnl(v: number): string {

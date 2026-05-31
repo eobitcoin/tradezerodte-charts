@@ -100,8 +100,16 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
     <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
       <OptionsSubNav active="edge" />
       <header className="space-y-2">
-        <div className="text-[10px] uppercase tracking-widest text-amber-400">
-          Options Edge · Weekly IV anomaly scan
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="text-[10px] uppercase tracking-widest text-amber-400">
+            Options Edge · Weekly IV anomaly scan
+          </div>
+          <Link
+            href="/learn/options-edge"
+            className="text-xs text-white/55 hover:text-white hover:underline"
+          >
+            Help · how to read this →
+          </Link>
         </div>
         <h1 className="text-3xl font-bold tracking-tight">{scan.title}</h1>
         <p className="text-sm text-white/55">

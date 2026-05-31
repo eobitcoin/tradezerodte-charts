@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { gexSnapshots, type GexSnapshot } from "@/lib/db/schema";
@@ -37,8 +38,16 @@ export default async function GexLandingPage() {
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
         <OptionsSubNav active="gex" />
         <header className="space-y-2">
-          <div className="text-[10px] uppercase tracking-widest text-amber-400">
-            Dealer GEX · Refreshed every 5 minutes during RTH
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-widest text-amber-400">
+              Dealer GEX · Refreshed every 5 minutes during RTH
+            </div>
+            <Link
+              href="/learn/gamma-exposure"
+              className="text-xs text-white/55 hover:text-white hover:underline"
+            >
+              Help · how to read this →
+            </Link>
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Gamma Exposure</h1>
           <p className="text-sm text-white/55 max-w-3xl">

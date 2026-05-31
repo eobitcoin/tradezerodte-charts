@@ -41,8 +41,16 @@ export default async function GexTickerPage({
       <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
         <OptionsSubNav active="gex" />
         <header className="space-y-2">
-          <div className="text-[10px] uppercase tracking-widest text-amber-400">
-            Dealer GEX · {ticker}
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-widest text-amber-400">
+              Dealer GEX · {ticker}
+            </div>
+            <Link
+              href="/learn/gamma-exposure"
+              className="text-xs text-white/55 hover:text-white hover:underline"
+            >
+              Help · how to read this →
+            </Link>
           </div>
           <div className="flex items-baseline gap-4">
             <h1 className="text-4xl font-bold tracking-tight font-mono">

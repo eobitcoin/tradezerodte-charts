@@ -77,6 +77,16 @@ export function requireLeapCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("LEAP_CRON_TOKEN", req);
 }
 
+/**
+ * Earnings-scan cron token. Used by the weekly Sunday Earnings Scans
+ * cron that walks the upcoming-week earnings calendar and computes
+ * per-ticker history + strategy suggestions. Set as
+ * `EARNINGS_CRON_TOKEN` in Railway env.
+ */
+export function requireEarningsCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("EARNINGS_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

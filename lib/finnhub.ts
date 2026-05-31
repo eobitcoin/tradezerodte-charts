@@ -105,3 +105,119 @@ export async function fetchFinnhubEconomicCalendar(opts: {
   }
   return out;
 }
+
+// ============================================================================
+// Earnings calendar — for the Earnings Scans feature.
+// ============================================================================
+
+/** One upcoming earnings event. `hour` indicates BMO (before-market-open),
+ *  AMC (after-market-close), or DMH (during market hours / unknown). */
+export interface FinnhubEarningsEvent {
+  symbol: string;
+  date: string; // YYYY-MM-DD
+  hour: "bmo" | "amc" | "dmh";
+  epsEstimate: number | null;
+  epsActual: number | null;
+  revenueEstimate: number | null;
+  revenueActual: number | null;
+  quarter: number | null;
+  year: number | null;
+}
+
+interface FinnhubEarningsCalendarRaw {
+  earningsCalendar?: Array<{
+    symbol?: string;
+    date?: string;
+    hour?: string;
+    epsEstimate?: number | null;
+    epsActual?: number | null;
+    revenueEstimate?: number | null;
+    revenueActual?: number | null;
+    quarter?: number | null;
+    year?: number | null;
+  }>;
+}
+
+function key(): string {
+  const k = process.env.FINNHUB_API_KEY;
+  if (!k) throw new Error("FINNHUB_API_KEY not set");
+  return k;
+}
+
+/**
+ * Fetch the earnings calendar for a date range. Returns every US-listed
+ * company reporting between `from` and `to` (inclusive). The full week's
+ * calendar typically returns 100-300 events.
+ *
+ * One Finnhub call per range. Well under the 60/min free-tier limit.
+ */
+export async function fetchUpcomingEarnings(opts: {
+  from: string; // YYYY-MM-DD
+  to: string;   // YYYY-MM-DD
+  symbol?: string;
+}): Promise<FinnhubEarningsEvent[]> {
+  const qs = new URLSearchParams({
+    from: opts.from,
+    to: opts.to,
+    token: key(),
+  });
+  if (opts.symbol) qs.set("symbol", opts.symbol);
+  const url = `${FINNHUB_BASE}/calendar/earnings?${qs}`;
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Finnhub earnings calendar → HTTP ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const body: FinnhubEarningsCalendarRaw = await res.json();
+  const out: FinnhubEarningsEvent[] = [];
+  for (const e of body.earningsCalendar ?? []) {
+    if (!e.symbol || !e.date) continue;
+    const rawHour = (e.hour ?? "").toLowerCase();
+    const hour: "bmo" | "amc" | "dmh" =
+      rawHour === "bmo" ? "bmo" : rawHour === "amc" ? "amc" : "dmh";
+    out.push({
+      symbol: e.symbol.toUpperCase(),
+      date: e.date,
+      hour,
+      epsEstimate: typeof e.epsEstimate === "number" ? e.epsEstimate : null,
+      epsActual: typeof e.epsActual === "number" ? e.epsActual : null,
+      revenueEstimate:
+        typeof e.revenueEstimate === "number" ? e.revenueEstimate : null,
+      revenueActual: typeof e.revenueActual === "number" ? e.revenueActual : null,
+      quarter: typeof e.quarter === "number" ? e.quarter : null,
+      year: typeof e.year === "number" ? e.year : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Past earnings dates for one ticker — used by the Earnings Scans to
+ * compute EE history (price/IV changes around each past earnings).
+ *
+ * Returns the most recent `limit` earnings events, newest first. Date
+ * is the announcement date; `hour` indicates BMO/AMC so we can offset
+ * the price-change window correctly (BMO uses prior close → same-day
+ * close; AMC uses same-day close → next-day close).
+ */
+export async function fetchEarningsHistory(
+  symbol: string,
+  limit = 10,
+): Promise<FinnhubEarningsEvent[]> {
+  // Finnhub's earnings calendar endpoint with a symbol filter returns
+  // all known events for that company — we just need to give a
+  // generous date range backward.
+  const today = new Date();
+  const past = new Date();
+  past.setUTCFullYear(today.getUTCFullYear() - 5);
+  const events = await fetchUpcomingEarnings({
+    symbol,
+    from: past.toISOString().slice(0, 10),
+    to: today.toISOString().slice(0, 10),
+  });
+  // Newest first, cap at limit.
+  return events
+    .filter((e) => e.date <= today.toISOString().slice(0, 10))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit);
+}

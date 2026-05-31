@@ -2242,3 +2242,100 @@ export const tradeIdeas = pgTable(
 );
 
 export type TradeIdea = typeof tradeIdeas.$inferSelect;
+
+// ============================================================================
+// EARNINGS SCANS (V1)
+//
+// Weekly scan that, for each company reporting earnings in the
+// upcoming week, computes historical earnings-effect stats from
+// the past N earnings cycles and suggests which of the four
+// earnings-options strategies (Rush / Condor / Straddle / Breakout)
+// fits the historical pattern + current vol regime best.
+//
+// Detail per ticker is stored in `data` jsonb so V2/V3 (real
+// backtest stats) can extend the shape without migrating.
+// ============================================================================
+
+/** Per-strategy suggestion for one ticker. score is 0-100, higher =
+ *  stronger match between the company's historical EE pattern and
+ *  the strategy's edge case. */
+export interface EarningsStrategySuggestion {
+  suggested: boolean;
+  score: number;
+  rationale: string;
+}
+
+/** One past earnings observation. priceWindow describes which
+ *  surrounding close-to-close move we used (BMO = prior→same, AMC =
+ *  same→next). */
+export interface EarningsHistoryPoint {
+  date: string;        // YYYY-MM-DD
+  hour: "bmo" | "amc" | "dmh";
+  pricePctChange: number | null;
+  priceBefore: number | null;
+  priceAfter: number | null;
+}
+
+export interface EarningsTickerEntry {
+  symbol: string;
+  earningsDate: string;        // YYYY-MM-DD of upcoming earnings
+  hour: "bmo" | "amc" | "dmh";
+  spot: number | null;
+  /** ATM IV at the nearest 30d expiry (decimal). */
+  atmIv: number | null;
+  /** IV-implied 1-day earnings move %, computed from the ATM straddle
+   *  at the closest expiry after earnings. */
+  impliedMovePct: number | null;
+  /** Past earnings effects, newest first. Up to 10 cycles. */
+  history: EarningsHistoryPoint[];
+  /** Summary stats over the history (price % changes). */
+  historyStats: {
+    count: number;
+    median: number | null;
+    mean: number | null;
+    max: number | null;
+    min: number | null;
+    /** Median of |pricePctChange| — used to compare against implied move. */
+    medianAbs: number | null;
+  };
+  strategies: {
+    rush: EarningsStrategySuggestion;
+    condor: EarningsStrategySuggestion;
+    straddle: EarningsStrategySuggestion;
+    breakout: EarningsStrategySuggestion;
+  };
+  /** Per-ticker errors (skip reasons, partial failures). */
+  notes: string[];
+}
+
+export interface EarningsScanData {
+  coveredFrom: string;
+  coveredTo: string;
+  tickers: EarningsTickerEntry[];
+}
+
+export const earningsScans = pgTable(
+  "earnings_scans",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scanWeek: date("scan_week").notNull().unique(),
+    universeSize: integer("universe_size").notNull(),
+    computedSize: integer("computed_size").notNull(),
+    data: jsonb("data").$type<EarningsScanData>().notNull().default({
+      coveredFrom: "",
+      coveredTo: "",
+      tickers: [],
+    }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("earnings_scans_scan_week_idx").on(t.scanWeek.desc())],
+);
+
+export type EarningsScan = typeof earningsScans.$inferSelect;

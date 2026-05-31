@@ -23,6 +23,11 @@ import type {
   EarningsBacktestStats,
   EarningsTickerEntry,
 } from "@/lib/db/schema";
+import {
+  classifyBacktest,
+  composeWeeklyRead,
+  type AnalystNote,
+} from "@/lib/earnings-analyst";
 
 interface Props {
   coveredFrom: string;
@@ -156,7 +161,10 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
       )}
 
       {(tab === "straddle" || tab === "condor") && (
-        <BacktestSignalBanner tickers={tickers} strategy={tab} />
+        <>
+          <WeeklyReadBox tickers={tickers} strategy={tab} />
+          <BacktestSignalBanner tickers={tickers} strategy={tab} />
+        </>
       )}
 
       {filtered.length === 0 ? (
@@ -416,8 +424,12 @@ function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
   const priced = cycles.filter((c) => c.roiPct != null);
   const maxAbs = Math.max(...priced.map((c) => Math.abs(c.roiPct ?? 0)), 1);
 
+  // Analyst note: short prose interpretation of the stats.
+  const note = classifyBacktest(stats);
+
   return (
-    <div className={`flex items-center gap-3 flex-wrap text-xs ${cellOpacity}`}>
+    <div className={`space-y-1 ${cellOpacity}`}>
+    <div className={`flex items-center gap-3 flex-wrap text-xs`}>
       <span
         className={`px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-widest font-bold font-mono ${tierChip.cls}`}
         title={
@@ -473,6 +485,70 @@ function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
           );
         })}
       </div>
+    </div>
+    <AnalystNoteLine note={note} />
+    </div>
+  );
+}
+
+/** One-line analyst read shown directly under the backtest cell. The
+ *  color encodes tone (positive/caution/negative); the icon previews
+ *  the gist at a glance. Hover for the help-page category. */
+function AnalystNoteLine({ note }: { note: AnalystNote }) {
+  const cls =
+    note.tone === "positive"
+      ? "text-emerald-300/90"
+      : note.tone === "negative"
+        ? "text-rose-300/90"
+        : note.tone === "caution"
+          ? "text-amber-300/90"
+          : "text-white/55";
+  const icon =
+    note.tone === "positive"
+      ? "✓"
+      : note.tone === "negative"
+        ? "✗"
+        : note.tone === "caution"
+          ? "⚠"
+          : "·";
+  return (
+    <p
+      className={`text-[11px] italic ${cls}`}
+      title={`Category: ${note.category}`}
+    >
+      {icon} {note.text}
+    </p>
+  );
+}
+
+/** Top-of-tab hero box with the synthesized "this week's read" — names
+ *  the highest-conviction setup, a second pick if one stands out, and
+ *  any deceptive row to skip. Renders nothing when no STRONG-tier rows
+ *  exist (the empty-state banner below handles that case). */
+function WeeklyReadBox({
+  tickers,
+  strategy,
+}: {
+  tickers: EarningsTickerEntry[];
+  strategy: "straddle" | "condor";
+}) {
+  const rows = tickers
+    .filter((t) => t.backtests?.[strategy] != null)
+    .map((t) => ({ symbol: t.symbol, stats: t.backtests![strategy]! }));
+  const label = strategy === "straddle" ? "Straddle" : "Condor";
+  const read = composeWeeklyRead(rows, label);
+  if (!read) return null;
+  return (
+    <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/[0.05] p-4 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-200">
+          ★ This week&apos;s read
+        </span>
+        <span className="text-[10px] uppercase tracking-widest text-emerald-200/55">
+          · {label}
+        </span>
+      </div>
+      <p className="text-sm text-white/85 leading-relaxed">{read.paragraph}</p>
     </div>
   );
 }

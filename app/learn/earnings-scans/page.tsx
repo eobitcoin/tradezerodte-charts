@@ -60,6 +60,16 @@ export default function Page() {
             "Trust the row when: (1) tier is STRONG (≥4 cycles), (2) win rate is decisive — ≥60% or ≤30%, not random-looking 45-55%, (3) Avg ROI is materially positive or negative, not near zero, (4) the sparkline shows mostly one color rather than alternating wildly. Ignore the row when: tier is THIN or WEAK, win rate is near 50% with low avg ROI, or the sparkline is 50/50 noise. The Strategy Score column (the 0-100 number) is V1 heuristic only — it doesn't tell you whether the backtest is reliable. Always cross-check it with the backtest tier.",
         },
         {
+          question: "What's the analyst note next to each backtest row?",
+          answer:
+            "A deterministic one-liner that translates the raw stats into a human read. Examples: ✓ Decisive wins, positive edge — N% × +R% avg. ⚠ Strong win rate but thin edge — single loss erases multiple wins. ⚠ Asymmetric — typical loss wipes 3+ wins. ✗ Negative edge — strategy lost money historically. The categories are: best-of-week, reasonable-setup, thin-edge, asymmetric-tails, high-variance, mixed-signal, negative-edge, small-sample, single-cycle. Same inputs always produce the same note — no model calls, no randomness.",
+        },
+        {
+          question: "What is the 'This week's read' hero box?",
+          answer:
+            "A 1-3 sentence top-of-tab summary that names the highest-conviction Straddle or Condor setup, a second pick if one stands out (pickScore ≥ 50% of the leader), and any deceptive-looking STRONG row to skip (thin-edge, asymmetric-tails, or negative-edge classifier hits). The 'best of week' pick is chosen by compositeScore = winRate × avgRoi × √cyclesUsed, rewarding both quality and sample size. If no STRONG-tier rows have both positive win rate AND positive avg ROI, the box stays hidden — the empty-state banner takes over.",
+        },
+        {
           question: "What's the difference between 'Hist |move|' and 'Hist max'?",
           answer:
             "Hist |move| is the median absolute % move over the available history (typically 6-12 cycles). It's the 'typical' move — the half-and-half line. Hist max is the worst single move (max-magnitude in either direction) — the tail. Both matter: median tells you what's likely; max tells you what's possible. A condor with hist max far past implied move is risky even if hist |move| looks tame, because one tail event blows the whole structure.",

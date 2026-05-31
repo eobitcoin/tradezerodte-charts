@@ -103,9 +103,15 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
         })
       : tab === "straddle"
         ? // V3.1: Straddle tab is gated by backtest data, not heuristic score.
-          // Show every ticker; rank by backtest avg ROI when present, else
-          // fall back to heuristic score. No min-score filter.
+          // Sort priority:
+          //   1. Tier: strong (≥4 cycles) > weak (2-3) > thin (1) > none (0)
+          //      so a 100% win on 1 cycle never outranks a 60% on 5.
+          //   2. Within tier: avg ROI desc.
+          //   3. Tie-break: V1 heuristic score desc.
           [...tickers].sort((a, b) => {
+            const at = signalTier(a.backtests?.straddle);
+            const bt = signalTier(b.backtests?.straddle);
+            if (at !== bt) return bt - at;
             const ar = a.backtests?.straddle?.avgRoiPct;
             const br = b.backtests?.straddle?.avgRoiPct;
             const av = typeof ar === "number" ? ar : -Infinity;
@@ -280,6 +286,21 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
  * cycle count, and a sparkline of per-cycle ROIs (the visual at-a-
  * glance proxy for consistency).
  */
+/**
+ * Map cycle count → confidence tier. Drives sort order, chip color,
+ * and overall cell opacity. 6 cycles is the max we ever attempt.
+ *   3 = STRONG  (≥4 cycles)   — trust the win-rate
+ *   2 = WEAK    (2-3 cycles)  — directional only
+ *   1 = THIN    (1 cycle)     — single print, ignore
+ *   0 = NONE    (0 cycles)    — backtest failed
+ */
+function signalTier(stats: EarningsBacktestStats | undefined): number {
+  if (!stats || stats.cyclesUsed <= 0) return 0;
+  if (stats.cyclesUsed === 1) return 1;
+  if (stats.cyclesUsed <= 3) return 2;
+  return 3;
+}
+
 function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
   const { avgRoiPct, winRate, wins, losses, cyclesUsed, totalCycles, cycles } = stats;
   if (cyclesUsed === 0) {
@@ -289,6 +310,15 @@ function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
       </span>
     );
   }
+  const tier = signalTier(stats);
+  const tierChip =
+    tier === 3
+      ? { label: "STRONG", cls: "border-emerald-400/50 text-emerald-200 bg-emerald-500/[0.12]" }
+      : tier === 2
+        ? { label: "WEAK", cls: "border-amber-500/40 text-amber-300/90 bg-amber-500/[0.08]" }
+        : { label: "THIN", cls: "border-white/20 text-white/55 bg-white/[0.04]" };
+  // Dim everything below STRONG so the eye can scan to real signal.
+  const cellOpacity = tier === 3 ? "" : tier === 2 ? "opacity-80" : "opacity-55";
   const roiTone =
     avgRoiPct != null && avgRoiPct >= 30 ? "text-emerald-300 font-bold"
     : avgRoiPct != null && avgRoiPct >= 0 ? "text-emerald-400"
@@ -305,7 +335,19 @@ function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
   const maxAbs = Math.max(...priced.map((c) => Math.abs(c.roiPct ?? 0)), 1);
 
   return (
-    <div className="flex items-center gap-3 flex-wrap text-xs">
+    <div className={`flex items-center gap-3 flex-wrap text-xs ${cellOpacity}`}>
+      <span
+        className={`px-1.5 py-0.5 rounded border text-[9px] uppercase tracking-widest font-bold font-mono ${tierChip.cls}`}
+        title={
+          tier === 3
+            ? "≥4 cycles of historical backtest data — actionable signal."
+            : tier === 2
+              ? "2-3 cycles only — directional read, sample too small to trust."
+              : "Single cycle — informational only."
+        }
+      >
+        {tierChip.label}
+      </span>
       <span
         className={`px-2 py-0.5 rounded border text-[10px] uppercase tracking-widest font-bold font-mono ${winTone}`}
       >

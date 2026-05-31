@@ -322,13 +322,18 @@ function BacktestSignalBanner({
   tickers: EarningsTickerEntry[];
   strategy: "straddle" | "condor" | "breakout" | "rush";
 }) {
-  let strong = 0;
+  let strongPositive = 0;   // ≥4 cycles AND avg ROI > 0 — actionable
+  let strongNegative = 0;   // ≥4 cycles AND avg ROI ≤ 0 — avoid
   let weak = 0;
   let thin = 0;
   for (const t of tickers) {
-    const tier = signalTier(t.backtests?.[strategy]);
-    if (tier === 3) strong++;
-    else if (tier === 2) weak++;
+    const stats = t.backtests?.[strategy];
+    const tier = signalTier(stats);
+    if (tier === 3) {
+      const roi = stats?.avgRoiPct;
+      if (typeof roi === "number" && roi > 0) strongPositive++;
+      else strongNegative++;
+    } else if (tier === 2) weak++;
     else if (tier === 1) thin++;
   }
   const label =
@@ -337,16 +342,36 @@ function BacktestSignalBanner({
     : strategy === "breakout" ? "Breakout"
     : "Rush";
 
-  if (strong > 0) {
+  if (strongPositive > 0) {
     return (
       <div className="rounded border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2 text-xs">
         <span className="font-bold text-emerald-200 uppercase tracking-widest text-[10px] mr-2">
-          ✓ {strong} Strong {strong === 1 ? "pick" : "picks"}
+          ✓ {strongPositive} Strong {strongPositive === 1 ? "pick" : "picks"}
         </span>
         <span className="text-white/65">
-          {strong} ticker{strong === 1 ? " has" : "s have"} ≥4 cycles of
-          historical {label} backtest data this week — those are the
-          actionable rows.
+          {strongPositive} ticker{strongPositive === 1 ? " has" : "s have"}{" "}
+          ≥4 cycles of historical {label} backtest data AND positive avg
+          ROI — those are the actionable rows.
+          {strongNegative > 0 &&
+            ` (${strongNegative} more have STRONG sample but negative edge — avoid.)`}
+          {(weak + thin) > 0 &&
+            ` (${weak + thin} have directional-only data.)`}
+        </span>
+      </div>
+    );
+  }
+  if (strongNegative > 0) {
+    return (
+      <div className="rounded border border-rose-500/30 bg-rose-500/[0.05] px-3 py-2 text-xs">
+        <span className="font-bold text-rose-300 uppercase tracking-widest text-[10px] mr-2">
+          ✗ Strong samples — negative edge
+        </span>
+        <span className="text-white/65">
+          {strongNegative} ticker{strongNegative === 1 ? "" : "s"} {strongNegative === 1 ? "has" : "have"} ≥4 cycles of{" "}
+          {label} backtest data but historical avg ROI is{" "}
+          <strong>negative</strong> — the strategy has lost money on these
+          names. Skip the {label} trade this week or wait for a setup with
+          positive edge.
           {(weak + thin) > 0 &&
             ` (${weak + thin} more show directional-only data.)`}
         </span>
@@ -503,7 +528,11 @@ function BacktestCell({
       </div>
     </div>
     <AnalystNoteLine note={note} />
-    {tier === 3 && <ProposedTradeCard entry={entry} strategy={strategy} compact />}
+    {tier === 3 &&
+      note.category !== "negative-edge" &&
+      note.category !== "asymmetric-tails" && (
+        <ProposedTradeCard entry={entry} strategy={strategy} compact />
+      )}
     </div>
   );
 }

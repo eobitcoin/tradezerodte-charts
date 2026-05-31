@@ -34,13 +34,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: auth.reason }, { status: auth.status });
   }
 
-  // Compute the scan window: today through today + 7 days.
+  // Compute the scan window — Monday of the UPCOMING work week through
+  // Friday. The cron runs Sunday evening; we want next week's calendar,
+  // not the week that just ended.
+  //
+  //   Sunday   (0) → Monday is +1
+  //   Saturday (6) → Monday is +2
+  //   Mon-Fri (1-5) → back to that week's Monday (0, -1, -2, -3, -4)
   const today = new Date();
-  const day = today.getUTCDay();
-  // Monday of CURRENT week (UTC). If today is Sunday (0), we want
-  // tomorrow's Monday; otherwise back up to the Monday already passed.
+  const day = today.getUTCDay(); // 0 = Sunday
+  const daysToMonday =
+    day === 0 ? 1 : day === 6 ? 2 : -(day - 1);
   const monday = new Date(today);
-  monday.setUTCDate(today.getUTCDate() - ((day + 6) % 7));
+  monday.setUTCDate(today.getUTCDate() + daysToMonday);
   const friday = new Date(monday);
   friday.setUTCDate(monday.getUTCDate() + 4);
   const fromIso = monday.toISOString().slice(0, 10);

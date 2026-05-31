@@ -37,10 +37,13 @@ import {
   type FinnhubEarningsEvent,
 } from "@/lib/finnhub";
 import type {
+  EarningsBacktestCycle,
+  EarningsBacktestStats,
   EarningsHistoryPoint,
   EarningsStrategySuggestion,
   EarningsTickerEntry,
 } from "@/lib/db/schema";
+import { backtestStraddle } from "@/lib/earnings-backtest";
 
 // ---------------------------------------------------------------------------
 // Liquidity bar — without options volume there's nothing to scan.
@@ -422,6 +425,39 @@ export async function computeEarningsTickerEntry(opts: {
   const stats = summarize(history.map((h) => h.pricePctChange));
   const strategies = scoreStrategies(history, stats, snap.impliedMovePct);
 
+  // V3 backtest — Straddle only in phase 1. We pass the underlying
+  // bars we already pulled to avoid a redundant fetch.
+  let straddleBacktest: EarningsBacktestStats | undefined;
+  try {
+    const result = await backtestStraddle(symbol, earningsHistory, bars);
+    const cycles: EarningsBacktestCycle[] = result.cycles.map((c) => ({
+      earningsDate: c.earningsDate,
+      hour: c.hour,
+      entryDate: c.entryDate,
+      exitDate: c.exitDate,
+      entryPrice: c.entryPrice,
+      exitPrice: c.exitPrice,
+      pnlDollar: c.pnlDollar,
+      roiPct: c.roiPct,
+      underlyingMove: c.underlyingMove,
+      skipReason: c.skipReason,
+    }));
+    straddleBacktest = {
+      kind: "backtest",
+      avgRoiPct: result.avgRoiPct,
+      winRate: result.winRate,
+      wins: result.wins,
+      losses: result.losses,
+      cyclesUsed: result.cyclesUsed,
+      totalCycles: result.totalCycles,
+      cycles,
+    };
+  } catch (err) {
+    notes.push(
+      `Straddle backtest failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   return {
     symbol,
     earningsDate: event.date,
@@ -432,6 +468,7 @@ export async function computeEarningsTickerEntry(opts: {
     history,
     historyStats: stats,
     strategies,
+    backtests: straddleBacktest ? { straddle: straddleBacktest } : undefined,
     notes,
   };
 }

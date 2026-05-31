@@ -19,7 +19,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { EarningsTickerEntry } from "@/lib/db/schema";
+import type {
+  EarningsBacktestStats,
+  EarningsTickerEntry,
+} from "@/lib/db/schema";
 
 interface Props {
   coveredFrom: string;
@@ -38,10 +41,10 @@ const TABS: Array<{ id: StrategyKey; label: string }> = [
 ];
 
 const STRATEGY_DESC: Record<Exclude<StrategyKey, "all">, string> = {
-  rush: "Pre-earnings IV expansion (long vega, exit before EE)",
-  condor: "Iron condor through EE — collect IV crush + bounded move",
-  straddle: "ATM straddle through EE — bet move exceeds implied",
-  breakout: "Pre-EE directional bet for post-EE follow-through",
+  rush: "Pre-earnings IV expansion (long vega, exit before EE) · heuristic",
+  condor: "Iron condor through EE — collect IV crush + bounded move · heuristic",
+  straddle: "ATM straddle through EE — bet move exceeds implied · V3 BACKTEST",
+  breakout: "Pre-EE directional bet for post-EE follow-through · heuristic",
 };
 
 function fmtPct(v: number | null, sign = false): string {
@@ -211,9 +214,14 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
                         );
                       })}
                     </>
+                  ) : tab === "straddle" && t.backtests?.straddle ? (
+                    // V3.1: real backtest data for Straddle.
+                    <td className="px-3 py-2" colSpan={1}>
+                      <BacktestCell stats={t.backtests.straddle} />
+                    </td>
                   ) : (
                     <td className="px-3 py-2" colSpan={1}>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span
                           className={`px-2 py-0.5 rounded border text-xs font-bold font-mono ${scoreTone(t.strategies[tab].score)}`}
                         >
@@ -242,13 +250,91 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
       )}
 
       <p className="text-[11px] text-white/45 leading-relaxed">
-        V1 — strategy scores are HEURISTIC, comparing historical EE move
-        magnitudes and directional consistency against the current
-        IV-implied move. V2 will replace these with actual 6-cycle
-        options backtests (entry-to-exit P&L per strategy). Use the
-        current scores to triage; verify each pick against your own
-        thesis + the actual chain on your broker.
+        <strong className="text-emerald-300">V3.1 SHIPPED:</strong> the
+        Straddle tab now shows actual 6-cycle Polygon-priced backtest
+        results (Win %, Avg ROI, Wins:Losses). The other three strategies
+        still use V1 heuristic scores pending V3.2-V3.4. Use the backtest
+        data to triage Straddle picks; the others remain directional
+        signals only. Verify everything against your broker before trading.
       </p>
     </section>
+  );
+}
+
+/**
+ * Renders one ticker's backtest stats inline: Win % chip, ROI value,
+ * cycle count, and a sparkline of per-cycle ROIs (the visual at-a-
+ * glance proxy for consistency).
+ */
+function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
+  const { avgRoiPct, winRate, wins, losses, cyclesUsed, totalCycles, cycles } = stats;
+  if (cyclesUsed === 0) {
+    return (
+      <span className="text-xs text-white/45 italic">
+        No priceable cycles ({totalCycles} attempted)
+      </span>
+    );
+  }
+  const roiTone =
+    avgRoiPct != null && avgRoiPct >= 30 ? "text-emerald-300 font-bold"
+    : avgRoiPct != null && avgRoiPct >= 0 ? "text-emerald-400"
+    : avgRoiPct != null && avgRoiPct > -30 ? "text-rose-400"
+    : "text-rose-300 font-bold";
+  const winTone =
+    winRate != null && winRate >= 0.7 ? "border-emerald-500/50 text-emerald-200 bg-emerald-500/[0.12]"
+    : winRate != null && winRate >= 0.5 ? "border-emerald-500/30 text-emerald-300 bg-emerald-500/[0.06]"
+    : winRate != null && winRate >= 0.4 ? "border-amber-500/40 text-amber-300 bg-amber-500/[0.08]"
+    : "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]";
+
+  // Sparkline: per-cycle ROI bars, emerald=positive, rose=negative.
+  const priced = cycles.filter((c) => c.roiPct != null);
+  const maxAbs = Math.max(...priced.map((c) => Math.abs(c.roiPct ?? 0)), 1);
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-xs">
+      <span
+        className={`px-2 py-0.5 rounded border text-[10px] uppercase tracking-widest font-bold font-mono ${winTone}`}
+      >
+        {winRate != null ? `${Math.round(winRate * 100)}%` : "—"} win
+      </span>
+      <span className="font-mono">
+        <span className="text-white/55 uppercase tracking-widest text-[9px] mr-1">
+          Avg ROI
+        </span>
+        <span className={roiTone}>
+          {avgRoiPct != null
+            ? `${avgRoiPct >= 0 ? "+" : ""}${avgRoiPct.toFixed(0)}%`
+            : "—"}
+        </span>
+      </span>
+      <span className="text-white/55 font-mono text-[10px]">
+        {wins}W / {losses}L
+        <span className="text-white/30"> · {cyclesUsed}/{totalCycles} cycles</span>
+      </span>
+      {/* Sparkline */}
+      <div className="flex items-center gap-px h-5" title="Per-cycle ROI">
+        {priced.map((c, i) => {
+          const roi = c.roiPct ?? 0;
+          const heightPct = Math.min(100, (Math.abs(roi) / maxAbs) * 100);
+          const positive = roi >= 0;
+          return (
+            <div
+              key={i}
+              className="w-1.5 flex items-center"
+              style={{ height: "100%" }}
+            >
+              <div
+                className={`w-full ${positive ? "bg-emerald-400" : "bg-rose-400"}`}
+                style={{
+                  height: `${heightPct}%`,
+                  alignSelf: positive ? "flex-end" : "flex-start",
+                }}
+                title={`${c.earningsDate}: ${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%`}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

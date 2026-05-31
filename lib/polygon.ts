@@ -191,6 +191,32 @@ export async function fetchOptionChain(
 }
 
 /**
+ * Fetch DAILY BARS for a specific option contract over a date range.
+ * Used by the earnings backtester to get entry+exit prices for legs
+ * at past earnings cycles without re-fetching the whole chain twice.
+ *
+ * Polygon's /v2/aggs/ticker/O:XXXXX endpoint accepts the full OPRA
+ * symbol (e.g. "O:AAPL250117C00150000") and returns close prices.
+ *
+ * Returns a Map<date, close>; empty when no bars exist for that range
+ * (common when the contract was illiquid that week).
+ */
+export async function fetchOptionContractBars(
+  contractTicker: string,
+  fromDate: string,
+  toDate: string,
+): Promise<Map<string, number>> {
+  const path = `/v2/aggs/ticker/${encodeURIComponent(contractTicker)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=5000`;
+  const body: PolygonAggsResponse = await polygonGet(path);
+  const out = new Map<string, number>();
+  for (const r of body.results ?? []) {
+    const iso = new Date(r.t).toISOString().slice(0, 10);
+    out.set(iso, r.c);
+  }
+  return out;
+}
+
+/**
  * Fetch daily underlying bars from Polygon's aggregates endpoint. Used
  * for the realized-vol calc. Returns close prices keyed by ISO date.
  */

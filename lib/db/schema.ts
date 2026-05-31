@@ -2276,6 +2276,37 @@ export interface EarningsHistoryPoint {
   priceAfter: number | null;
 }
 
+/** Per-cycle backtest result. One per past earnings event included
+ *  in the backtest. Used by the per-strategy detail view to show
+ *  exactly what happened on each historical EE. */
+export interface EarningsBacktestCycle {
+  earningsDate: string;
+  hour: "bmo" | "amc" | "dmh";
+  entryDate: string;
+  exitDate: string;
+  entryPrice: number | null;
+  exitPrice: number | null;
+  pnlDollar: number | null;
+  roiPct: number | null;
+  underlyingMove: number | null;
+  skipReason: string | null;
+}
+
+/** Aggregate backtest stats for one strategy on one ticker. Populated
+ *  by the V3 backtester; for strategies that are heuristic-only the
+ *  fields are null and `kind === "heuristic"`. */
+export interface EarningsBacktestStats {
+  /** Distinguishes a real Polygon-priced backtest from V1's heuristic. */
+  kind: "backtest" | "heuristic";
+  avgRoiPct: number | null;
+  winRate: number | null;       // 0-1
+  wins: number;
+  losses: number;
+  cyclesUsed: number;
+  totalCycles: number;
+  cycles: EarningsBacktestCycle[];
+}
+
 export interface EarningsTickerEntry {
   symbol: string;
   earningsDate: string;        // YYYY-MM-DD of upcoming earnings
@@ -2303,6 +2334,14 @@ export interface EarningsTickerEntry {
     condor: EarningsStrategySuggestion;
     straddle: EarningsStrategySuggestion;
     breakout: EarningsStrategySuggestion;
+  };
+  /** V3 backtest results per strategy. Straddle is real-backtest in
+   *  V3.1; others are heuristic-only until V3.2-V3.4 land. */
+  backtests?: {
+    rush?: EarningsBacktestStats;
+    condor?: EarningsBacktestStats;
+    straddle?: EarningsBacktestStats;
+    breakout?: EarningsBacktestStats;
   };
   /** Per-ticker errors (skip reasons, partial failures). */
   notes: string[];

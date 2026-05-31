@@ -43,7 +43,11 @@ import type {
   EarningsStrategySuggestion,
   EarningsTickerEntry,
 } from "@/lib/db/schema";
-import { backtestCondor, backtestStraddle } from "@/lib/earnings-backtest";
+import {
+  backtestBreakout,
+  backtestCondor,
+  backtestStraddle,
+} from "@/lib/earnings-backtest";
 
 // ---------------------------------------------------------------------------
 // Liquidity bar — without options volume there's nothing to scan.
@@ -430,7 +434,7 @@ export async function computeEarningsTickerEntry(opts: {
   //
   //   V3.1 Straddle  — shipped
   //   V3.2 Condor    — shipped
-  //   V3.3 Breakout  — pending
+  //   V3.3 Breakout  — shipped
   //   V3.4 Rush      — pending
   let straddleBacktest: EarningsBacktestStats | undefined;
   try {
@@ -499,7 +503,43 @@ export async function computeEarningsTickerEntry(opts: {
     );
   }
 
-  const anyBacktest = straddleBacktest || condorBacktest;
+  let breakoutBacktest: EarningsBacktestStats | undefined;
+  try {
+    const result = await backtestBreakout(
+      symbol,
+      earningsHistory,
+      history,
+      bars,
+    );
+    const cycles: EarningsBacktestCycle[] = result.cycles.map((c) => ({
+      earningsDate: c.earningsDate,
+      hour: c.hour,
+      entryDate: c.entryDate,
+      exitDate: c.exitDate,
+      entryPrice: c.entryPrice,
+      exitPrice: c.exitPrice,
+      pnlDollar: c.pnlDollar,
+      roiPct: c.roiPct,
+      underlyingMove: c.underlyingMove,
+      skipReason: c.skipReason,
+    }));
+    breakoutBacktest = {
+      kind: "backtest",
+      avgRoiPct: result.avgRoiPct,
+      winRate: result.winRate,
+      wins: result.wins,
+      losses: result.losses,
+      cyclesUsed: result.cyclesUsed,
+      totalCycles: result.totalCycles,
+      cycles,
+    };
+  } catch (err) {
+    notes.push(
+      `Breakout backtest failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const anyBacktest = straddleBacktest || condorBacktest || breakoutBacktest;
   return {
     symbol,
     earningsDate: event.date,
@@ -514,6 +554,7 @@ export async function computeEarningsTickerEntry(opts: {
       ? {
           straddle: straddleBacktest,
           condor: condorBacktest,
+          breakout: breakoutBacktest,
         }
       : undefined,
     notes,

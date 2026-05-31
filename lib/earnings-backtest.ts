@@ -630,6 +630,260 @@ async function backtestCondorOneCycle(
   };
 }
 
+// ---------------------------------------------------------------------------
+// V3.3 — Breakout backtest (single-leg directional)
+// ---------------------------------------------------------------------------
+//
+// Strategy: pick ONE leg based on the ticker's historical post-EE
+// directional bias. If past EEs have averaged bullish, buy an ATM call;
+// if bearish, buy an ATM put. Hold through the report.
+//
+// Entry: 4 trading days pre-EE. Exit: 1 trading day post-EE.
+//
+// CRITICAL — rolling-window direction signal (no look-ahead leakage):
+//   For each past cycle we backtest, the trade direction is computed
+//   from the mean of cycles OLDER than that cycle ONLY. If we used the
+//   full history mean (including the cycle being tested), we'd be
+//   "knowing the answer" at trade-entry time — a classic backtest bug
+//   that makes any strategy look profitable.
+//
+// Skip conditions per cycle:
+//   - Fewer than 2 prior cycles with valid pricePctChange
+//   - Computed prior mean within ±0.5% (call it neutral, no bias)
+
+export interface BreakoutCyclePnl {
+  earningsDate: string;
+  hour: "bmo" | "amc" | "dmh";
+  entryDate: string;
+  exitDate: string;
+  /** Direction the bet was placed in for this cycle, decided by prior
+   *  cycles' mean move only. */
+  direction: "bullish" | "bearish" | null;
+  /** Single-leg price (ATM call or put) at entry. */
+  entryPrice: number | null;
+  /** Same leg's price at exit. */
+  exitPrice: number | null;
+  pnlDollar: number | null;
+  roiPct: number | null;
+  underlyingMove: number | null;
+  skipReason: string | null;
+}
+
+export interface BreakoutBacktest {
+  cycles: BreakoutCyclePnl[];
+  avgRoiPct: number | null;
+  winRate: number | null;
+  wins: number;
+  losses: number;
+  cyclesUsed: number;
+  totalCycles: number;
+}
+
+const MIN_PRIOR_CYCLES_FOR_BREAKOUT = 2;
+const BREAKOUT_NEUTRAL_BAND_PCT = 0.5; // |mean| < 0.5% → no bias
+
+export async function backtestBreakout(
+  ticker: string,
+  events: FinnhubEarningsEvent[],
+  /** Precomputed V1 history with pricePctChange per past cycle. Must
+   *  be in newest-first order (matches `events`). */
+  history: Array<{ date: string; pricePctChange: number | null }>,
+  underlyingBars: Map<string, number>,
+): Promise<BreakoutBacktest> {
+  // Index history by date for fast prior-lookup per cycle.
+  const moveByDate = new Map<string, number>();
+  for (const h of history) {
+    if (h.pricePctChange != null && Number.isFinite(h.pricePctChange)) {
+      moveByDate.set(h.date, h.pricePctChange);
+    }
+  }
+
+  let expiries: string[] = [];
+  try {
+    const chain = await fetchOptionChain(ticker);
+    expiries = [...new Set(chain.map((c) => c.details.expiration_date))].sort();
+  } catch {
+    // Empty expiries → all cycles will skip with the same reason.
+  }
+
+  // `events` is newest-first. For each event we look at the OLDER ones
+  // (later in the array) to compute prior bias. This is the no-look-
+  // ahead guard.
+  const cycles: BreakoutCyclePnl[] = [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    // Older cycles are at indexes > i (newest-first ordering).
+    const olderMoves: number[] = [];
+    for (let j = i + 1; j < events.length; j++) {
+      const m = moveByDate.get(events[j].date);
+      if (m != null) olderMoves.push(m);
+    }
+    const cycle = await backtestBreakoutOneCycle(
+      ticker,
+      ev,
+      underlyingBars,
+      expiries,
+      olderMoves,
+    );
+    cycles.push(cycle);
+  }
+
+  const usable = cycles.filter((c) => c.pnlDollar != null && c.roiPct != null);
+  const wins = usable.filter((c) => (c.pnlDollar ?? 0) > 0).length;
+  const losses = usable.length - wins;
+  const avgRoi =
+    usable.length > 0
+      ? usable.reduce((s, c) => s + (c.roiPct ?? 0), 0) / usable.length
+      : null;
+  const winRate = usable.length > 0 ? wins / usable.length : null;
+
+  return {
+    cycles,
+    avgRoiPct: avgRoi,
+    winRate,
+    wins,
+    losses,
+    cyclesUsed: usable.length,
+    totalCycles: cycles.length,
+  };
+}
+
+async function backtestBreakoutOneCycle(
+  ticker: string,
+  event: FinnhubEarningsEvent,
+  underlyingBars: Map<string, number>,
+  currentExpiries: string[],
+  olderMoves: number[],
+): Promise<BreakoutCyclePnl> {
+  const eeDate = event.date;
+  const entryDate = shiftTradingDays(eeDate, -ENTRY_DAYS_BEFORE);
+  const exitDate =
+    event.hour === "bmo" ? eeDate : shiftTradingDays(eeDate, EXIT_DAYS_AFTER);
+
+  const baseline: BreakoutCyclePnl = {
+    earningsDate: eeDate,
+    hour: event.hour,
+    entryDate,
+    exitDate,
+    direction: null,
+    entryPrice: null,
+    exitPrice: null,
+    pnlDollar: null,
+    roiPct: null,
+    underlyingMove: null,
+    skipReason: null,
+  };
+
+  // Direction from prior cycles only (no look-ahead).
+  if (olderMoves.length < MIN_PRIOR_CYCLES_FOR_BREAKOUT) {
+    return {
+      ...baseline,
+      skipReason: `Need ≥${MIN_PRIOR_CYCLES_FOR_BREAKOUT} prior cycles for direction; have ${olderMoves.length}`,
+    };
+  }
+  const priorMean =
+    olderMoves.reduce((s, x) => s + x, 0) / olderMoves.length;
+  if (Math.abs(priorMean) < BREAKOUT_NEUTRAL_BAND_PCT) {
+    return {
+      ...baseline,
+      skipReason: `Prior bias too neutral (${priorMean.toFixed(2)}%) — no directional trade`,
+    };
+  }
+  const direction: "bullish" | "bearish" = priorMean > 0 ? "bullish" : "bearish";
+
+  // Underlying prices for spot picking + reporting realized move.
+  const allDates = [...underlyingBars.keys()].sort();
+  const findClose = (target: string): number | null => {
+    if (underlyingBars.has(target)) return underlyingBars.get(target)!;
+    let idx = allDates.length - 1;
+    while (idx >= 0 && allDates[idx] > target) idx--;
+    return idx >= 0 ? underlyingBars.get(allDates[idx]) ?? null : null;
+  };
+  const entrySpot = findClose(entryDate);
+  const exitSpot = findClose(exitDate);
+  if (entrySpot == null || exitSpot == null) {
+    return { ...baseline, direction, skipReason: "No underlying bars in window" };
+  }
+  baseline.underlyingMove = ((exitSpot - entrySpot) / entrySpot) * 100;
+
+  if (currentExpiries.length === 0) {
+    return { ...baseline, direction, skipReason: "No current expiries" };
+  }
+  const histExpiry = nextFridayAfter(eeDate);
+
+  // ATM strike — closest to entry-day spot, snapped to price-tier grid
+  // (same logic the Condor uses). Single leg only.
+  const step =
+    entrySpot < 25 ? 0.5 : entrySpot < 100 ? 1 : entrySpot < 250 ? 2.5 : 5;
+  const atmStrike = Math.round(entrySpot / step) * step;
+  const contractType: "C" | "P" = direction === "bullish" ? "C" : "P";
+  const contractTicker = formatOpraTicker(
+    ticker,
+    histExpiry,
+    contractType,
+    atmStrike,
+  );
+
+  let bars: Map<string, number>;
+  try {
+    bars = await fetchOptionContractBars(contractTicker, entryDate, exitDate);
+  } catch (err) {
+    return {
+      ...baseline,
+      direction,
+      skipReason: `Contract bars: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const findContractClose = (
+    barMap: Map<string, number>,
+    target: string,
+    dir: "forward" | "backward",
+  ): number | null => {
+    if (barMap.has(target)) return barMap.get(target)!;
+    const sorted = [...barMap.keys()].sort();
+    if (dir === "backward") {
+      for (let i = sorted.length - 1; i >= 0; i--) {
+        if (sorted[i] <= target) return barMap.get(sorted[i])!;
+      }
+    } else {
+      for (let i = 0; i < sorted.length; i++) {
+        if (sorted[i] >= target) return barMap.get(sorted[i])!;
+      }
+    }
+    return null;
+  };
+  const entryPrice = findContractClose(bars, entryDate, "backward");
+  const exitPrice = findContractClose(bars, exitDate, "forward");
+
+  if (entryPrice == null) {
+    return { ...baseline, direction, skipReason: "Missing entry contract price" };
+  }
+  if (exitPrice == null) {
+    return { ...baseline, direction, skipReason: "Missing exit contract price" };
+  }
+  if (entryPrice <= 0) {
+    return { ...baseline, direction, skipReason: "Zero/negative entry price" };
+  }
+
+  const pnlDollar = (exitPrice - entryPrice) * 100;
+  const roiPct = (pnlDollar / (entryPrice * 100)) * 100;
+
+  return {
+    earningsDate: eeDate,
+    hour: event.hour,
+    entryDate,
+    exitDate,
+    direction,
+    entryPrice,
+    exitPrice,
+    pnlDollar,
+    roiPct,
+    underlyingMove: baseline.underlyingMove,
+    skipReason: null,
+  };
+}
+
 /** Convenience wrapper for the cron — fetches everything we need
  *  (history + underlying bars), runs the backtest, returns the result. */
 export async function backtestStraddleForTicker(

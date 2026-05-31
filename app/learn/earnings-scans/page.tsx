@@ -60,9 +60,24 @@ export default function Page() {
             "Trust the row when: (1) tier is STRONG (≥4 cycles), (2) win rate is decisive — ≥60% or ≤30%, not random-looking 45-55%, (3) Avg ROI is materially positive or negative, not near zero, (4) the sparkline shows mostly one color rather than alternating wildly. Ignore the row when: tier is THIN or WEAK, win rate is near 50% with low avg ROI, or the sparkline is 50/50 noise. The Strategy Score column (the 0-100 number) is V1 heuristic only — it doesn't tell you whether the backtest is reliable. Always cross-check it with the backtest tier.",
         },
         {
+          question: "How does the Breakout backtest pick call vs. put?",
+          answer:
+            "Rolling-window directional bias with no look-ahead leakage. For each past cycle the backtest simulates, the trade direction is decided by the mean post-EE move of the OLDER cycles only — the current cycle's outcome isn't peeked at. If the prior mean is > +0.5%, buy an ATM call; if < -0.5%, buy an ATM put; if it falls in the ±0.5% neutral band, skip the cycle (no clear bias). This avoids the classic backtest bug where using full-period stats to decide direction makes the strategy look profitable just because it's secretly trading the answer. We need at least 2 prior cycles before a cycle can be backtested, so the first 2 (oldest) cycles always skip.",
+        },
+        {
           question: "What's the analyst note next to each backtest row?",
           answer:
             "A deterministic one-liner that translates the raw stats into a human read. Examples: ✓ Decisive wins, positive edge — N% × +R% avg. ⚠ Strong win rate but thin edge — single loss erases multiple wins. ⚠ Asymmetric — typical loss wipes 3+ wins. ✗ Negative edge — strategy lost money historically. The categories are: best-of-week, reasonable-setup, thin-edge, asymmetric-tails, high-variance, mixed-signal, negative-edge, small-sample, single-cycle. Same inputs always produce the same note — no model calls, no randomness.",
+        },
+        {
+          question: "What are the 'Trade' lines under STRONG-tier rows?",
+          answer:
+            "Black-Scholes-estimated trade structures for the upcoming earnings — strikes, expiry, and per-spread debit/credit. The strike-picking mirrors what the backtest simulated historically: ATM call+put for Straddle, 1.0×/1.5× implied-move iron condor, ATM call OR put for Breakout (direction from the backtest's same rolling-bias logic). Strikes snap to a price-tier-aware grid ($0.50 under $25, $1 under $100, $2.50 under $250, $5 above). The expiry is the first Friday strictly after the earnings date. Prices are estimates — they use current ATM IV and the BS pricing model, not real bid/ask. Use them to plan position size; verify the actual quotes in your broker before sending an order.",
+        },
+        {
+          question: "Why are the trade prices labeled as estimates?",
+          answer:
+            "Because they're Black-Scholes outputs, not real broker quotes. BS assumes lognormal returns and constant vol; real options chains have skew, term-structure, and a bid/ask spread that BS doesn't model. For high-IV names reporting earnings, the actual ATM straddle can trade 5-15% richer than the BS estimate (vol-of-vol premium). For low-IV liquid names (large caps with daily/weekly expiries), the estimate is usually within a couple percent. Click BUILD to load the structure into Risk Graph, which pulls live option chains and shows real prices.",
         },
         {
           question: "What is the 'This week's read' hero box?",
@@ -147,16 +162,19 @@ export default function Page() {
       <p>
         Some stocks have a strong post-EE directional bias — they consistently
         rip in one direction after earnings (or consistently dump). Breakout
-        buys a single-leg call or put pre-EE aligned with that bias. The V1
-        score uses sign-match-rate (% of past EEs that moved bullish vs
-        bearish) and average move magnitude. Currently V1 heuristic only;
-        V3.3 backtest is pending.
+        buys a single-leg ATM call or put pre-EE aligned with that bias. The
+        V3.3 backtest is rolling-window — at each past cycle, direction is
+        decided by the mean of OLDER cycles only (no look-ahead). That keeps
+        the simulation honest: if a ticker truly has a persistent directional
+        bias, the rolling signal catches it; if the bias is just noise from
+        the latest few quarters, the backtest will show low win rate or
+        negative ROI and rank low.
       </p>
 
       <h2>How sort order works</h2>
       <p>
-        On <strong>Straddle</strong> and <strong>Condor</strong> tabs, rows are
-        sorted by:
+        On <strong>Straddle</strong>, <strong>Condor</strong>, and{" "}
+        <strong>Breakout</strong> tabs, rows are sorted by:
       </p>
       <ol>
         <li>

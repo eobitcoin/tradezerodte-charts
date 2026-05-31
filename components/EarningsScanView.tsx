@@ -28,6 +28,10 @@ import {
   composeWeeklyRead,
   type AnalystNote,
 } from "@/lib/earnings-analyst";
+import {
+  proposeTrade,
+  type ProposedTrade,
+} from "@/lib/earnings-trade-builder";
 
 interface Props {
   coveredFrom: string;
@@ -49,7 +53,7 @@ const STRATEGY_DESC: Record<Exclude<StrategyKey, "all">, string> = {
   rush: "Pre-earnings IV expansion (long vega, exit before EE) · heuristic",
   condor: "Iron condor through EE — collect IV crush + bounded move · V3 BACKTEST",
   straddle: "ATM straddle through EE — bet move exceeds implied · V3 BACKTEST",
-  breakout: "Pre-EE directional bet for post-EE follow-through · heuristic",
+  breakout: "Pre-EE directional bet for post-EE follow-through · V3 BACKTEST",
 };
 
 function fmtPct(v: number | null, sign = false): string {
@@ -106,7 +110,7 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
           );
           return bMax - aMax;
         })
-      : tab === "straddle" || tab === "condor"
+      : tab === "straddle" || tab === "condor" || tab === "breakout"
         ? // V3.1/V3.2: Straddle + Condor tabs are gated by backtest data,
           // not heuristic score. Sort priority:
           //   1. Tier: strong (≥4 cycles) > weak (2-3) > thin (1) > none (0)
@@ -160,7 +164,7 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
         <p className="text-xs text-white/55 italic">{STRATEGY_DESC[tab]}</p>
       )}
 
-      {(tab === "straddle" || tab === "condor") && (
+      {(tab === "straddle" || tab === "condor" || tab === "breakout") && (
         <>
           <WeeklyReadBox tickers={tickers} strategy={tab} />
           <BacktestSignalBanner tickers={tickers} strategy={tab} />
@@ -246,11 +250,15 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
                         );
                       })}
                     </>
-                  ) : (tab === "straddle" || tab === "condor") &&
+                  ) : (tab === "straddle" || tab === "condor" || tab === "breakout") &&
                     t.backtests?.[tab] ? (
-                    // V3.1/V3.2: real backtest data.
+                    // V3.1/V3.2/V3.3: real backtest data.
                     <td className="px-3 py-2" colSpan={1}>
-                      <BacktestCell stats={t.backtests[tab]!} />
+                      <BacktestCell
+                        stats={t.backtests[tab]!}
+                        entry={t}
+                        strategy={tab}
+                      />
                     </td>
                   ) : (
                     <td className="px-3 py-2" colSpan={1}>
@@ -283,13 +291,13 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
       )}
 
       <p className="text-[11px] text-white/45 leading-relaxed">
-        <strong className="text-emerald-300">V3.2 SHIPPED:</strong>{" "}
-        Straddle and Condor tabs now show actual 6-cycle Polygon-priced
-        backtest results (Win %, Avg ROI, Wins:Losses). Rush and
-        Breakout still use V1 heuristic scores pending V3.3 / V3.4. Use
-        the backtest data to triage Straddle / Condor picks; the other
-        two remain directional signals only. Verify everything against
-        your broker before trading.
+        <strong className="text-emerald-300">V3.3 SHIPPED:</strong>{" "}
+        Straddle, Condor, and Breakout tabs now show actual Polygon-priced
+        backtest results (Win %, Avg ROI, Wins:Losses) across the past
+        ~6-10 earnings cycles. Breakout uses a rolling-window directional
+        bias (no look-ahead) to pick the call vs. put at each historical
+        cycle. Rush still uses V1 heuristic pending V3.4. Verify every
+        pick against your broker before trading.
       </p>
     </section>
   );
@@ -316,7 +324,7 @@ function BacktestSignalBanner({
   strategy,
 }: {
   tickers: EarningsTickerEntry[];
-  strategy: "straddle" | "condor";
+  strategy: "straddle" | "condor" | "breakout";
 }) {
   let strong = 0;
   let weak = 0;
@@ -327,7 +335,10 @@ function BacktestSignalBanner({
     else if (tier === 2) weak++;
     else if (tier === 1) thin++;
   }
-  const label = strategy === "straddle" ? "Straddle" : "Condor";
+  const label =
+    strategy === "straddle" ? "Straddle"
+    : strategy === "condor" ? "Condor"
+    : "Breakout";
 
   if (strong > 0) {
     return (
@@ -391,7 +402,15 @@ function signalTier(stats: EarningsBacktestStats | undefined): number {
   return 3;
 }
 
-function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
+function BacktestCell({
+  stats,
+  entry,
+  strategy,
+}: {
+  stats: EarningsBacktestStats;
+  entry: EarningsTickerEntry;
+  strategy: "straddle" | "condor" | "breakout";
+}) {
   const { avgRoiPct, winRate, wins, losses, cyclesUsed, totalCycles, cycles } = stats;
   if (cyclesUsed === 0) {
     return (
@@ -487,6 +506,7 @@ function BacktestCell({ stats }: { stats: EarningsBacktestStats }) {
       </div>
     </div>
     <AnalystNoteLine note={note} />
+    {tier === 3 && <ProposedTradeCard entry={entry} strategy={strategy} compact />}
     </div>
   );
 }
@@ -521,6 +541,111 @@ function AnalystNoteLine({ note }: { note: AnalystNote }) {
   );
 }
 
+/** Renders the structure of a proposed trade — strikes, expiry, est.
+ *  debit/credit, and max loss. `compact` mode (used per-row) keeps it
+ *  to a single inline line; non-compact (used in the hero box) shows
+ *  the full leg list. */
+function ProposedTradeCard({
+  entry,
+  strategy,
+  compact = false,
+}: {
+  entry: EarningsTickerEntry;
+  strategy: "straddle" | "condor" | "breakout";
+  compact?: boolean;
+}) {
+  const trade = proposeTrade(entry, strategy);
+  if (!trade) return null;
+
+  const legsLine = trade.legs
+    .map((l) => {
+      const sign = l.side === "buy" ? "+" : "−";
+      const t = l.type === "call" ? "C" : "P";
+      return `${sign}${l.strike}${t}`;
+    })
+    .join(" / ");
+  const isCredit = trade.netDollar < 0;
+  const absNet = Math.abs(trade.netDollar);
+  const netLabel = isCredit ? "Credit" : "Debit";
+  const netToneCls = isCredit ? "text-emerald-300" : "text-rose-300";
+
+  if (compact) {
+    return (
+      <div
+        className="text-[11px] font-mono text-white/70 mt-0.5"
+        title={trade.estimateCaveat}
+      >
+        <span className="text-white/45 uppercase tracking-widest text-[9px] mr-1">
+          Trade
+        </span>
+        <span className="text-white/85">{legsLine}</span>
+        <span className="text-white/30"> · {trade.expiry}</span>
+        <span className="text-white/30"> · </span>
+        <span className={netToneCls}>
+          {netLabel} ${absNet.toFixed(0)}
+        </span>
+        {strategy === "condor" && (
+          <span className="text-white/30">
+            {" "}· Max loss ${trade.maxLossDollar.toFixed(0)}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // Expanded variant — table of legs with prices.
+  return (
+    <div className="rounded border border-white/10 bg-white/[0.02] p-2 space-y-1.5">
+      <div className="text-[10px] uppercase tracking-widest text-white/55 font-bold">
+        Proposed trade
+      </div>
+      <div className="text-xs text-white/85">{trade.summary}</div>
+      <div className="space-y-0.5 font-mono text-[11px]">
+        {trade.legs.map((l, i) => (
+          <div key={i} className="flex justify-between text-white/75">
+            <span>
+              <span
+                className={`uppercase tracking-widest text-[9px] mr-2 ${
+                  l.side === "buy"
+                    ? "text-emerald-300"
+                    : "text-rose-300"
+                }`}
+              >
+                {l.side === "buy" ? "BUY" : "SELL"}
+              </span>
+              <span>
+                1× {l.type} @ ${l.strike}
+              </span>
+            </span>
+            <span className="text-white/55">
+              ~${l.estPrice.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between pt-1 border-t border-white/10 text-[11px]">
+        <span className="text-white/55">
+          {netLabel} per spread
+        </span>
+        <span className={`font-mono font-bold ${netToneCls}`}>
+          ${absNet.toFixed(0)}
+        </span>
+      </div>
+      {strategy === "condor" && (
+        <div className="flex justify-between text-[11px]">
+          <span className="text-white/55">Max loss per spread</span>
+          <span className="font-mono text-rose-300">
+            ${trade.maxLossDollar.toFixed(0)}
+          </span>
+        </div>
+      )}
+      <div className="text-[10px] text-white/40 italic pt-1">
+        {trade.estimateCaveat}
+      </div>
+    </div>
+  );
+}
+
 /** Top-of-tab hero box with the synthesized "this week's read" — names
  *  the highest-conviction setup, a second pick if one stands out, and
  *  any deceptive row to skip. Renders nothing when no STRONG-tier rows
@@ -530,16 +655,31 @@ function WeeklyReadBox({
   strategy,
 }: {
   tickers: EarningsTickerEntry[];
-  strategy: "straddle" | "condor";
+  strategy: "straddle" | "condor" | "breakout";
 }) {
   const rows = tickers
     .filter((t) => t.backtests?.[strategy] != null)
     .map((t) => ({ symbol: t.symbol, stats: t.backtests![strategy]! }));
-  const label = strategy === "straddle" ? "Straddle" : "Condor";
+  const label =
+    strategy === "straddle" ? "Straddle"
+    : strategy === "condor" ? "Condor"
+    : "Breakout";
   const read = composeWeeklyRead(rows, label);
   if (!read) return null;
+
+  // Find the EarningsTickerEntry objects for the highlighted symbols
+  // (excluding the "skip" trap mention) so we can show their proposed
+  // trades inline. read.highlighted is [best, second?, trap?].
+  // The trap is only mentioned to warn against — don't show its trade.
+  const tradeSlots: EarningsTickerEntry[] = [];
+  for (let i = 0; i < Math.min(2, read.highlighted.length); i++) {
+    const sym = read.highlighted[i];
+    const t = tickers.find((x) => x.symbol === sym);
+    if (t) tradeSlots.push(t);
+  }
+
   return (
-    <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/[0.05] p-4 space-y-2">
+    <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/[0.05] p-4 space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-200">
           ★ This week&apos;s read
@@ -549,6 +689,18 @@ function WeeklyReadBox({
         </span>
       </div>
       <p className="text-sm text-white/85 leading-relaxed">{read.paragraph}</p>
+      {tradeSlots.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+          {tradeSlots.map((t) => (
+            <div key={t.symbol} className="space-y-1">
+              <div className="text-[10px] uppercase tracking-widest text-emerald-200/65 font-bold">
+                {t.symbol}
+              </div>
+              <ProposedTradeCard entry={t} strategy={strategy} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,7 +2,10 @@ import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { uoaScans } from "@/lib/db/schema";
-import { fetchLatestIntradayPrints } from "@/lib/uoa";
+import {
+  fetchLatestIntradayPrints,
+  fetchTodaySoFarTotals,
+} from "@/lib/uoa";
 import SiteHeader from "@/components/SiteHeader";
 import OptionsSubNav from "@/components/OptionsSubNav";
 import UoaScanView from "@/components/UoaScanView";
@@ -33,6 +36,12 @@ export default async function UnusualActivityLandingPage() {
     lookbackMinutes: 60,
     limit: 10,
   });
+
+  // Running totals for today (ET). Surfaces below the Latest Intraday
+  // banner so users can see today's flow even though the page header
+  // (driven by the EOD-locked uoa_scans row) still shows yesterday's
+  // date until the 4:15 PM cron fires.
+  const todaySoFar = await fetchTodaySoFarTotals();
 
   if (!latest) {
     return (
@@ -67,6 +76,7 @@ export default async function UnusualActivityLandingPage() {
         scan={latest}
         archive={archive.filter((a) => a.scanDay !== latest.scanDay)}
         latestPrints={latestPrints}
+        todaySoFar={todaySoFar}
       />
     </>
   );

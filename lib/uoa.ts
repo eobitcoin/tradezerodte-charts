@@ -346,6 +346,91 @@ export async function fetchLatestIntradayPrints(opts: {
   }));
 }
 
+export interface TodaySoFarTotals {
+  /** Today's ET date as YYYY-MM-DD. */
+  scanDay: string;
+  /** Total qualifying prints seen so far today (any classification). */
+  totalPrints: number;
+  /** Sum of premium dollars across those prints. */
+  totalPremiumUsd: number;
+  /** Unique underlyings touched today. */
+  tickersTouched: number;
+  /** Per-classification breakdown. Keys match UoaClassification. */
+  classificationCounts: Record<UoaClassification, number>;
+  /** Per-classification premium-weighted breakdown. */
+  classificationPremium: Record<UoaClassification, number>;
+  /** ISO timestamp of the most recent qualifying print. */
+  latestPrintAt: string | null;
+}
+
+/**
+ * Aggregate running totals for TODAY (ET) from uoa_prints. Used by the
+ * page header to surface live counts above the EOD-locked summary,
+ * which doesn't refresh until the 4:15 PM cron fires.
+ *
+ * Returns null when there are zero prints today (outside RTH on a
+ * fresh day, or the very first minutes of market open). The view then
+ * just doesn't render the banner.
+ */
+export async function fetchTodaySoFarTotals(): Promise<TodaySoFarTotals | null> {
+  // We use America/New_York to align with the EOD cron's scanDay
+  // boundary — keeps both surfaces using the same definition of "day".
+  const rows = await db
+    .select({
+      classification: uoaPrints.classification,
+      premiumUsd: uoaPrints.premiumUsd,
+      underlying: uoaPrints.underlying,
+      printTs: uoaPrints.printTs,
+    })
+    .from(uoaPrints)
+    .where(
+      sql`(${uoaPrints.printTs} AT TIME ZONE 'America/New_York')::date = (now() AT TIME ZONE 'America/New_York')::date`,
+    );
+
+  if (rows.length === 0) return null;
+
+  const classificationCounts: Record<string, number> = {};
+  const classificationPremium: Record<string, number> = {};
+  const tickers = new Set<string>();
+  let totalPremium = 0;
+  let latestPrintAt: Date | null = null;
+
+  for (const r of rows) {
+    const cls = r.classification as UoaClassification;
+    classificationCounts[cls] = (classificationCounts[cls] ?? 0) + 1;
+    const prem = Number(r.premiumUsd);
+    classificationPremium[cls] = (classificationPremium[cls] ?? 0) + prem;
+    totalPremium += prem;
+    tickers.add(r.underlying);
+    if (!latestPrintAt || r.printTs > latestPrintAt) latestPrintAt = r.printTs;
+  }
+
+  // Use today's ET date as the scanDay label. Compute in JS so we
+  // don't need a DB round-trip just for the label.
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  return {
+    scanDay: today,
+    totalPrints: rows.length,
+    totalPremiumUsd: totalPremium,
+    tickersTouched: tickers.size,
+    classificationCounts: classificationCounts as Record<
+      UoaClassification,
+      number
+    >,
+    classificationPremium: classificationPremium as Record<
+      UoaClassification,
+      number
+    >,
+    latestPrintAt: latestPrintAt ? latestPrintAt.toISOString() : null,
+  };
+}
+
 /**
  * Publish (UPSERT) the day's UOA scan summary row. Called by the EOD
  * cron after runUoaScan completes. Pulls the top prints from

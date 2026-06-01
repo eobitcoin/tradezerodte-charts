@@ -6,6 +6,7 @@ import type {
   UoaPrintSummary,
   UoaClassification,
 } from "@/lib/db/schema";
+import type { TodaySoFarTotals } from "@/lib/uoa";
 
 /**
  * Renders one published Unusual Activity scan.
@@ -27,6 +28,11 @@ interface Props {
    *  5-min intraday cron. Renders as a "Latest intraday" section
    *  above the day's ranked prints. */
   latestPrints?: UoaPrintSummary[];
+  /** Running totals for today (ET). Surfaces under the Latest
+   *  Intraday banner so users see live flow even when the page header
+   *  is showing yesterday's EOD-locked summary. Null when there are
+   *  no qualifying prints yet today. */
+  todaySoFar?: TodaySoFarTotals | null;
 }
 
 const CLASS_LABEL: Record<UoaClassification, string> = {
@@ -82,7 +88,7 @@ function dteFromExpiry(expiry: string, asOf: string): number {
   return Math.max(0, Math.round((e - a) / 86_400_000));
 }
 
-export default async function UoaScanView({ scan, archive, latestPrints }: Props) {
+export default async function UoaScanView({ scan, archive, latestPrints, todaySoFar }: Props) {
   const summaryHtml = scan.summary
     ? await renderMarkdown(scan.summary, [])
     : null;
@@ -159,6 +165,17 @@ export default async function UoaScanView({ scan, archive, latestPrints }: Props
           </ul>
         </section>
       )}
+
+      {/* TODAY SO FAR — running counts from uoa_prints (ET-anchored
+          today), updated every 5 min by the intraday cron. Only renders
+          when today is NEWER than the EOD-locked scan.scanDay (i.e.
+          we're mid-day, EOD hasn't fired yet) AND there's at least one
+          qualifying print on the day. */}
+      {todaySoFar &&
+        todaySoFar.totalPrints > 0 &&
+        todaySoFar.scanDay > scan.scanDay && (
+          <TodaySoFarBox totals={todaySoFar} />
+        )}
 
       <section className="space-y-3">
         <h2 className="text-sm font-bold uppercase tracking-widest text-white/65">
@@ -274,5 +291,88 @@ function PrintCard({
         <Cell label="Tape time" value={fmtPrintTime(p.printTs)} />
       </div>
     </li>
+  );
+}
+
+/**
+ * Running-totals box for "today so far" — surfaces between the LATEST
+ * INTRADAY banner and the (EOD-locked) ranked-prints section. Lives in
+ * the gap between fresh-flow alerts and the persisted day summary,
+ * showing live-evolving counts of bullish/bearish/call/put classification
+ * across all of today's qualifying prints.
+ *
+ * Only renders when `todaySoFar.scanDay > scan.scanDay`, i.e. we're
+ * mid-day on a fresh calendar day and the EOD cron hasn't fired yet.
+ * After EOD, the header date catches up and this box gracefully
+ * disappears (its data is now part of the header summary).
+ */
+function TodaySoFarBox({ totals }: { totals: TodaySoFarTotals }) {
+  const formattedDate = new Date(
+    `${totals.scanDay}T12:00:00Z`,
+  ).toLocaleDateString("en-US", {
+    timeZone: "UTC",
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+  const latestMinAgo = totals.latestPrintAt
+    ? Math.max(
+        0,
+        Math.round(
+          (Date.now() - new Date(totals.latestPrintAt).getTime()) / 60_000,
+        ),
+      )
+    : null;
+  return (
+    <section className="space-y-3 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.06] to-emerald-500/[0.02] p-4">
+      <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-emerald-300">
+        <span
+          aria-hidden="true"
+          className="inline-block size-2 rounded-full bg-emerald-400 animate-pulse"
+        />
+        Today so far · {formattedDate}
+        <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-white/55">
+          · live · EOD summary pending until 4:15 PM ET
+        </span>
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+        <Cell
+          label="Qualifying prints"
+          value={totals.totalPrints.toLocaleString()}
+        />
+        <Cell
+          label="Total premium"
+          value={fmtUsd(totals.totalPremiumUsd)}
+        />
+        <Cell
+          label="Tickers touched"
+          value={totals.tickersTouched.toLocaleString()}
+        />
+        <Cell
+          label="Last print"
+          value={
+            latestMinAgo != null
+              ? latestMinAgo === 0
+                ? "just now"
+                : `${latestMinAgo}m ago`
+              : "—"
+          }
+        />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {(Object.keys(CLASS_LABEL) as UoaClassification[])
+          .filter(
+            (k) => k !== "ambiguous" && (totals.classificationCounts[k] ?? 0) > 0,
+          )
+          .map((k) => (
+            <span
+              key={k}
+              className={`text-[10px] uppercase tracking-widest px-2 py-0.5 rounded border ${CLASS_TONE[k]}`}
+            >
+              {totals.classificationCounts[k]} {CLASS_LABEL[k]}
+            </span>
+          ))}
+      </div>
+    </section>
   );
 }

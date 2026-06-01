@@ -63,9 +63,10 @@ export async function POST(req: Request) {
       },
     });
 
-  // Headline preview for the cron response — top 5 by expected ROI score.
+  // Headline preview for the cron response — top 5 from the Balanced
+  // tier (the wheel-strategy sweet spot).
   const topPicks = result.picks
-    .filter((p) => p.expectedRoiScore != null)
+    .filter((p) => p.expectedRoiScore != null && p.tier === "balanced")
     .slice(0, 5)
     .map(
       (p) =>

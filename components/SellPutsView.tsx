@@ -1,21 +1,26 @@
 "use client";
 
 /**
- * Ranked Sell Puts view. Renders the scan's `picks` array as a table
- * sorted by expected ROI score, with a "BUILD →" button per row that
- * pre-populates Risk Graph with the chosen short put.
+ * Ranked Sell Puts view. Three sub-tabs (Balanced default, then
+ * Conservative, Aggressive, All) filter by PoP tier so users can match
+ * the picks to their risk philosophy:
  *
- * Output columns mirror the spec:
- *   Rank · Symbol · Expiration · Close · Strike · Breakeven ·
- *   Put Credit · P(profit) · Expected ROI · Annualized · IV ·
- *   Slippage · OI · BUILD
+ *   Conservative — PoP ≥ 85%, sorted by annualized return desc.
+ *                  Safety-first; lower premium, deeper OTM cushion.
+ *   Balanced     — PoP 70-85%, sorted by expected ROI desc.
+ *                  Wheel-strategy sweet spot.
+ *   Aggressive   — PoP < 70%, sorted by expected ROI desc.
+ *                  Fattest credit, thinnest cushion. ATM-ish.
+ *   All          — Every tradeable pick across tiers.
  *
- * Skipped tickers are NOT rendered here — they're kept in the persisted
- * data for diagnostics but the page only shows the tradeable set.
+ * Each tier shows ONE pick per ticker (the best within that PoP band).
+ * Skipped tickers (chain fetch failed, no candidates, etc.) are NOT
+ * rendered.
  */
 
+import { useState } from "react";
 import Link from "next/link";
-import type { SellPutPick } from "@/lib/db/schema";
+import type { SellPutPick, SellPutTier } from "@/lib/db/schema";
 import { legsToUrlParams } from "@/lib/earnings-trade-builder";
 
 interface Props {
@@ -63,6 +68,14 @@ function popTone(p: number | null): string {
   return "border-rose-500/40 text-rose-300 bg-rose-500/[0.08]";
 }
 
+function tierBadgeTone(tier: SellPutTier): string {
+  if (tier === "conservative")
+    return "border-emerald-500/50 text-emerald-200 bg-emerald-500/[0.10]";
+  if (tier === "balanced")
+    return "border-amber-500/50 text-amber-200 bg-amber-500/[0.10]";
+  return "border-rose-500/50 text-rose-300 bg-rose-500/[0.10]";
+}
+
 function slippageTone(s: number | null): string {
   if (s == null) return "text-white/55";
   if (s <= 5) return "text-emerald-300";
@@ -70,28 +83,106 @@ function slippageTone(s: number | null): string {
   return "text-rose-300";
 }
 
+type TabKey = SellPutTier | "all";
+
+const TABS: Array<{ id: TabKey; label: string; desc: string }> = [
+  {
+    id: "balanced",
+    label: "Balanced",
+    desc: "PoP 70–85% · sorted by Expected ROI · the wheel-strategy sweet spot",
+  },
+  {
+    id: "conservative",
+    label: "Conservative",
+    desc: "PoP ≥ 85% · sorted by Annualized return · deeper OTM, smaller credit",
+  },
+  {
+    id: "aggressive",
+    label: "Aggressive",
+    desc: "PoP < 70% · sorted by Expected ROI · fattest credit, thinnest cushion",
+  },
+  {
+    id: "all",
+    label: "All",
+    desc: "Every tradeable pick across tiers (may show up to 3 per ticker)",
+  },
+];
+
 export default function SellPutsView({
   scanDay,
   picks,
   universeSize,
   computedSize,
 }: Props) {
+  const [tab, setTab] = useState<TabKey>("balanced");
+
   const tradeable = picks.filter(
     (p) => !p.skipReason && p.expectedRoiScore != null,
   );
+  // Tier-defaulting for back-compat with older scans pre-tier.
+  const tieredTradeable = tradeable.map((p) => ({
+    ...p,
+    tier: (p.tier ?? "aggressive") as SellPutTier,
+  }));
+
+  const filtered =
+    tab === "all"
+      ? tieredTradeable
+      : tieredTradeable.filter((p) => p.tier === tab);
+
+  const tabCounts: Record<TabKey, number> = {
+    conservative: tieredTradeable.filter((p) => p.tier === "conservative")
+      .length,
+    balanced: tieredTradeable.filter((p) => p.tier === "balanced").length,
+    aggressive: tieredTradeable.filter((p) => p.tier === "aggressive")
+      .length,
+    all: tieredTradeable.length,
+  };
+
+  const activeTabMeta = TABS.find((t) => t.id === tab)!;
 
   return (
     <section className="space-y-4">
       <div className="text-sm text-white/55">
-        Scan day · {fmtExpiry(scanDay)} · {computedSize} tradeable picks of{" "}
-        {universeSize} universe · 21–45 DTE
+        Scan day · {fmtExpiry(scanDay)} · {computedSize} tickers with at
+        least one tradeable pick of {universeSize} universe · 21–45 DTE
       </div>
 
-      {tradeable.length === 0 ? (
+      {/* Tier tabs */}
+      <nav className="flex flex-wrap gap-1.5 border-b border-white/10 pb-2">
+        {TABS.map((t) => {
+          const active = t.id === tab;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={[
+                "px-3 py-1.5 rounded border text-xs uppercase tracking-widest font-semibold transition-colors flex items-center gap-1.5",
+                active
+                  ? "border-amber-500/60 bg-amber-500/15 text-amber-200"
+                  : "border-white/15 text-white/55 hover:border-white/30 hover:text-white",
+              ].join(" ")}
+            >
+              <span>{t.label}</span>
+              <span
+                className={
+                  active
+                    ? "text-amber-200/65 font-mono text-[10px]"
+                    : "text-white/35 font-mono text-[10px]"
+                }
+              >
+                {tabCounts[t.id]}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+      <p className="text-xs text-white/55 italic">{activeTabMeta.desc}</p>
+
+      {filtered.length === 0 ? (
         <p className="text-sm text-white/55 italic py-8 text-center">
-          No tradeable Sell Puts in this scan. The universe may be in a
-          low-IV regime where short-put premiums don&apos;t justify the
-          capital lock-up.
+          No picks in the {tab} tier this scan. Try a different tier or
+          wait for the next Monday-evening refresh.
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-white/10">
@@ -117,18 +208,27 @@ export default function SellPutsView({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {tradeable.map((p, i) => (
+              {filtered.map((p, i) => (
                 <tr key={`${p.symbol}-${p.contractTicker}`} className="hover:bg-white/[0.02]">
                   <td className="px-3 py-2 text-white/45 font-mono text-xs">
                     {i + 1}
                   </td>
                   <td className="px-3 py-2 font-mono font-bold">
-                    <Link
-                      href={`/tickers/${p.symbol}`}
-                      className="hover:underline"
-                    >
-                      {p.symbol}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`/tickers/${p.symbol}`}
+                        className="hover:underline"
+                      >
+                        {p.symbol}
+                      </Link>
+                      {tab === "all" && p.tier && (
+                        <span
+                          className={`text-[8px] uppercase tracking-widest px-1 py-px rounded border font-mono font-bold ${tierBadgeTone(p.tier)}`}
+                        >
+                          {p.tier.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">
                     {fmtExpiry(p.expiration)}

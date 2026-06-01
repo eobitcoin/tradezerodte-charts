@@ -27,7 +27,17 @@ export default function Page() {
         {
           question: "What does the scanner actually do?",
           answer:
-            "For each of ~50 tickers in the locked universe, it pulls the live options chain via Polygon, filters to OTM puts in the 21–45 DTE window with a real bid (no zero-bid garbage), and scores each candidate by expected ROI = P(profit) × (credit / close). The single highest-scoring put per ticker is kept as that ticker's pick. All picks are then sorted descending by expected ROI score for the page table.",
+            "For each of ~50 tickers in the locked universe, it pulls the live options chain via Polygon, filters to OTM puts in the 21–45 DTE window with a real bid (no zero-bid garbage), and computes P(profit) × (credit / close) for each. Each candidate is then bucketed into one of three PoP tiers — Conservative (PoP ≥ 85%), Balanced (70–85%), or Aggressive (<70%) — and the best pick within each tier is kept per ticker. Tickers can produce up to 3 picks total.",
+        },
+        {
+          question: "What's the difference between Balanced / Conservative / Aggressive?",
+          answer:
+            "Three risk philosophies, three sub-tabs. (1) Conservative — PoP ≥ 85%, sorted by Annualized return. Far-OTM puts (5-10 delta) with small premium but deep cushion. Best for capital preservation, lower returns. (2) Balanced — PoP 70-85%, sorted by Expected ROI = PoP × credit/close. The standard wheel-strategy sweet spot — 15-25 delta puts, decent premium AND decent safety. Default tab. (3) Aggressive — PoP < 70%, sorted by Expected ROI. Near-ATM puts (30+ delta) with fattest credit but thin cushion. Best for short-vol traders willing to take assignment risk. The 'All' tab shows every tradeable pick across tiers (up to 3 per ticker, marked with C/B/A badges).",
+        },
+        {
+          question: "Why does Conservative sort by Annualized instead of Expected ROI?",
+          answer:
+            "When PoP is already high (≥85%), the limiting factor is yield, not safety. Two conservative puts both with 90% PoP — one at 0.3% credit/close for 30 DTE (3.65% annualized), one at 0.5% for 45 DTE (4.06% annualized) — should rank by annualized return, not raw expected ROI. The longer trade looks slightly higher on expected ROI but ties up capital for 50% longer. Annualized makes the comparison apples-to-apples.",
         },
         {
           question: "How is Probability of Profit (PoP) computed?",

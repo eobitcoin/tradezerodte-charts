@@ -24,12 +24,32 @@
 
 import { fetchOptionChain } from "@/lib/polygon";
 import { normalCdf } from "@/lib/black-scholes";
-import type { SellPutPick } from "@/lib/db/schema";
+import type { SellPutPick, SellPutTier } from "@/lib/db/schema";
 import { SELL_PUTS_UNIVERSE } from "@/lib/sell-puts-universe";
 
 const RISK_FREE_RATE = 0.04;
 const DTE_MIN = 21;
 const DTE_MAX = 45;
+
+/** PoP tier boundaries. Each (ticker × tier) cell produces at most one
+ *  pick — the highest-ranked candidate inside that tier. Users pick
+ *  the tier philosophy that matches their trade plan from a tab strip. */
+const TIER_BOUNDS: Record<
+  SellPutTier,
+  { popMin: number; popMax: number }
+> = {
+  conservative: { popMin: 0.85, popMax: 1.0 },
+  balanced: { popMin: 0.7, popMax: 0.85 },
+  aggressive: { popMin: 0.0, popMax: 0.7 },
+};
+
+const TIERS: SellPutTier[] = ["conservative", "balanced", "aggressive"];
+
+function tierFor(pop: number): SellPutTier {
+  if (pop >= 0.85) return "conservative";
+  if (pop >= 0.7) return "balanced";
+  return "aggressive";
+}
 
 /**
  * Risk-neutral probability that the stock closes ABOVE breakeven at
@@ -58,12 +78,15 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
-/** Best (highest expectedRoiScore) short put for a single ticker. */
+/** Up to 3 picks for a single ticker — one per PoP tier. Tickers that
+ *  fail to fetch the chain return a SINGLE skipped entry so the cron
+ *  can keep diagnostic visibility. */
 async function scanOneTicker(
   ticker: string,
   scanDay: string,
-): Promise<SellPutPick> {
+): Promise<SellPutPick[]> {
   const baseline: SellPutPick = {
+    tier: "aggressive",
     symbol: ticker,
     close: null,
     dividendYieldPct: null,
@@ -91,13 +114,15 @@ async function scanOneTicker(
   try {
     chain = await fetchOptionChain(ticker);
   } catch (err) {
-    return {
-      ...baseline,
-      skipReason: `Chain fetch failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    return [
+      {
+        ...baseline,
+        skipReason: `Chain fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+      },
+    ];
   }
   if (chain.length === 0) {
-    return { ...baseline, skipReason: "Empty chain" };
+    return [{ ...baseline, skipReason: "Empty chain" }];
   }
 
   // Spot from any chain row's underlying_asset.price (Polygon snapshot
@@ -106,7 +131,7 @@ async function scanOneTicker(
     chain.find((c) => c.underlying_asset?.price != null)?.underlying_asset
       ?.price ?? null;
   if (spot == null || spot <= 0) {
-    return { ...baseline, skipReason: "No underlying spot" };
+    return [{ ...baseline, skipReason: "No underlying spot" }];
   }
   baseline.close = spot;
 
@@ -148,16 +173,24 @@ async function scanOneTicker(
     });
   }
   if (candidates.length === 0) {
-    return { ...baseline, skipReason: "No OTM puts in 21-45 DTE window" };
+    return [
+      { ...baseline, skipReason: "No OTM puts in 21-45 DTE window" },
+    ];
   }
 
-  // Score each candidate. Use bid as the credit (executable for sell).
-  let best: SellPutPick | null = null;
-  let bestScore = -Infinity;
+  // Score each candidate and bucket by tier. Within each tier, we keep
+  // the BEST candidate by the tier's own ranking metric:
+  //   conservative — sorted by annualized return (safety-first; you
+  //     want the highest yield among already-safe setups)
+  //   balanced     — sorted by expectedRoiScore (the standard metric)
+  //   aggressive   — sorted by expectedRoiScore (same; high credit wins)
+  const bestPerTier: Partial<Record<SellPutTier, SellPutPick>> = {};
+  const bestRankPerTier: Partial<Record<SellPutTier, number>> = {};
+
   for (const c of candidates) {
     const credit = c.bid;
     const breakeven = c.strike - credit;
-    if (breakeven <= 0) continue; // Defensive — wouldn't happen for OTM puts.
+    if (breakeven <= 0) continue;
     const creditToClose = (credit / spot) * 100;
     const cushion = ((spot - breakeven) / spot) * 100;
     const T = Math.max(1, c.dteDays) / 365;
@@ -167,18 +200,23 @@ async function scanOneTicker(
       sigma: c.iv,
       T,
     });
-    const score = pop * creditToClose;
+    const expectedRoi = pop * creditToClose;
     const annualized =
       c.dteDays > 0 ? creditToClose * (365 / c.dteDays) : null;
     const slippage =
       c.ask > 0 ? (100 * (c.ask - c.bid)) / c.ask : null;
 
-    if (score > bestScore) {
-      bestScore = score;
-      best = {
+    const tier = tierFor(pop);
+    const rank =
+      tier === "conservative" ? annualized ?? 0 : expectedRoi;
+    const currentBest = bestRankPerTier[tier];
+    if (currentBest == null || rank > currentBest) {
+      bestRankPerTier[tier] = rank;
+      bestPerTier[tier] = {
+        tier,
         symbol: ticker,
         close: spot,
-        dividendYieldPct: null, // Filled in later if Polygon dividends API used.
+        dividendYieldPct: null,
         expiration: c.expiration,
         dteDays: c.dteDays,
         contractTicker: c.contractTicker,
@@ -189,9 +227,9 @@ async function scanOneTicker(
         creditToClosePct: creditToClose,
         annualizedReturnPct: annualized,
         probabilityOfProfit: pop,
-        expectedRoiScore: score,
+        expectedRoiScore: expectedRoi,
         iv: c.iv,
-        ivRank: null, // Wired from iv_snapshots table if available — TODO.
+        ivRank: null,
         quoteSlippagePct: slippage,
         bid: c.bid,
         ask: c.ask,
@@ -201,10 +239,17 @@ async function scanOneTicker(
     }
   }
 
-  if (!best) {
-    return { ...baseline, skipReason: "No tradeable put after scoring" };
+  const out: SellPutPick[] = [];
+  for (const tier of TIERS) {
+    const pick = bestPerTier[tier];
+    if (pick) out.push(pick);
   }
-  return best;
+  if (out.length === 0) {
+    return [
+      { ...baseline, skipReason: "No tradeable put after tier scoring" },
+    ];
+  }
+  return out;
 }
 
 export interface SellPutsScanOptions {
@@ -229,10 +274,11 @@ export async function runSellPutsScan(
   const allPicks: SellPutPick[] = [];
   for (const ticker of SELL_PUTS_UNIVERSE) {
     try {
-      const pick = await scanOneTicker(ticker, scanDay);
-      allPicks.push(pick);
+      const picks = await scanOneTicker(ticker, scanDay);
+      allPicks.push(...picks);
     } catch (err) {
       allPicks.push({
+        tier: "aggressive",
         symbol: ticker,
         close: null,
         dividendYieldPct: null,
@@ -260,23 +306,44 @@ export async function runSellPutsScan(
     if (delay > 0) await new Promise((r) => setTimeout(r, delay));
   }
 
-  // Tradeable picks first (no skipReason), sorted by score desc.
+  // Tradeable picks sorted within tier: conservative by annualized
+  // return desc, balanced/aggressive by expectedRoiScore desc.
   // Skipped picks appended for diagnostic visibility.
-  const tradeable = allPicks
-    .filter((p) => !p.skipReason && p.expectedRoiScore != null)
-    .sort(
-      (a, b) =>
-        (b.expectedRoiScore ?? -Infinity) -
-        (a.expectedRoiScore ?? -Infinity),
+  const tradeable = allPicks.filter(
+    (p) => !p.skipReason && p.expectedRoiScore != null,
+  );
+  const tierOrder: Record<SellPutTier, number> = {
+    conservative: 0,
+    balanced: 1,
+    aggressive: 2,
+  };
+  tradeable.sort((a, b) => {
+    const ta = a.tier ?? "aggressive";
+    const tb = b.tier ?? "aggressive";
+    if (ta !== tb) return tierOrder[ta] - tierOrder[tb];
+    if (ta === "conservative") {
+      return (
+        (b.annualizedReturnPct ?? -Infinity) -
+        (a.annualizedReturnPct ?? -Infinity)
+      );
+    }
+    return (
+      (b.expectedRoiScore ?? -Infinity) -
+      (a.expectedRoiScore ?? -Infinity)
     );
+  });
   const skipped = allPicks.filter(
     (p) => p.skipReason || p.expectedRoiScore == null,
   );
+
+  // computedSize counts UNIQUE tickers with at least one tradeable pick,
+  // not total picks (else a ticker with 3 picks gets counted 3 times).
+  const uniqueTickers = new Set(tradeable.map((p) => p.symbol));
 
   return {
     scanDay,
     picks: [...tradeable, ...skipped],
     universeSize: SELL_PUTS_UNIVERSE.length,
-    computedSize: tradeable.length,
+    computedSize: uniqueTickers.size,
   };
 }

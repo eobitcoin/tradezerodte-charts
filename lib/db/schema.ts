@@ -2384,11 +2384,23 @@ export type EarningsScan = typeof earningsScans.$inferSelect;
 // Sell Puts scans
 // ===========================================================================
 
+/** Tier bucket for Sell Puts picks — drives which sub-tab a pick
+ *  shows up on. Boundaries by P(profit):
+ *    conservative: PoP ≥ 0.85 — safety-first, lower premium
+ *    balanced:     0.70 ≤ PoP < 0.85 — sweet spot
+ *    aggressive:   PoP < 0.70 — fattest credit, narrow margin
+ */
+export type SellPutTier = "conservative" | "balanced" | "aggressive";
+
 /** One ranked Sell Puts opportunity. The pick is a single short put at
  *  a chosen strike/expiry. Ranking is driven by `expectedRoiScore` =
  *  P(profit) × (credit / close), the standard "expected ROI" metric for
- *  put-selling screens. */
+ *  put-selling screens. Each ticker can produce up to 3 picks (one per
+ *  tier) so users can compare aggressive vs. conservative side-by-side. */
 export interface SellPutPick {
+  /** Which sub-tab this pick belongs to. Older scans without tiers
+   *  default to "aggressive" on read. */
+  tier?: SellPutTier;
   symbol: string;
   /** Stock close price at scan time. */
   close: number | null;

@@ -22,6 +22,7 @@
 import type {
   EarningsBacktestCycle,
   EarningsBacktestStats,
+  EarningsTickerEntry,
 } from "@/lib/db/schema";
 
 export type AnalystTone = "positive" | "caution" | "negative" | "neutral";
@@ -209,7 +210,7 @@ export interface WeeklyRead {
  * Negative win rates × negative ROI would be positive, which is wrong;
  * we floor at zero so only winning setups can be "best of week."
  */
-function pickScore(stats: EarningsBacktestStats): number {
+export function pickScore(stats: EarningsBacktestStats): number {
   const wr = stats.winRate ?? 0;
   const roi = stats.avgRoiPct ?? 0;
   if (wr <= 0 || roi <= 0) return 0;
@@ -288,4 +289,109 @@ export function composeWeeklyRead(
   }
 
   return { paragraph: p, highlighted };
+}
+
+// ---------------------------------------------------------------------------
+// All-tab "best of the best" — cross-strategy read
+// ---------------------------------------------------------------------------
+
+type EarningsStrategyKey = "rush" | "condor" | "straddle" | "breakout";
+
+const STRATEGY_LABEL: Record<EarningsStrategyKey, string> = {
+  rush: "Rush",
+  condor: "Condor",
+  straddle: "Straddle",
+  breakout: "Breakout",
+};
+
+interface CrossStrategyCandidate {
+  symbol: string;
+  strategy: EarningsStrategyKey;
+  stats: EarningsBacktestStats;
+  score: number;
+}
+
+/**
+ * Picks the top 1-3 STRONG positive-edge picks across ALL strategies.
+ * Used on the Earnings "All" tab where the user wants the highest-
+ * conviction setup of the week regardless of which strategy ships it.
+ *
+ * Rules:
+ *   - Candidate must be STRONG tier (≥4 priced cycles)
+ *   - Must have positive winRate AND positive avgRoi (pickScore > 0)
+ *   - One mention per ticker — if a ticker is best in two strategies,
+ *     we name the higher-scoring one and drop the duplicate
+ *   - Up to 3 mentions; emerald-toned prose
+ *
+ * Returns null when no positive-edge STRONG candidate exists anywhere
+ * (the existing per-strategy banners cover that case below).
+ */
+export function composeAllStrategiesRead(
+  tickers: EarningsTickerEntry[],
+): WeeklyRead | null {
+  const candidates: CrossStrategyCandidate[] = [];
+  const strategies: EarningsStrategyKey[] = [
+    "rush",
+    "condor",
+    "straddle",
+    "breakout",
+  ];
+  for (const t of tickers) {
+    for (const s of strategies) {
+      const stats = t.backtests?.[s];
+      if (!stats) continue;
+      if (stats.cyclesUsed < 4) continue;
+      const score = pickScore(stats);
+      if (score <= 0) continue;
+      candidates.push({ symbol: t.symbol, strategy: s, stats, score });
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  // Sort by score desc, dedupe by ticker (keep the highest-scoring
+  // strategy per ticker so the prose mentions different names).
+  candidates.sort((a, b) => b.score - a.score);
+  const seen = new Set<string>();
+  const picks: CrossStrategyCandidate[] = [];
+  for (const c of candidates) {
+    if (seen.has(c.symbol)) continue;
+    seen.add(c.symbol);
+    picks.push(c);
+    if (picks.length >= 3) break;
+  }
+
+  const fmtPickLine = (c: CrossStrategyCandidate): string => {
+    const wr = ((c.stats.winRate ?? 0) * 100).toFixed(0);
+    const roi = (c.stats.avgRoiPct ?? 0).toFixed(0);
+    const sign = (c.stats.avgRoiPct ?? 0) >= 0 ? "+" : "";
+    return `${c.symbol} ${STRATEGY_LABEL[c.strategy]} (${wr}% × ${sign}${roi}% across ${c.stats.cyclesUsed} cycles)`;
+  };
+
+  const top = picks[0];
+  const second = picks[1];
+  const third = picks[2];
+
+  let p = `${fmtPickLine(top)} is the highest-conviction setup of the week across all four strategies.`;
+
+  if (second) {
+    p += ` Pair with ${fmtPickLine(second)} for a diversified two-name book.`;
+  }
+  if (third) {
+    p += ` ${fmtPickLine(third)} is a third-leg candidate if you want broader exposure.`;
+  }
+
+  // Strategy concentration callout — if all top picks are the same
+  // strategy, mention that signal. If they're spread across, also worth
+  // noting.
+  const uniqStrategies = new Set(picks.map((p) => p.strategy));
+  if (uniqStrategies.size === 1 && picks.length >= 2) {
+    p += ` All top picks are ${STRATEGY_LABEL[top.strategy]} setups — this week's edge is concentrated in one strategy.`;
+  } else if (uniqStrategies.size >= 3) {
+    p += ` Top picks span ${uniqStrategies.size} different strategies — broad earnings-week opportunity set.`;
+  }
+
+  return {
+    paragraph: p,
+    highlighted: picks.map((p) => p.symbol),
+  };
 }

@@ -25,6 +25,7 @@ import type {
 } from "@/lib/db/schema";
 import {
   classifyBacktest,
+  composeAllStrategiesRead,
   composeWeeklyRead,
   type AnalystNote,
 } from "@/lib/earnings-analyst";
@@ -166,6 +167,7 @@ export default function EarningsScanView({ coveredFrom, coveredTo, tickers }: Pr
           <BacktestSignalBanner tickers={tickers} strategy={tab} />
         </>
       )}
+      {tab === "all" && <AllStrategiesReadBox tickers={tickers} />}
 
       {filtered.length === 0 ? (
         <p className="text-sm text-white/55 italic py-8 text-center">
@@ -705,6 +707,33 @@ function ProposedTradeCard({
  *  the highest-conviction setup, a second pick if one stands out, and
  *  any deceptive row to skip. Renders nothing when no STRONG-tier rows
  *  exist (the empty-state banner below handles that case). */
+/** Top-of-"All"-tab hero — picks the 1-3 highest-conviction setups
+ *  ACROSS every strategy (Rush / Condor / Straddle / Breakout). Names
+ *  the best of the week regardless of which strategy ships it, and
+ *  notes whether the edge is concentrated in one strategy or spread
+ *  across several. */
+function AllStrategiesReadBox({
+  tickers,
+}: {
+  tickers: EarningsTickerEntry[];
+}) {
+  const read = composeAllStrategiesRead(tickers);
+  if (!read) return null;
+  return (
+    <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/[0.05] p-4 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-200">
+          ★ This week&apos;s read
+        </span>
+        <span className="text-[10px] uppercase tracking-widest text-emerald-200/55">
+          · All strategies
+        </span>
+      </div>
+      <p className="text-sm text-white/85 leading-relaxed">{read.paragraph}</p>
+    </div>
+  );
+}
+
 function WeeklyReadBox({
   tickers,
   strategy,

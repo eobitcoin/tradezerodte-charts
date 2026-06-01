@@ -22,6 +22,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { SellPutPick, SellPutTier } from "@/lib/db/schema";
 import { legsToUrlParams } from "@/lib/earnings-trade-builder";
+import { composeSellPutsWeeklyRead } from "@/lib/sell-puts-analyst";
 
 interface Props {
   scanDay: string;
@@ -140,6 +141,7 @@ export default function SellPutsView({
   };
 
   const activeTabMeta = TABS.find((t) => t.id === tab)!;
+  const weeklyRead = composeSellPutsWeeklyRead(tieredTradeable);
 
   return (
     <section className="space-y-4">
@@ -147,6 +149,23 @@ export default function SellPutsView({
         Scan day · {fmtExpiry(scanDay)} · {computedSize} tickers with at
         least one tradeable pick of {universeSize} universe · 21–45 DTE
       </div>
+
+      {/* This week's read hero box */}
+      {weeklyRead && (
+        <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/[0.05] p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-widest font-bold text-emerald-200">
+              ★ This week&apos;s read
+            </span>
+            <span className="text-[10px] uppercase tracking-widest text-emerald-200/55">
+              · Sell Puts
+            </span>
+          </div>
+          <p className="text-sm text-white/85 leading-relaxed">
+            {weeklyRead.paragraph}
+          </p>
+        </div>
+      )}
 
       {/* Tier tabs */}
       <nav className="flex flex-wrap gap-1.5 border-b border-white/10 pb-2">

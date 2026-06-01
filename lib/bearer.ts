@@ -87,6 +87,16 @@ export function requireEarningsCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("EARNINGS_CRON_TOKEN", req);
 }
 
+/**
+ * Sell Puts scan cron token. Used by the weekly Sunday Sell Puts cron
+ * that walks the locked large-cap universe and ranks short-put
+ * opportunities by expected ROI. Set as `SELL_PUTS_CRON_TOKEN` in
+ * Railway env.
+ */
+export function requireSellPutsCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("SELL_PUTS_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

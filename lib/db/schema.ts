@@ -11,6 +11,7 @@ import {
   index,
   uniqueIndex,
   customType,
+  serial,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -2378,3 +2379,88 @@ export const earningsScans = pgTable(
 );
 
 export type EarningsScan = typeof earningsScans.$inferSelect;
+
+// ===========================================================================
+// Sell Puts scans
+// ===========================================================================
+
+/** One ranked Sell Puts opportunity. The pick is a single short put at
+ *  a chosen strike/expiry. Ranking is driven by `expectedRoiScore` =
+ *  P(profit) × (credit / close), the standard "expected ROI" metric for
+ *  put-selling screens. */
+export interface SellPutPick {
+  symbol: string;
+  /** Stock close price at scan time. */
+  close: number | null;
+  /** Annualized dividend yield as percent (0..100). null when unavailable. */
+  dividendYieldPct: number | null;
+  /** YYYY-MM-DD. The chosen expiry from the chain (within 21–45 DTE). */
+  expiration: string;
+  /** Calendar days from scan_day to expiration. */
+  dteDays: number;
+  /** OPRA contract ticker for the chosen short put. */
+  contractTicker: string;
+  /** Strike price. */
+  strike: number;
+  /** Premium collected per share (= bid for sell, mid for ranking). */
+  putCredit: number | null;
+  /** Strike − credit. Stock must stay above this for trade to profit. */
+  breakeven: number | null;
+  /** (close − breakeven) / close × 100. Larger = more cushion. */
+  breakevenCushionPct: number | null;
+  /** credit / close × 100. The raw % return on stock notional. */
+  creditToClosePct: number | null;
+  /** Annualized version of creditToClosePct, accounting for DTE. */
+  annualizedReturnPct: number | null;
+  /** Risk-neutral P(stock at expiry > breakeven). 0..1. */
+  probabilityOfProfit: number | null;
+  /** P(profit) × creditToClosePct. The composite ranking score. */
+  expectedRoiScore: number | null;
+  /** Implied vol of the chosen put (decimal, e.g. 0.32 for 32%). */
+  iv: number | null;
+  /** IV rank in 0..100 of the underlying's 30d ATM IV vs trailing 1y.
+   *  null if no IV history persisted for that name. */
+  ivRank: number | null;
+  /** 100 × (ask − bid) / ask. Smaller = tighter, more tradeable. */
+  quoteSlippagePct: number | null;
+  bid: number | null;
+  ask: number | null;
+  /** Open interest on the chosen contract. */
+  openInterest: number | null;
+  /** Delta of the chosen put (negative number, e.g. −0.20 for 20-delta). */
+  delta: number | null;
+  /** Diagnostic — why a ticker was skipped (null when included). */
+  skipReason?: string;
+}
+
+/** Stored scan payload. Tickers in `picks` are sorted by
+ *  expectedRoiScore desc. Items with `skipReason` set are kept at the
+ *  end for diagnostic visibility but excluded from the page table. */
+export interface SellPutScanData {
+  scanDay: string;
+  dteRange: { min: number; max: number };
+  picks: SellPutPick[];
+}
+
+export const sellPutScans = pgTable(
+  "sell_put_scans",
+  {
+    id: serial("id").primaryKey(),
+    scanDay: date("scan_day").notNull().unique(),
+    universeSize: integer("universe_size").notNull().default(0),
+    computedSize: integer("computed_size").notNull().default(0),
+    data: jsonb("data").$type<SellPutScanData>().notNull().default({
+      scanDay: "",
+      dteRange: { min: 21, max: 45 },
+      picks: [],
+    }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("sell_put_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type SellPutScan = typeof sellPutScans.$inferSelect;

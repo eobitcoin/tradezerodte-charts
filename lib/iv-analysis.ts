@@ -447,11 +447,27 @@ export async function analyzeTicker(ticker: string): Promise<TickerAnalysis> {
 /** The canonical Options Edge watchlist (keep in sync with the backfill
  *  script + routine prompt). */
 export const OPTIONS_EDGE_WATCHLIST = [
+  // Original Options Edge core (25 names) — used by the anomaly
+  // scanner + UOA. These have ≥1y of iv_snapshots history already.
   "SPY", "QQQ", "IWM",
   "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
   "AMD", "INTC", "MU", "AVGO", "MRVL",
   "COIN", "MSTR", "GME", "PLTR", "NFLX",
   "BAC", "TLT", "GLD", "XLE", "XLF",
+  // Expanded coverage for Sell Puts + Calendars (added later).
+  // Daily IV cron writes these; full 1y rank takes time to populate.
+  // Tech / semis
+  "ORCL", "ADBE", "CRM", "QCOM", "TSM", "TXN", "ASML",
+  // Financials
+  "JPM", "GS", "MS", "SCHW", "WFC", "BLK", "V", "MA",
+  // Healthcare / pharma
+  "UNH", "LLY", "JNJ", "PFE", "ABBV", "MRK", "TMO", "DHR",
+  // Consumer / retail
+  "HD", "LOW", "MCD", "SBUX", "NKE", "COST", "WMT", "TGT", "DIS",
+  // Industrials / defense
+  "CAT", "BA", "GE", "HON", "LMT", "RTX",
+  // Energy / telecom
+  "XOM", "CVX", "T", "VZ",
 ] as const;
 
 export type OptionsEdgeTicker = (typeof OPTIONS_EDGE_WATCHLIST)[number];

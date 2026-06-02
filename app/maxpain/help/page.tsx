@@ -179,44 +179,64 @@ export default function MaxPainHelpPage() {
           <H2 id="regimes">4. GEX regimes — POS, NEG, FLIP</H2>
           <p>
             Each ticker is classified into one of three regimes based on where spot sits versus
-            its zero-gamma flip and the magnitude of total dealer gamma.
+            its zero-gamma flip and the magnitude of total dealer gamma. The regime tells you
+            both the <em>mechanics</em> of how dealers will hedge (which dictates how price will
+            behave) and the <em>strategies</em> that work in that environment.
           </p>
 
           <table>
             <thead>
               <tr>
                 <th>Regime</th>
-                <th>Behavior</th>
-                <th>What works</th>
-                <th>What doesn&apos;t</th>
+                <th>Condition</th>
+                <th>Market behavior</th>
+                <th>How to trade it</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><strong>POS</strong> (green)</td>
-                <td>Dealers long gamma. Vol-suppressive. Tight ranges, slow grind.</td>
-                <td>Selling premium, fading wicks, iron condors.</td>
-                <td>Buying calls/puts outright. Theta will eat you.</td>
+                <td>Total dealer GEX &gt; 0</td>
+                <td>
+                  Dealers are LONG gamma → they HEDGE by selling rallies, buying dips →
+                  <strong> pins price, suppresses vol</strong>.
+                </td>
+                <td>Sell premium, mean-reversion plays, iron condors.</td>
               </tr>
               <tr>
                 <td><strong>NEG</strong> (rose)</td>
-                <td>Dealers short gamma. Vol-amplifying. Big ranges, trends extend.</td>
-                <td>Buying directional options, momentum, trend-following.</td>
-                <td>Selling premium without protection. One gap can ruin a month.</td>
+                <td>Total dealer GEX &lt; 0</td>
+                <td>
+                  Dealers are SHORT gamma → they CHASE moves (sell when down, buy when up) →
+                  <strong> amplifies trends, expands vol</strong>.
+                </td>
+                <td>Buy premium, momentum / breakout plays.</td>
               </tr>
               <tr>
                 <td><strong>FLIP</strong> (amber)</td>
-                <td>Spot near the gamma flip. Regime can change intraday.</td>
-                <td>Patience. Wait for spot to commit one side of the flip.</td>
-                <td>Sizing into either edge with confidence.</td>
+                <td>Spot within ±0.5% of zero-gamma flip strike</td>
+                <td>
+                  Right at the boundary → unstable, regime could swing either way intraday.
+                </td>
+                <td>Wait for clarity, or trade vol expansion.</td>
               </tr>
             </tbody>
           </table>
 
+          <p>
+            <strong>Why this matters in practice</strong> — say META reads as POS. That means
+            dealers are long gamma on META options, so they&apos;ll hedge META back toward
+            heavy-OI strikes through the week. Realized vol tends to be LOWER than implied
+            (good for premium sellers), big directional moves get faded by dealer hedging, and
+            the Max Pain strike acts as a real attractor. Combine the regime with the Max Pain
+            level shown on the page — that&apos;s your &ldquo;where does this ticker want to
+            go&rdquo; answer.
+          </p>
+
           <Note>
             The regime is a property of the moment, not the day. A ticker can flip from POS to
             NEG mid-session if a meaningful directional move pushes spot through the flip
-            strike. Watch the <Code>GAMMA_FLIP_CROSS</Code> alert.
+            strike. Watch the <Code>GAMMA_FLIP_CROSS</Code> alert for live notifications.
           </Note>
 
           <H2 id="net-gex">5. Net GEX, Total GEX, and the &quot;per 1%&quot; unit</H2>

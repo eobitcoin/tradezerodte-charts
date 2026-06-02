@@ -2476,3 +2476,103 @@ export const sellPutScans = pgTable(
 );
 
 export type SellPutScan = typeof sellPutScans.$inferSelect;
+
+// ===========================================================================
+// Calendar scans
+// ===========================================================================
+
+/** Why a ticker was skipped (or "ok" for tradeable). Used in the
+ *  view footer + dev diagnostics. */
+export type CalendarSkipReason =
+  | "ok"
+  | "no_chain"
+  | "no_iv_rank"
+  | "iv_rank_too_low"
+  | "earnings_in_window"
+  | "no_front_expiry"
+  | "no_back_expiry"
+  | "no_strikes"
+  | "term_structure_unfavorable"
+  | "scan_error";
+
+/** One ranked calendar opportunity: long ATM call calendar (sell
+ *  front-month ATM call, buy back-month ATM call). Same strike on
+ *  both legs. Ranking is driven by `compositeScore` which blends IV
+ *  rank, term-structure ratio, post-earnings timing bonus, and DTE
+ *  quality vs ideal sweet spots. */
+export interface CalendarPick {
+  symbol: string;
+  /** Spot price at scan time. */
+  spot: number | null;
+  /** ATM strike (closest listed strike to spot). */
+  strike: number | null;
+  /** Front-month (short) expiry — target ~30 DTE. */
+  frontExpiration: string | null;
+  frontDte: number | null;
+  /** Back-month (long) expiry — target ~90 DTE. */
+  backExpiration: string | null;
+  backDte: number | null;
+  /** OPRA tickers for each leg, so the BUILD button can drop into
+   *  Risk Graph with both legs pre-populated. */
+  frontContractTicker: string | null;
+  backContractTicker: string | null;
+  /** Mid prices for each leg (per share). */
+  frontMid: number | null;
+  backMid: number | null;
+  /** Net debit per spread (= back_mid − front_mid). Always positive
+   *  for a long calendar; longer expiry has more time value. */
+  netDebit: number | null;
+  /** Implied vol on each leg (decimal, e.g. 0.32 for 32%). */
+  frontIv: number | null;
+  backIv: number | null;
+  /** front_iv / back_iv. >1 means front is richer (good for calendar). */
+  termStructureRatio: number | null;
+  /** Front-month IV rank in 0..100 vs trailing 1y from iv_snapshots.
+   *  Null when the ticker isn't in the IV-rank watchlist. */
+  ivRank: number | null;
+  /** Days since the ticker's most recent earnings report.
+   *  Null if Polygon financials returned no past EE. */
+  daysSinceEarnings: number | null;
+  /** Days until the next earnings report. Null if no upcoming EE
+   *  known within 45 days. */
+  daysToNextEarnings: number | null;
+  /** Composite ranking score 0..100. Higher = more attractive setup. */
+  compositeScore: number | null;
+  /** Why a row was skipped — null/undefined when tradeable. */
+  skipReason: CalendarSkipReason;
+  /** Free-form human-readable rationale for the score, for the row's
+   *  tooltip / analyst-note layer. */
+  notes: string;
+}
+
+export interface CalendarScanData {
+  scanDay: string;
+  /** Ideal DTE windows — surfaced in help + view footer. */
+  frontDteRange: { min: number; max: number };
+  backDteRange: { min: number; max: number };
+  picks: CalendarPick[];
+}
+
+export const calendarScans = pgTable(
+  "calendar_scans",
+  {
+    id: serial("id").primaryKey(),
+    scanDay: date("scan_day").notNull().unique(),
+    universeSize: integer("universe_size").notNull().default(0),
+    computedSize: integer("computed_size").notNull().default(0),
+    data: jsonb("data").$type<CalendarScanData>().notNull().default({
+      scanDay: "",
+      frontDteRange: { min: 20, max: 40 },
+      backDteRange: { min: 60, max: 120 },
+      picks: [],
+    }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("calendar_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type CalendarScan = typeof calendarScans.$inferSelect;

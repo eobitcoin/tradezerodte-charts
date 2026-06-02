@@ -97,6 +97,16 @@ export function requireSellPutsCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("SELL_PUTS_CRON_TOKEN", req);
 }
 
+/**
+ * Calendar scan cron token. Used by the weekly Sunday Calendar Trades
+ * scan that walks the locked large-cap universe and ranks long-calendar
+ * spread opportunities by IV rank, term structure, and earnings clearance.
+ * Set as `CALENDAR_CRON_TOKEN` in Railway env.
+ */
+export function requireCalendarCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("CALENDAR_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

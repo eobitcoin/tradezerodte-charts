@@ -17,6 +17,7 @@ export type OptionsSubNavTab =
   | "leaps"
   | "earnings"
   | "sell-puts"
+  | "calendars"
   | "risk-graph";
 
 const TABS: Array<{ id: OptionsSubNavTab; label: string; href: string }> = [
@@ -26,6 +27,7 @@ const TABS: Array<{ id: OptionsSubNavTab; label: string; href: string }> = [
   { id: "leaps", label: "LEAPs", href: "/research/leaps" },
   { id: "earnings", label: "Earnings", href: "/research/earnings-scans" },
   { id: "sell-puts", label: "Sell Puts", href: "/research/sell-puts" },
+  { id: "calendars", label: "Calendars", href: "/research/calendars" },
   { id: "risk-graph", label: "Risk Graph", href: "/research/risk-graph" },
 ];
 

@@ -15,6 +15,27 @@ import {
 } from "@/lib/max-pain";
 import type { MaxPainPost, MaxPainTicker, MaxPainAlert } from "@/lib/db/schema";
 
+/**
+ * Format the scan's run_at timestamp as "H:MM AM/PM ET · Day".
+ * Used in the per-ticker header so users see exactly when each
+ * snapshot was taken — Tradier's `quote.last` is a point-in-time
+ * value and the spot can drift through the session.
+ */
+function fmtRunAtEt(runAt: Date | string): string {
+  const d = runAt instanceof Date ? runAt : new Date(runAt);
+  const time = d.toLocaleTimeString("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const day = d.toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+  });
+  return `${time} ET ${day}`;
+}
+
 function tickerHref(date: string | null, ticker: string): string {
   if (!date) return `/maxpain?ticker=${encodeURIComponent(ticker)}`;
   return `/maxpain/${date}?ticker=${encodeURIComponent(ticker)}`;
@@ -231,9 +252,17 @@ export default async function MaxPainView({
         <main className="min-w-0 space-y-6">
           {/* Header strip */}
           <div className="flex items-baseline justify-between gap-3 flex-wrap pb-3 border-b border-black/10 dark:border-white/10">
-            <div className="flex items-baseline gap-3">
+            <div className="flex items-baseline gap-3 flex-wrap">
               <h2 className="text-2xl font-bold tracking-tight font-mono">{active.ticker}</h2>
               <span className="font-mono text-lg">{fmtNum(active.spot)}</span>
+              {post.runAt && (
+                <span
+                  className="text-[11px] font-mono text-black/50 dark:text-white/50 italic"
+                  title="Spot price was captured at scan time. It does not auto-refresh."
+                >
+                  (as of {fmtRunAtEt(post.runAt)})
+                </span>
+              )}
               <span
                 className={`inline-block px-1.5 py-0.5 text-[10px] font-mono font-semibold rounded border ${
                   regimeColors(active.regime).pill

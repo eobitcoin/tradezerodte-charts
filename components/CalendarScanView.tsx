@@ -173,27 +173,32 @@ export default function CalendarScanView({
                     {p.notes || "—"}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {p.strike != null && p.backExpiration && (
+                    {p.strike != null && p.frontExpiration && p.backExpiration && (
                       <Link
                         href={`/research/risk-graph?${legsToUrlParams({
                           ticker: p.symbol,
                           strategy: "calendar",
-                          expiry: p.backExpiration,
+                          // Primary expiry = FRONT (the active short leg);
+                          // each leg gets its own expiry override below
+                          // so the calendar lands with two different months.
+                          expiry: p.frontExpiration,
                           legs: [
                             {
                               side: "sell",
                               type: "call",
                               strike: p.strike,
+                              expiry: p.frontExpiration,
                             },
                             {
                               side: "buy",
                               type: "call",
                               strike: p.strike,
+                              expiry: p.backExpiration,
                             },
                           ],
                         })}`}
                         className="inline-block rounded border border-amber-500/40 bg-amber-500/[0.08] px-2.5 py-1 text-[10px] uppercase tracking-widest text-amber-300 hover:bg-amber-500/15 transition-colors"
-                        title={`Open Risk Graph with this ${p.strike}C calendar pre-loaded (sell front, buy back at same strike)`}
+                        title={`Open Risk Graph with this ${p.strike}C calendar pre-loaded (sell ${p.frontExpiration} front, buy ${p.backExpiration} back)`}
                       >
                         Build →
                       </Link>

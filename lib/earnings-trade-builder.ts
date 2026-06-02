@@ -349,6 +349,10 @@ export interface PrefillLeg {
   side: "buy" | "sell";
   type: "call" | "put";
   strike: number;
+  /** Per-leg expiry override. Used by calendar/diagonal spreads where
+   *  legs sit on DIFFERENT expiries. When undefined, the leg uses the
+   *  payload's top-level `expiry`. Format: YYYY-MM-DD. */
+  expiry?: string;
 }
 
 export interface PrefillPayload {
@@ -360,8 +364,13 @@ export interface PrefillPayload {
 }
 
 /** Generic encoder used by every source that hands off to Risk Graph
- *  (earnings scans, LEAPs, options edge anomalies, future surfaces).
- *  Returns a query-string fragment (no leading "?"). */
+ *  (earnings scans, LEAPs, options edge anomalies, calendars, future
+ *  surfaces). Returns a query-string fragment (no leading "?").
+ *
+ *  Leg format: `<side>-<type>-<strike>` (uses payload `expiry`) or
+ *  `<side>-<type>-<strike>@<expiry>` (per-leg override). Calendars and
+ *  diagonals use the per-leg form so the sell + buy legs land on
+ *  different months. */
 export function legsToUrlParams(opts: {
   ticker: string;
   strategy: string;
@@ -372,7 +381,8 @@ export function legsToUrlParams(opts: {
     .map((l) => {
       const side = l.side === "buy" ? "L" : "S";
       const type = l.type === "call" ? "C" : "P";
-      return `${side}-${type}-${l.strike}`;
+      const base = `${side}-${type}-${l.strike}`;
+      return l.expiry ? `${base}@${l.expiry}` : base;
     })
     .join(",");
   const qs = new URLSearchParams({
@@ -410,13 +420,21 @@ export function urlParamsToPrefill(
   if (!strategy || !expiry || !legsStr) return null;
   const legs: PrefillLeg[] = [];
   for (const part of legsStr.split(",")) {
-    const [sideS, typeS, strikeS] = part.split("-");
+    // Parse optional `@expiry` suffix. e.g. `S-C-320@2026-07-02`.
+    let core = part;
+    let legExpiry: string | undefined;
+    const atIdx = part.indexOf("@");
+    if (atIdx > -1) {
+      core = part.slice(0, atIdx);
+      legExpiry = part.slice(atIdx + 1);
+    }
+    const [sideS, typeS, strikeS] = core.split("-");
     if (!sideS || !typeS || !strikeS) return null;
     const side = sideS === "L" ? "buy" : sideS === "S" ? "sell" : null;
     const type = typeS === "C" ? "call" : typeS === "P" ? "put" : null;
     const strike = Number(strikeS);
     if (!side || !type || !Number.isFinite(strike)) return null;
-    legs.push({ side, type, strike });
+    legs.push({ side, type, strike, expiry: legExpiry });
   }
   if (legs.length === 0) return null;
   return { strategy, expiry, legs };

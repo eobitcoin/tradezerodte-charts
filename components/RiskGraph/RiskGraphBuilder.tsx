@@ -78,33 +78,43 @@ function applyPrefill(
   setSelectedExpiry: (e: string) => void,
 ): boolean {
   if (chain.expiries.length === 0) return false;
-  // Pick expiry: exact, then closest by absolute date diff.
-  let expiry = chain.expiries.find(
-    (e) => e.expiration === payload.expiry,
-  );
-  if (!expiry) {
-    const target = new Date(`${payload.expiry}T00:00:00Z`).getTime();
+
+  /** Look up a chain expiry: exact match, else closest by date diff. */
+  const resolveExpiry = (target: string) => {
+    const exact = chain.expiries.find((e) => e.expiration === target);
+    if (exact) return exact;
+    const t = new Date(`${target}T00:00:00Z`).getTime();
     let best = chain.expiries[0];
     let bestDiff = Math.abs(
-      new Date(`${best.expiration}T00:00:00Z`).getTime() - target,
+      new Date(`${best.expiration}T00:00:00Z`).getTime() - t,
     );
     for (const e of chain.expiries) {
       const diff = Math.abs(
-        new Date(`${e.expiration}T00:00:00Z`).getTime() - target,
+        new Date(`${e.expiration}T00:00:00Z`).getTime() - t,
       );
       if (diff < bestDiff) {
         bestDiff = diff;
         best = e;
       }
     }
-    expiry = best;
-  }
-  setSelectedExpiry(expiry.expiration);
+    return best;
+  };
+
+  // Drive the chain table to the payload's primary expiry so the user
+  // lands looking at a relevant tab. Calendars set this to the front
+  // month (the shorter-dated, more theta-active leg).
+  const primary = resolveExpiry(payload.expiry);
+  setSelectedExpiry(primary.expiration);
 
   const builtLegs: PositionLeg[] = [];
   for (const leg of payload.legs) {
+    // Per-leg expiry override (calendars/diagonals) or fall back to
+    // the payload's primary expiry.
+    const legExp = leg.expiry
+      ? resolveExpiry(leg.expiry)
+      : primary;
     const candidates =
-      leg.type === "call" ? expiry.calls : expiry.puts;
+      leg.type === "call" ? legExp.calls : legExp.puts;
     if (candidates.length === 0) continue;
     // Exact strike, else closest within ±10%.
     let row = candidates.find((r) => r.strike === leg.strike);
@@ -129,7 +139,7 @@ function applyPrefill(
       type: leg.type,
       side: leg.side === "buy" ? "long" : "short",
       strike: row.strike,
-      expiration: expiry.expiration,
+      expiration: legExp.expiration,
       qty: 1,
       entryPrice,
       entryIv,

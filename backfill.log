@@ -1,0 +1,834 @@
+Options Edge backfill — 42 tickers × 252 days
+Tickers: ORCL, ADBE, CRM, QCOM, TSM, TXN, ASML, JPM, GS, MS, SCHW, WFC, BLK, V, MA, UNH, LLY, JNJ, PFE, ABBV, MRK, TMO, DHR, HD, LOW, MCD, SBUX, NKE, COST, WMT, TGT, DIS, CAT, BA, GE, HON, LMT, RTX, XOM, CVX, T, VZ
+Concurrency: 2, per-call delay: 600ms
+
+Date range: 2025-06-13 → 2026-06-01
+
+[ORCL] starting (252 dates)
+[ADBE] starting (252 dates)
+[ADBE] 25/252 done
+[ORCL] 25/252 done
+[ADBE] 50/252 done
+[ORCL] 50/252 done
+[ADBE] 75/252 done
+[ORCL] 75/252 done
+[ADBE] DONE — written:89 skipped:163 failed:0
+[CRM] starting (252 dates)
+[ORCL] DONE — written:91 skipped:161 failed:0
+[QCOM] starting (252 dates)
+[CRM] DONE — written:0 skipped:252 failed:0
+[TSM] starting (252 dates)
+[TSM] DONE — written:0 skipped:252 failed:0
+[TXN] starting (252 dates)
+[TXN] DONE — written:0 skipped:252 failed:0
+[ASML] starting (252 dates)
+[QCOM] 25/252 done
+[QCOM] 50/252 done
+[ASML] 25/252 done
+[QCOM] 75/252 done
+[QCOM] 100/252 done
+[QCOM] 125/252 done
+[ASML] 50/252 done
+[QCOM] 150/252 done
+[QCOM] 175/252 done
+[ASML] 75/252 done
+[QCOM] 200/252 done
+[QCOM] 225/252 done
+[QCOM] 250/252 done
+[QCOM] DONE — written:252 skipped:0 failed:0
+[JPM] starting (252 dates)
+[ASML] 100/252 done
+[JPM] 25/252 done
+[JPM] 50/252 done
+[ASML] 125/252 done
+[JPM] 75/252 done
+[JPM] 100/252 done
+[JPM] 125/252 done
+[ASML] 150/252 done
+[JPM] 150/252 done
+[JPM] 175/252 done
+[ASML] 175/252 done
+[JPM] 200/252 done
+[JPM] 225/252 done
+[ASML] 200/252 done
+[JPM] 250/252 done
+[JPM] DONE — written:252 skipped:0 failed:0
+[GS] starting (252 dates)
+[ASML] 225/252 done
+[ASML] 2026-04-29 chain fetch failed: fetch failed
+[GS] 2025-07-15 chain fetch failed: fetch failed
+Worker failed on GS: read ECONNRESET
+[MS] starting (252 dates)
+Worker failed on ASML: read ECONNRESET
+[SCHW] starting (252 dates)
+[MS] 2025-07-11 insert failed: read ECONNRESET
+[MS] 25/252 done
+[SCHW] 2025-07-17 insert failed: read ECONNRESET
+[SCHW] 25/252 done
+[MS] 50/252 done
+[SCHW] 50/252 done
+[MS] 2025-09-10 chain fetch failed: fetch failed
+[SCHW] 2025-09-05 insert failed: read ECONNRESET
+Worker failed on SCHW: read ECONNRESET
+[WFC] starting (252 dates)
+[MS] 75/252 done
+[WFC] 2025-07-02 chain fetch failed: fetch failed
+[MS] 2025-09-30 chain fetch failed: fetch failed
+Worker failed on WFC: read ECONNRESET
+[BLK] starting (252 dates)
+Worker failed on MS: read ECONNRESET
+[V] starting (252 dates)
+[BLK] 2025-06-30 chain fetch failed: fetch failed
+[V] 2025-07-02 insert failed: read ECONNRESET
+Worker failed on BLK: read ECONNRESET
+[MA] starting (252 dates)
+Worker failed on MA: read ECONNRESET
+[UNH] starting (252 dates)
+[V] 25/252 done
+[V] 2025-07-21 chain fetch failed: fetch failed
+[UNH] 2025-07-14 chain fetch failed: fetch failed
+[V] 2025-08-11 chain fetch failed: fetch failed
+Worker failed on UNH: read ECONNRESET
+[LLY] starting (252 dates)
+[V] 50/252 done
+[V] 75/252 done
+[LLY] 25/252 done
+[V] 100/252 done
+[V] 125/252 done
+[LLY] 50/252 done
+[V] 150/252 done
+[LLY] 75/252 done
+[V] 175/252 done
+[V] 200/252 done
+[LLY] 100/252 done
+[V] 225/252 done
+[V] DONE — written:249 skipped:0 failed:3
+[JNJ] starting (252 dates)
+[LLY] 125/252 done
+[JNJ] 25/252 done
+[JNJ] 50/252 done
+[JNJ] 75/252 done
+[LLY] 150/252 done
+[JNJ] 100/252 done
+[JNJ] 125/252 done
+[LLY] 175/252 done
+[JNJ] 150/252 done
+[JNJ] 175/252 done
+[JNJ] 200/252 done
+[LLY] 200/252 done
+[JNJ] 225/252 done
+[JNJ] 250/252 done
+[JNJ] DONE — written:252 skipped:0 failed:0
+[PFE] starting (252 dates)
+[PFE] 25/252 done
+[LLY] 225/252 done
+[PFE] 50/252 done
+[PFE] 75/252 done
+[PFE] 100/252 done
+[PFE] 125/252 done
+[LLY] 250/252 done
+[LLY] DONE — written:252 skipped:0 failed:0
+[ABBV] starting (252 dates)
+[PFE] 150/252 done
+[PFE] 175/252 done
+[ABBV] 25/252 done
+Worker failed on PFE: read ECONNRESET
+[MRK] starting (252 dates)
+[ABBV] 2025-07-25 chain fetch failed: fetch failed
+[ABBV] 50/252 done
+[MRK] 25/252 done
+[MRK] 50/252 done
+[ABBV] 75/252 done
+[MRK] 75/252 done
+[ABBV] 100/252 done
+[MRK] 100/252 done
+[ABBV] 125/252 done
+[MRK] 125/252 done
+[ABBV] 150/252 done
+[MRK] 150/252 done
+[ABBV] 175/252 done
+[MRK] 175/252 done
+[MRK] 200/252 done
+[ABBV] 200/252 done
+[MRK] 225/252 done
+[ABBV] 225/252 done
+[MRK] 250/252 done
+[MRK] DONE — written:252 skipped:0 failed:0
+[TMO] starting (252 dates)
+[ABBV] 250/252 done
+[ABBV] DONE — written:251 skipped:0 failed:1
+[DHR] starting (252 dates)
+[TMO] 25/252 done
+[DHR] 25/252 done
+[DHR] 50/252 done
+[TMO] 50/252 done
+[DHR] 75/252 done
+[TMO] 75/252 done
+[DHR] 100/252 done
+[DHR] 125/252 done
+[TMO] 100/252 done
+[DHR] 150/252 done
+[TMO] 125/252 done
+[DHR] 175/252 done
+[DHR] 200/252 done
+[TMO] 150/252 done
+[DHR] 225/252 done
+[TMO] 175/252 done
+[DHR] 250/252 done
+[DHR] DONE — written:252 skipped:0 failed:0
+[HD] starting (252 dates)
+[TMO] 200/252 done
+[HD] 25/252 done
+[TMO] 225/252 done
+[HD] 50/252 done
+[TMO] 250/252 done
+[TMO] DONE — written:252 skipped:0 failed:0
+[LOW] starting (252 dates)
+[LOW] 25/252 done
+[HD] 75/252 done
+[LOW] 50/252 done
+[HD] 100/252 done
+[LOW] 75/252 done
+[LOW] 100/252 done
+[HD] 125/252 done
+[LOW] 125/252 done
+[HD] 150/252 done
+[LOW] 150/252 done
+[LOW] 175/252 done
+[HD] 175/252 done
+[LOW] 200/252 done
+[LOW] 225/252 done
+[HD] 200/252 done
+[LOW] 250/252 done
+[LOW] DONE — written:252 skipped:0 failed:0
+[MCD] starting (252 dates)
+[HD] 225/252 done
+[MCD] 25/252 done
+[HD] 250/252 done
+[HD] DONE — written:252 skipped:0 failed:0
+[SBUX] starting (252 dates)
+[MCD] 50/252 done
+[SBUX] 25/252 done
+[SBUX] 50/252 done
+[MCD] 75/252 done
+[SBUX] 75/252 done
+[SBUX] 100/252 done
+[MCD] 100/252 done
+[SBUX] 125/252 done
+[MCD] 125/252 done
+[SBUX] 150/252 done
+[SBUX] 175/252 done
+[MCD] 150/252 done
+[SBUX] 200/252 done
+[SBUX] 225/252 done
+[MCD] 175/252 done
+[SBUX] 250/252 done
+[SBUX] DONE — written:252 skipped:0 failed:0
+[NKE] starting (252 dates)
+[MCD] 200/252 done
+[NKE] 25/252 done
+[MCD] 2026-04-15 chain fetch failed: fetch failed
+Worker failed on NKE: read ECONNRESET
+[COST] starting (252 dates)
+Worker failed on COST: read ECONNRESET
+[WMT] starting (252 dates)
+[MCD] 225/252 done
+[WMT] 25/252 done
+[MCD] 250/252 done
+[MCD] DONE — written:251 skipped:0 failed:1
+[TGT] starting (252 dates)
+[WMT] 50/252 done
+[TGT] 25/252 done
+[WMT] 75/252 done
+[TGT] 50/252 done
+[WMT] 100/252 done
+[TGT] 75/252 done
+[WMT] 125/252 done
+[TGT] 100/252 done
+[WMT] 150/252 done
+[TGT] 125/252 done
+[WMT] 175/252 done
+[TGT] 150/252 done
+[WMT] 200/252 done
+[TGT] 175/252 done
+[WMT] 225/252 done
+[TGT] 200/252 done
+[WMT] 250/252 done
+[WMT] DONE — written:252 skipped:0 failed:0
+[DIS] starting (252 dates)
+[TGT] 225/252 done
+[DIS] 25/252 done
+[TGT] 250/252 done
+[TGT] DONE — written:252 skipped:0 failed:0
+[CAT] starting (252 dates)
+[DIS] 50/252 done
+[DIS] 75/252 done
+[DIS] 100/252 done
+[CAT] 25/252 done
+[DIS] 125/252 done
+[DIS] 150/252 done
+[DIS] 175/252 done
+[CAT] 50/252 done
+[DIS] 200/252 done
+[DIS] 225/252 done
+[DIS] 250/252 done
+[CAT] 75/252 done
+[DIS] DONE — written:252 skipped:0 failed:0
+[BA] starting (252 dates)
+[BA] 25/252 done
+[CAT] 100/252 done
+[BA] 50/252 done
+[BA] 75/252 done
+[CAT] 125/252 done
+[BA] 100/252 done
+[BA] 125/252 done
+[CAT] 150/252 done
+[BA] 150/252 done
+[CAT] 175/252 done
+[BA] 175/252 done
+[BA] 200/252 done
+[CAT] 200/252 done
+[BA] 225/252 done
+[BA] 250/252 done
+[BA] DONE — written:252 skipped:0 failed:0
+[GE] starting (252 dates)
+[CAT] 225/252 done
+[GE] 25/252 done
+[GE] 50/252 done
+[CAT] 250/252 done
+[CAT] DONE — written:252 skipped:0 failed:0
+[HON] starting (252 dates)
+[GE] 75/252 done
+[HON] 25/252 done
+[GE] 100/252 done
+[GE] 2025-11-05 chain fetch failed: fetch failed
+Worker failed on GE: read ECONNRESET
+[LMT] starting (252 dates)
+[LMT] 2025-06-20 chain fetch failed: fetch failed
+Worker failed on LMT: read ECONNRESET
+[RTX] starting (252 dates)
+Worker failed on HON: read ECONNRESET
+[XOM] starting (252 dates)
+[RTX] 2025-06-30 chain fetch failed: fetch failed
+[XOM] 2025-06-24 chain fetch failed: fetch failed
+Worker failed on XOM: read ECONNRESET
+[CVX] starting (252 dates)
+Worker failed on RTX: read ECONNRESET
+[T] starting (252 dates)
+[CVX] 2025-07-04 chain fetch failed: fetch failed
+[T] 2025-07-17 insert failed: read ECONNRESET
+Worker failed on T: read ECONNRESET
+[VZ] starting (252 dates)
+[CVX] 25/252 done
+[VZ] 25/252 done
+[CVX] 50/252 done
+[VZ] 50/252 done
+[VZ] 75/252 done
+[CVX] 75/252 done
+[VZ] 100/252 done
+[CVX] 100/252 done
+[VZ] 125/252 done
+[CVX] 125/252 done
+[VZ] 150/252 done
+[CVX] 150/252 done
+[VZ] 175/252 done
+[VZ] 200/252 done
+[CVX] 175/252 done
+[VZ] 225/252 done
+[CVX] 200/252 done
+[VZ] 250/252 done
+[VZ] DONE — written:252 skipped:0 failed:0
+[CVX] 225/252 done
+[CVX] 250/252 done
+[CVX] DONE — written:251 skipped:0 failed:1
+
+=== SUMMARY ===
+┌─────────┬────────┬─────────┬────────┬─────────┐
+│ (index) │ ticker │ written │ failed │ skipped │
+├─────────┼────────┼─────────┼────────┼─────────┤
+│ 0       │ 'ADBE' │ 89      │ 0      │ 163     │
+│ 1       │ 'ORCL' │ 91      │ 0      │ 161     │
+│ 2       │ 'CRM'  │ 0       │ 0      │ 252     │
+│ 3       │ 'TSM'  │ 0       │ 0      │ 252     │
+│ 4       │ 'TXN'  │ 0       │ 0      │ 252     │
+│ 5       │ 'QCOM' │ 252     │ 0      │ 0       │
+│ 6       │ 'JPM'  │ 252     │ 0      │ 0       │
+│ 7       │ 'GS'   │ 0       │ -1     │         │
+│ 8       │ 'ASML' │ 0       │ -1     │         │
+│ 9       │ 'SCHW' │ 0       │ -1     │         │
+│ 10      │ 'WFC'  │ 0       │ -1     │         │
+│ 11      │ 'MS'   │ 0       │ -1     │         │
+│ 12      │ 'BLK'  │ 0       │ -1     │         │
+│ 13      │ 'MA'   │ 0       │ -1     │         │
+│ 14      │ 'UNH'  │ 0       │ -1     │         │
+│ 15      │ 'V'    │ 249     │ 3      │ 0       │
+│ 16      │ 'JNJ'  │ 252     │ 0      │ 0       │
+│ 17      │ 'LLY'  │ 252     │ 0      │ 0       │
+│ 18      │ 'PFE'  │ 0       │ -1     │         │
+│ 19      │ 'MRK'  │ 252     │ 0      │ 0       │
+│ 20      │ 'ABBV' │ 251     │ 1      │ 0       │
+│ 21      │ 'DHR'  │ 252     │ 0      │ 0       │
+│ 22      │ 'TMO'  │ 252     │ 0      │ 0       │
+│ 23      │ 'LOW'  │ 252     │ 0      │ 0       │
+│ 24      │ 'HD'   │ 252     │ 0      │ 0       │
+│ 25      │ 'SBUX' │ 252     │ 0      │ 0       │
+│ 26      │ 'NKE'  │ 0       │ -1     │         │
+│ 27      │ 'COST' │ 0       │ -1     │         │
+│ 28      │ 'MCD'  │ 251     │ 1      │ 0       │
+│ 29      │ 'WMT'  │ 252     │ 0      │ 0       │
+│ 30      │ 'TGT'  │ 252     │ 0      │ 0       │
+│ 31      │ 'DIS'  │ 252     │ 0      │ 0       │
+│ 32      │ 'BA'   │ 252     │ 0      │ 0       │
+│ 33      │ 'CAT'  │ 252     │ 0      │ 0       │
+│ 34      │ 'GE'   │ 0       │ -1     │         │
+│ 35      │ 'LMT'  │ 0       │ -1     │         │
+│ 36      │ 'HON'  │ 0       │ -1     │         │
+│ 37      │ 'XOM'  │ 0       │ -1     │         │
+│ 38      │ 'RTX'  │ 0       │ -1     │         │
+│ 39      │ 'T'    │ 0       │ -1     │         │
+│ 40      │ 'VZ'   │ 252     │ 0      │ 0       │
+│ 41      │ 'CVX'  │ 251     │ 1      │ 0       │
+└─────────┴────────┴─────────┴────────┴─────────┘
+Total: 5214 written, 1080 skipped, -11 failed in 500.6 min
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             [CRM] 50/252 done
+[TXN] 50/252 done
+[ADBE] 50/252 done
+[TSM] 50/252 done
+[ORCL] 50/252 done
+[CRM] 75/252 done
+[TXN] 75/252 done
+[CRM] 100/252 done
+[ADBE] 75/252 done
+[ORCL] 75/252 done
+[TSM] 75/252 done
+[TXN] 100/252 done
+[CRM] 125/252 done
+[ADBE] 100/252 done
+[TSM] 100/252 done
+[ORCL] 100/252 done
+[CRM] 150/252 done
+[TXN] 125/252 done
+[ADBE] 125/252 done
+[ORCL] 125/252 done
+[TSM] 125/252 done
+[CRM] 175/252 done
+[TXN] 150/252 done
+[CRM] 200/252 done
+[ADBE] 150/252 done
+[ORCL] 150/252 done
+[TSM] 150/252 done
+[TXN] 175/252 done
+[CRM] 225/252 done
+[ADBE] 175/252 done
+[ORCL] 175/252 done
+[TSM] 175/252 done
+[TXN] 200/252 done
+[CRM] 250/252 done
+[CRM] DONE — written:252 skipped:0 failed:0
+[ADBE] 200/252 done
+[ORCL] 200/252 done
+[TSM] 200/252 done
+[TXN] 225/252 done
+[ADBE] 225/252 done
+[ORCL] 225/252 done
+[TSM] 225/252 done
+[TXN] 250/252 done
+[TXN] DONE — written:252 skipped:0 failed:0
+[ADBE] 250/252 done
+[ADBE] DONE — written:252 skipped:0 failed:0
+[ORCL] 250/252 done
+[TSM] 250/252 done
+[ORCL] DONE — written:252 skipped:0 failed:0
+[TSM] DONE — written:252 skipped:0 failed:0
+
+=== SUMMARY ===
+┌─────────┬────────┬─────────┬────────┬─────────┐
+│ (index) │ ticker │ written │ failed │ skipped │
+├─────────┼────────┼─────────┼────────┼─────────┤
+│ 0       │ 'QCOM' │ 0       │ 252    │         │
+│ 1       │ 'ASML' │ 0       │ 252    │         │
+│ 2       │ 'JPM'  │ 0       │ 252    │         │
+│ 3       │ 'GS'   │ 0       │ 252    │         │
+│ 4       │ 'MS'   │ 0       │ 252    │         │
+│ 5       │ 'SCHW' │ 0       │ 252    │         │
+│ 6       │ 'WFC'  │ 0       │ 252    │         │
+│ 7       │ 'BLK'  │ 0       │ 252    │         │
+│ 8       │ 'V'    │ 0       │ 252    │         │
+│ 9       │ 'MA'   │ 0       │ 252    │         │
+│ 10      │ 'UNH'  │ 0       │ 252    │         │
+│ 11      │ 'LLY'  │ 0       │ 252    │         │
+│ 12      │ 'JNJ'  │ 0       │ 252    │         │
+│ 13      │ 'PFE'  │ 0       │ 252    │         │
+│ 14      │ 'ABBV' │ 0       │ 252    │         │
+│ 15      │ 'MRK'  │ 0       │ 252    │         │
+│ 16      │ 'TMO'  │ 0       │ 252    │         │
+│ 17      │ 'DHR'  │ 0       │ 252    │         │
+│ 18      │ 'HD'   │ 0       │ 252    │         │
+│ 19      │ 'LOW'  │ 0       │ 252    │         │
+│ 20      │ 'MCD'  │ 0       │ 252    │         │
+│ 21      │ 'SBUX' │ 0       │ 252    │         │
+│ 22      │ 'NKE'  │ 0       │ 252    │         │
+│ 23      │ 'COST' │ 0       │ 252    │         │
+│ 24      │ 'WMT'  │ 0       │ 252    │         │
+│ 25      │ 'TGT'  │ 0       │ 252    │         │
+│ 26      │ 'DIS'  │ 0       │ 252    │         │
+│ 27      │ 'CAT'  │ 0       │ 252    │         │
+│ 28      │ 'BA'   │ 0       │ 252    │         │
+│ 29      │ 'GE'   │ 0       │ 252    │         │
+│ 30      │ 'HON'  │ 0       │ 252    │         │
+│ 31      │ 'LMT'  │ 0       │ 252    │         │
+│ 32      │ 'RTX'  │ 0       │ 252    │         │
+│ 33      │ 'XOM'  │ 0       │ 252    │         │
+│ 34      │ 'CVX'  │ 0       │ 252    │         │
+│ 35      │ 'T'    │ 0       │ 252    │         │
+│ 36      │ 'VZ'   │ 0       │ 252    │         │
+│ 37      │ 'CRM'  │ 252     │ 0      │ 0       │
+│ 38      │ 'TXN'  │ 252     │ 0      │ 0       │
+│ 39      │ 'ADBE' │ 252     │ 0      │ 0       │
+│ 40      │ 'ORCL' │ 252     │ 0      │ 0       │
+│ 41      │ 'TSM'  │ 252     │ 0      │ 0       │
+└─────────┴────────┴─────────┴────────┴─────────┘
+Total: 1260 written, 0 skipped, 9324 failed in 12.3 min
+Options Edge backfill — 37 tickers × 252 days
+Tickers: QCOM, ASML, JPM, GS, MS, SCHW, WFC, BLK, V, MA, UNH, LLY, JNJ, PFE, ABBV, MRK, TMO, DHR, HD, LOW, MCD, SBUX, NKE, COST, WMT, TGT, DIS, CAT, BA, GE, HON, LMT, RTX, XOM, CVX, T, VZ
+Concurrency: 1, per-call delay: 700ms
+
+Date range: 2025-06-13 → 2026-06-01
+
+[QCOM] starting (252 dates)
+[QCOM] DONE — written:0 skipped:252 failed:0
+[ASML] starting (252 dates)
+[ASML] 25/252 done
+[ASML] 50/252 done
+[ASML] 75/252 done
+[ASML] 2026-04-28 chain fetch failed: fetch failed
+Worker failed on ASML: read ECONNRESET
+[JPM] starting (252 dates)
+[JPM] DONE — written:0 skipped:252 failed:0
+[GS] starting (252 dates)
+[GS] 2025-07-18 chain fetch failed: fetch failed
+Worker failed on GS: read ECONNRESET
+[MS] starting (252 dates)
+[MS] 25/252 done
+Worker failed on MS: read ECONNRESET
+[SCHW] starting (252 dates)
+[SCHW] 2025-09-24 chain fetch failed: fetch failed
+Worker failed on SCHW: read ECONNRESET
+[WFC] starting (252 dates)
+Worker failed on WFC: read ECONNRESET
+[BLK] starting (252 dates)
+Worker failed on BLK: read ECONNRESET
+[V] starting (252 dates)
+[V] aggs fetch failed: fetch failed
+[MA] starting (252 dates)
+[MA] 2025-06-20 chain fetch failed: fetch failed
+Worker failed on MA: read ECONNRESET
+[UNH] starting (252 dates)
+[UNH] 2025-06-23 chain fetch failed: fetch failed
+[UNH] 2025-07-03 chain fetch failed: fetch failed
+Worker failed on UNH: read ECONNRESET
+[LLY] starting (252 dates)
+[LLY] 25/252 done
+[LLY] 50/252 done
+[LLY] 75/252 done
+[LLY] 100/252 done
+[LLY] 125/252 done
+[LLY] 150/252 done
+[LLY] 175/252 done
+[LLY] 200/252 done
+[LLY] DONE — written:219 skipped:33 failed:0
+[JNJ] starting (252 dates)
+[JNJ] DONE — written:0 skipped:252 failed:0
+[PFE] starting (252 dates)
+[PFE] 25/252 done
+[PFE] 2026-03-06 insert failed: read ECONNRESET
+[PFE] 50/252 done
+[PFE] 75/252 done
+[PFE] DONE — written:87 skipped:164 failed:1
+[ABBV] starting (252 dates)
+[ABBV] 25/252 done
+[ABBV] 50/252 done
+[ABBV] 75/252 done
+[ABBV] 100/252 done
+[ABBV] 125/252 done
+[ABBV] 150/252 done
+[ABBV] DONE — written:152 skipped:100 failed:0
+[MRK] starting (252 dates)
+[MRK] DONE — written:0 skipped:252 failed:0
+[TMO] starting (252 dates)
+[TMO] 25/252 done
+[TMO] 50/252 done
+[TMO] 75/252 done
+[TMO] 100/252 done
+[TMO] 125/252 done
+[TMO] 150/252 done
+[TMO] 175/252 done
+[TMO] 200/252 done
+[TMO] DONE — written:208 skipped:44 failed:0
+[DHR] starting (252 dates)
+[DHR] DONE — written:0 skipped:252 failed:0
+[HD] starting (252 dates)
+[HD] 25/252 done
+[HD] 50/252 done
+[HD] 75/252 done
+[HD] 100/252 done
+[HD] 125/252 done
+[HD] 150/252 done
+[HD] DONE — written:168 skipped:84 failed:0
+[LOW] starting (252 dates)
+[LOW] DONE — written:0 skipped:252 failed:0
+[MCD] starting (252 dates)
+[MCD] 25/252 done
+[MCD] 50/252 done
+[MCD] 75/252 done
+[MCD] 100/252 done
+[MCD] 125/252 done
+[MCD] 150/252 done
+[MCD] 2026-04-15 chain fetch failed: fetch failed
+Worker failed on MCD: read ECONNRESET
+[SBUX] starting (252 dates)
+[SBUX] DONE — written:0 skipped:252 failed:0
+[NKE] starting (252 dates)
+[NKE] 25/252 done
+[NKE] 50/252 done
+[NKE] 75/252 done
+[NKE] 100/252 done
+[NKE] 125/252 done
+[NKE] 150/252 done
+[NKE] 175/252 done
+[NKE] 200/252 done
+[NKE] DONE — written:208 skipped:44 failed:0
+[COST] starting (252 dates)
+[COST] 25/252 done
+[COST] 50/252 done
+[COST] 75/252 done
+[COST] 100/252 done
+[COST] 125/252 done
+[COST] 150/252 done
+[COST] 175/252 done
+[COST] 200/252 done
+[COST] 225/252 done
+[COST] 250/252 done
+[COST] DONE — written:252 skipped:0 failed:0
+[WMT] starting (252 dates)
+[WMT] DONE — written:0 skipped:252 failed:0
+[TGT] starting (252 dates)
+[TGT] DONE — written:0 skipped:252 failed:0
+[DIS] starting (252 dates)
+[DIS] DONE — written:0 skipped:252 failed:0
+[CAT] starting (252 dates)
+[CAT] DONE — written:9 skipped:243 failed:0
+[BA] starting (252 dates)
+[BA] DONE — written:0 skipped:252 failed:0
+[GE] starting (252 dates)
+[GE] 2025-11-04 chain fetch failed: fetch failed
+Worker failed on GE: read ECONNRESET
+[HON] starting (252 dates)
+[HON] 2025-08-11 chain fetch failed: fetch failed
+Worker failed on HON: read ECONNRESET
+[LMT] starting (252 dates)
+[LMT] 2025-06-26 chain fetch failed: fetch failed
+Worker failed on LMT: read ECONNRESET
+[RTX] starting (252 dates)
+[RTX] 2025-07-17 chain fetch failed: fetch failed
+Worker failed on RTX: read ECONNRESET
+[XOM] starting (252 dates)
+[XOM] 25/252 done
+[XOM] 50/252 done
+[XOM] 75/252 done
+[XOM] 100/252 done
+[XOM] 125/252 done
+[XOM] 150/252 done
+[XOM] 175/252 done
+[XOM] 200/252 done
+[XOM] 225/252 done
+[XOM] DONE — written:245 skipped:7 failed:0
+[CVX] starting (252 dates)
+[CVX] DONE — written:1 skipped:251 failed:0
+[T] starting (252 dates)
+[T] 25/252 done
+[T] 50/252 done
+[T] 75/252 done
+[T] 100/252 done
+[T] 125/252 done
+[T] 150/252 done
+[T] 175/252 done
+[T] 200/252 done
+[T] 225/252 done
+[T] DONE — written:228 skipped:24 failed:0
+[VZ] starting (252 dates)
+[VZ] DONE — written:0 skipped:252 failed:0
+
+=== SUMMARY ===
+┌─────────┬────────┬─────────┬────────┬─────────┐
+│ (index) │ ticker │ written │ failed │ skipped │
+├─────────┼────────┼─────────┼────────┼─────────┤
+│ 0       │ 'QCOM' │ 0       │ 0      │ 252     │
+│ 1       │ 'ASML' │ 0       │ -1     │         │
+│ 2       │ 'JPM'  │ 0       │ 0      │ 252     │
+│ 3       │ 'GS'   │ 0       │ -1     │         │
+│ 4       │ 'MS'   │ 0       │ -1     │         │
+│ 5       │ 'SCHW' │ 0       │ -1     │         │
+│ 6       │ 'WFC'  │ 0       │ -1     │         │
+│ 7       │ 'BLK'  │ 0       │ -1     │         │
+│ 8       │ 'V'    │ 0       │ 252    │         │
+│ 9       │ 'MA'   │ 0       │ -1     │         │
+│ 10      │ 'UNH'  │ 0       │ -1     │         │
+│ 11      │ 'LLY'  │ 219     │ 0      │ 33      │
+│ 12      │ 'JNJ'  │ 0       │ 0      │ 252     │
+│ 13      │ 'PFE'  │ 87      │ 1      │ 164     │
+│ 14      │ 'ABBV' │ 152     │ 0      │ 100     │
+│ 15      │ 'MRK'  │ 0       │ 0      │ 252     │
+│ 16      │ 'TMO'  │ 208     │ 0      │ 44      │
+│ 17      │ 'DHR'  │ 0       │ 0      │ 252     │
+│ 18      │ 'HD'   │ 168     │ 0      │ 84      │
+│ 19      │ 'LOW'  │ 0       │ 0      │ 252     │
+│ 20      │ 'MCD'  │ 0       │ -1     │         │
+│ 21      │ 'SBUX' │ 0       │ 0      │ 252     │
+│ 22      │ 'NKE'  │ 208     │ 0      │ 44      │
+│ 23      │ 'COST' │ 252     │ 0      │ 0       │
+│ 24      │ 'WMT'  │ 0       │ 0      │ 252     │
+│ 25      │ 'TGT'  │ 0       │ 0      │ 252     │
+│ 26      │ 'DIS'  │ 0       │ 0      │ 252     │
+│ 27      │ 'CAT'  │ 9       │ 0      │ 243     │
+│ 28      │ 'BA'   │ 0       │ 0      │ 252     │
+│ 29      │ 'GE'   │ 0       │ -1     │         │
+│ 30      │ 'HON'  │ 0       │ -1     │         │
+│ 31      │ 'LMT'  │ 0       │ -1     │         │
+│ 32      │ 'RTX'  │ 0       │ -1     │         │
+│ 33      │ 'XOM'  │ 245     │ 0      │ 7       │
+│ 34      │ 'CVX'  │ 1       │ 0      │ 251     │
+│ 35      │ 'T'    │ 228     │ 0      │ 24      │
+│ 36      │ 'VZ'   │ 0       │ 0      │ 252     │
+└─────────┴────────┴─────────┴────────┴─────────┘
+Total: 1777 written, 4018 skipped, 240 failed in 478.9 min
+Options Edge backfill — 13 tickers × 252 days
+Tickers: ASML, GS, MS, SCHW, WFC, BLK, MA, UNH, MCD, GE, HON, LMT, RTX
+Concurrency: 1, per-call delay: 700ms
+
+Date range: 2025-06-13 → 2026-06-01
+
+[ASML] starting (252 dates)
+[ASML] DONE — written:24 skipped:228 failed:0
+[GS] starting (252 dates)
+Options Edge backfill — 13 tickers × 252 days
+Tickers: ASML, GS, MS, SCHW, WFC, BLK, MA, UNH, MCD, GE, HON, LMT, RTX
+Concurrency: 1, per-call delay: 700ms
+
+Date range: 2025-06-13 → 2026-06-01
+
+[ASML] starting (252 dates)
+[ASML] DONE — written:0 skipped:252 failed:0
+[GS] starting (252 dates)
+[GS] 25/252 done
+[GS] 25/252 done
+[GS] 50/252 done
+[GS] 50/252 done
+[GS] 2025-10-06 chain fetch failed: fetch failed
+[GS] 2025-10-07 chain fetch failed: fetch failed
+Worker failed on GS: read ECONNRESET
+[MS] starting (252 dates)
+Worker failed on GS: read ECONNRESET
+[MS] starting (252 dates)
+Worker failed on MS: read ETIMEDOUT
+Worker failed on MS: read ETIMEDOUT
+[SCHW] starting (252 dates)
+[SCHW] starting (252 dates)
+[SCHW] aggs fetch failed: fetch failed
+[SCHW] aggs fetch failed: fetch failed
+[WFC] starting (252 dates)
+[WFC] starting (252 dates)
+[WFC] aggs fetch failed: fetch failed
+[WFC] aggs fetch failed: fetch failed
+[BLK] starting (252 dates)
+[BLK] starting (252 dates)
+[BLK] aggs fetch failed: fetch failed
+[BLK] aggs fetch failed: fetch failed
+[MA] starting (252 dates)
+[MA] starting (252 dates)
+[MA] aggs fetch failed: fetch failed
+[UNH] starting (252 dates)
+[MA] aggs fetch failed: fetch failed
+[UNH] starting (252 dates)
+[UNH] aggs fetch failed: fetch failed
+[UNH] aggs fetch failed: fetch failed
+[MCD] starting (252 dates)
+[MCD] starting (252 dates)
+[MCD] aggs fetch failed: fetch failed
+[MCD] aggs fetch failed: fetch failed
+[GE] starting (252 dates)
+[GE] starting (252 dates)
+[GE] aggs fetch failed: fetch failed
+[GE] aggs fetch failed: fetch failed
+[HON] starting (252 dates)
+[HON] starting (252 dates)
+[HON] aggs fetch failed: fetch failed
+[LMT] starting (252 dates)
+[HON] aggs fetch failed: fetch failed
+[LMT] starting (252 dates)
+[LMT] aggs fetch failed: fetch failed
+[RTX] starting (252 dates)
+[LMT] aggs fetch failed: fetch failed
+[RTX] starting (252 dates)
+[RTX] aggs fetch failed: fetch failed
+[RTX] aggs fetch failed: fetch failed
+
+=== SUMMARY ===
+
+=== SUMMARY ===
+┌─────────┬────────┬─────────┬────────┬─────────┐
+│ (index) │ ticker │ written │ failed │ skipped │
+├─────────┼────────┼─────────┼────────┼─────────┤
+│ 0       │ 'ASML' │ 24      │ 0      │ 228     │
+│ 1       │ 'GS'   │ 0       │ -1     │         │
+│ 2       │ 'MS'   │ 0       │ -1     │         │
+│ 3       │ 'SCHW' │ 0       │ 252    │         │
+│ 4       │ 'WFC'  │ 0       │ 252    │         │
+│ 5       │ 'BLK'  │ 0       │ 252    │         │
+│ 6       │ 'MA'   │ 0       │ 252    │         │
+│ 7       │ 'UNH'  │ 0       │ 252    │         │
+│ 8       │ 'MCD'  │ 0       │ 252    │         │
+│ 9       │ 'GE'   │ 0       │ 252    │         │
+│ 10      │ 'HON'  │ 0       │ 252    │         │
+│ 11      │ 'LMT'  │ 0       │ 252    │         │
+│ 12      │ 'RTX'  │ 0       │ 252    │         │
+└─────────┴────────┴─────────┴────────┴─────────┘
+┌─────────┬────────┬─────────┬────────┬─────────┐
+│ (index) │ ticker │ written │ failed │ skipped │
+├─────────┼────────┼─────────┼────────┼─────────┤
+│ 0       │ 'ASML' │ 0       │ 0      │ 252     │
+│ 1       │ 'GS'   │ 0       │ -1     │         │
+│ 2       │ 'MS'   │ 0       │ -1     │         │
+│ 3       │ 'SCHW' │ 0       │ 252    │         │
+│ 4       │ 'WFC'  │ 0       │ 252    │         │
+│ 5       │ 'BLK'  │ 0       │ 252    │         │
+│ 6       │ 'MA'   │ 0       │ 252    │         │
+│ 7       │ 'UNH'  │ 0       │ 252    │         │
+│ 8       │ 'MCD'  │ 0       │ 252    │         │
+│ 9       │ 'GE'   │ 0       │ 252    │         │
+│ 10      │ 'HON'  │ 0       │ 252    │         │
+│ 11      │ 'LMT'  │ 0       │ 252    │         │
+│ 12      │ 'RTX'  │ 0       │ 252    │         │
+└─────────┴────────┴─────────┴────────┴─────────┘
+Total: 0 written, 252 skipped, 2518 failed in 33.7 min
+Total: 24 written, 228 skipped, 2518 failed in 42.1 min
+Options Edge backfill — 12 tickers × 252 days
+Tickers: GS, MS, SCHW, WFC, BLK, MA, UNH, MCD, GE, HON, LMT, RTX
+Concurrency: 1, per-call delay: 1500ms
+
+Date range: 2025-06-13 → 2026-06-01
+
+[GS] starting (252 dates)
+[GS] 2025-10-22 chain fetch failed: terminated
+[GS] 2025-10-28 chain fetch failed: terminated
+[GS] 2025-10-31 chain fetch failed: Expected ',' or '}' after property value in JSON at position 202201 (line 1 column 202202)
+[GS] 2025-11-06 chain fetch failed: terminated
+[GS] 2025-11-13 chain fetch failed: Expected ',' or '}' after property value in JSON at position 201696 (line 1 column 201697)
+[GS] 25/252 done
+[GS] 2025-11-18 chain fetch failed: terminated
+[GS] 2025-11-28 chain fetch failed: terminated
+[GS] 2025-12-16 chain fetch failed: terminated
+[GS] 2025-12-22 chain fetch failed: Expected ',' or '}' after property value in JSON at position 199426 (line 1 column 199427)
+[GS] 50/252 done
+[GS] 2026-01-29 chain fetch failed: Expected ',' or '}' after property value in JSON at position 233008 (line 1 column 233009)
+[GS] 75/252 done

@@ -5100,16 +5100,45 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             isError: true,
           };
         }
-        const videoBuf = Buffer.from(await videoRes.arrayBuffer());
-
         const { putObject } = await import("@/lib/s3");
-        const { buildWeeklyEarningsVideoKey, applyOutroCard } = await import(
-          "@/lib/video-mux"
-        );
+        const {
+          buildWeeklyEarningsVideoKey,
+          applyOutroCard,
+          swapWeeklyEarningsAudio,
+        } = await import("@/lib/video-mux");
         const { buildWeeklyEarningsAudioKey } = await import("@/lib/elevenlabs");
-        // Same outro pipeline as daily — trims at narration end, crossfades
-        // to the OliviaTrades.com card. Works identically for weekly because
-        // the helper is keyed on an explicit audio bucket path.
+
+        // Step 1: swap Hedra's audio for our voiceover + BGM mix.
+        // (Mirrors the daily briefing pipeline so weekly earnings videos
+        // get the same background-music treatment.)
+        let videoBuf: Buffer;
+        try {
+          const { getObjectStream: bucketGet } = await import("@/lib/s3");
+          const swapped = await swapWeeklyEarningsAudio(
+            weekAnchor,
+            status.videoUrl,
+          );
+          // The swap uploaded to bucket; download it back for the outro step.
+          const swappedObj = await bucketGet(swapped.videoKey);
+          if (!swappedObj) throw new Error("swap result missing from bucket");
+          const chunks: Buffer[] = [];
+          const reader = swappedObj.body.getReader();
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) chunks.push(Buffer.from(value));
+          }
+          videoBuf = Buffer.concat(chunks);
+        } catch (swapErr) {
+          console.error(
+            "[hedra-poll-weekly] audio swap failed, using Hedra audio",
+            swapErr,
+          );
+          // Fall back to Hedra's audio if swap fails.
+          videoBuf = Buffer.from(await videoRes.arrayBuffer());
+        }
+
+        // Step 2: outro card with continued BGM under the OliviaTrades.com hold.
         let outputBuf: Buffer = videoBuf;
         try {
           outputBuf = await applyOutroCard(

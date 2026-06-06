@@ -171,24 +171,44 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffe
 }
 
 /**
- * Replace the audio track of a remote MP4 with the briefing's local MP3
- * (from the Railway bucket). Returns the bucket key + public URL of the
- * muxed result.
+ * Replace the audio track of a remote MP4 with a voiceover MP3 from
+ * the bucket (mixing in BGM if available). Generic over briefing kind
+ * — pass the bucket keys explicitly so the same pipeline works for
+ * daily briefings AND weekly earnings briefs.
+ *
+ * Public wrappers below pin the keys for each kind.
  */
-export async function swapBriefingAudio(
-  tradingDay: string,
-  higgsfieldVideoUrl: string,
+async function swapVideoAudioGeneric(
+  opts: {
+    /** Public/Hedra URL the source video sits at. */
+    higgsfieldVideoUrl: string;
+    /** Bucket key for the voiceover MP3. */
+    audioKey: string;
+    /** Bucket key the muxed MP4 should be written to. */
+    outputVideoKey: string;
+    /** Identifier echoed back in `MuxResult.tradingDay`. For briefings
+     *  this is the YYYY-MM-DD; for weekly earnings it's the week
+     *  anchor date. */
+    id: string;
+    /** Public URL pattern the caller wants returned (e.g. the
+     *  /api/briefings/video/[date] route for dailies). */
+    publicVideoUrl: string;
+    /** Friendly label used in the error message when the voiceover is
+     *  missing — e.g. "generate_voiceover_for_briefing". */
+    missingAudioHint: string;
+  },
 ): Promise<MuxResult> {
   const ffmpegBin = getFfmpegPath();
   const t0 = Date.now();
-  const work = await mkdtemp(path.join(tmpdir(), "briefing-mux-"));
+  const work = await mkdtemp(path.join(tmpdir(), "video-mux-"));
   try {
     // 1. Download Higgsfield MP4 + read our MP3 from the bucket in parallel.
-    const audioKey = buildBriefingAudioKey(tradingDay);
+    const audioKey = opts.audioKey;
+    const higgsfieldVideoUrl = opts.higgsfieldVideoUrl;
     const audioObj = await getObjectStream(audioKey);
     if (!audioObj) {
       throw new Error(
-        `no audio in bucket for ${tradingDay} — run generate_voiceover_for_briefing first`,
+        `no audio in bucket at ${audioKey} — run ${opts.missingAudioHint} first`,
       );
     }
     // Also fetch the BGM asset from the bucket. If it's missing the
@@ -298,7 +318,7 @@ export async function swapBriefingAudio(
     const muxedBytes = await readFile(videoOut);
 
     // 3. Upload muxed MP4 to bucket.
-    const videoKey = buildBriefingVideoKey(tradingDay);
+    const videoKey = opts.outputVideoKey;
     const upload = await putObject(
       videoKey,
       new Uint8Array(muxedBytes),
@@ -307,11 +327,12 @@ export async function swapBriefingAudio(
 
     const appUrl = process.env.APP_URL || "https://www.oliviatrades.com";
     return {
-      tradingDay,
+      tradingDay: opts.id,
       videoKey: upload.key,
-      // Use the public /api/briefings/video/[date] route, not /api/images/...
-      // (which is auth-gated). This URL is what YouTube + embed surfaces use.
-      videoUrl: `${appUrl}/api/briefings/video/${tradingDay}`,
+      // Public route — auth-free. Daily uses /api/briefings/video/[date],
+      // weekly uses /api/weekly-briefings/video/[date]; caller passes
+      // the right pattern.
+      videoUrl: `${appUrl}${opts.publicVideoUrl}`,
       bytes: upload.size,
       durationLog: `${Date.now() - t0}ms`,
     };
@@ -320,6 +341,43 @@ export async function swapBriefingAudio(
     // long-running processes tidy.
     await rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+/**
+ * Daily briefing — swap Higgsfield's audio for our ElevenLabs voice +
+ * BGM. Thin wrapper around swapVideoAudioGeneric.
+ */
+export async function swapBriefingAudio(
+  tradingDay: string,
+  higgsfieldVideoUrl: string,
+): Promise<MuxResult> {
+  return swapVideoAudioGeneric({
+    higgsfieldVideoUrl,
+    audioKey: buildBriefingAudioKey(tradingDay),
+    outputVideoKey: buildBriefingVideoKey(tradingDay),
+    id: tradingDay,
+    publicVideoUrl: `/api/briefings/video/${tradingDay}`,
+    missingAudioHint: "generate_voiceover_for_briefing",
+  });
+}
+
+/**
+ * Weekly earnings briefing — same swap pipeline as daily, just keyed
+ * on the week anchor date. Same BGM treatment.
+ */
+export async function swapWeeklyEarningsAudio(
+  weekAnchor: string,
+  higgsfieldVideoUrl: string,
+): Promise<MuxResult> {
+  const { buildWeeklyEarningsAudioKey } = await import("@/lib/elevenlabs");
+  return swapVideoAudioGeneric({
+    higgsfieldVideoUrl,
+    audioKey: buildWeeklyEarningsAudioKey(weekAnchor),
+    outputVideoKey: buildWeeklyEarningsVideoKey(weekAnchor),
+    id: weekAnchor,
+    publicVideoUrl: `/api/weekly-briefings/video/${weekAnchor}`,
+    missingAudioHint: "generate_voiceover_for_weekly_earnings_brief",
+  });
 }
 
 interface MediaInfo {

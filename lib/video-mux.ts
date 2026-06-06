@@ -198,28 +198,36 @@ export async function swapBriefingAudio(
     //      - With BGM: voice + sidechain-ducked, looped BGM mixed together.
     //      - Without BGM: voice-only (original behavior).
     //    `-shortest` caps to voice duration. BGM loops infinitely via
-    //    `-stream_loop -1` so we don't need to know voice duration ahead.
+    //    `-stream_loop -1` so we don't need to plan that ahead.
     const args: string[] = ["-y", "-i", videoIn, "-i", audioIn];
     if (bgmBytes) {
+      // Probe voice duration so the fade-out lands at the END of the
+      // clip, not the start. afade with st=0 fades from 0→silence over
+      // d seconds and then STAYS silent — that destroys the bulk of
+      // the audio if applied without a real start time.
+      const voiceDuration = await probeMediaDuration(ffmpegBin, audioIn);
+      // If the probe fails (very rare), skip the fade-out and let the
+      // -shortest hard-cut handle the tail. Better than silencing the
+      // whole clip with an at-0 fade-out, which was the V1 bug.
+      const fadeOutStart = Number.isFinite(voiceDuration)
+        ? Math.max(0, voiceDuration - BGM_FADE_OUT_SEC)
+        : null;
+
       args.push("-stream_loop", "-1", "-i", bgmIn);
       // Filter graph:
       //   [2:a] = looped BGM → volume down → fade in at start
       //   [bgm][1:a] = sidechaincompress ducks bgm when voice speaks
       //   [1:a][ducked] = mix voice (unity) + ducked BGM
-      //   final fade-out trims the tail before the hard cut
+      //   final afade fades the mixed stream from fadeOutStart → end
+      const fadeOutSegment =
+        fadeOutStart != null
+          ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${BGM_FADE_OUT_SEC}:curve=tri`
+          : "";
       const filter =
         `[2:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=${BGM_FADE_IN_SEC}[bgmA];` +
         `[bgmA][1:a]sidechaincompress=${SIDECHAIN_PARAMS}[bgmD];` +
-        `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0,` +
-        `afade=t=out:st=0:d=${BGM_FADE_OUT_SEC}:curve=tri[mixed]`;
-      // Note: afade fade-out st=0 with -shortest looks wrong but works —
-      // ffmpeg's -shortest trims AFTER filtering, and the afade
-      // "out" with no start time defaults to fading the tail of the
-      // emitted stream. The duration trim happens via -shortest based
-      // on the FIRST input (voice), so amix duration:first locks the
-      // output length to the voice. Cleaner alternative is to probe
-      // voice length first and apply afade with explicit st — left as
-      // a future tweak if the fade feels off.
+        `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0` +
+        `${fadeOutSegment}[mixed]`;
       args.push(
         "-filter_complex",
         filter,
@@ -435,6 +443,38 @@ export async function applyOutroCard(
   } finally {
     await rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
+}
+
+/**
+ * Probe a media file's duration in seconds. We use ffmpeg's stderr
+ * (parsing "Duration: hh:mm:ss.ms") rather than ffprobe so we don't
+ * need a second binary at runtime — `ffmpeg-static` ships ffmpeg only.
+ *
+ * Returns NaN on any parse failure; callers should guard.
+ */
+async function probeMediaDuration(
+  bin: string,
+  inputPath: string,
+): Promise<number> {
+  const stderr = await new Promise<string>((resolve, reject) => {
+    const proc = spawn(bin, ["-hide_banner", "-i", inputPath], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let buf = "";
+    proc.stderr.on("data", (c) => {
+      buf += c.toString();
+    });
+    proc.on("error", (err) => reject(err));
+    // ffmpeg exits non-zero on `-i <file>` with no output spec —
+    // that's expected. We just want the stderr metadata.
+    proc.on("close", () => resolve(buf));
+  });
+  const m = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  if (!m) return NaN;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  const s = Number(m[3]);
+  return h * 3600 + mi * 60 + s;
 }
 
 function runFfmpeg(bin: string, args: string[]): Promise<void> {

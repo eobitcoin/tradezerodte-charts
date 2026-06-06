@@ -130,7 +130,7 @@ console.log(
 );
 
 const filter =
-  `[2:a]volume=0.12,afade=t=in:st=0:d=1.5[bgmA];` +
+  `[2:a]volume=0.20,afade=t=in:st=0:d=1.5[bgmA];` +
   `[bgmA][1:a]sidechaincompress=threshold=0.05:ratio=6:attack=5:release=350[bgmD];` +
   `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0,` +
   `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutSec}:curve=tri[mixed]`;
@@ -144,6 +144,7 @@ const args = [
   "-c:v", "copy",
   "-c:a", "aac",
   "-b:a", "192k",
+  "-ac", "2",
   "-map", "0:v:0",
   "-map", "[mixed]",
   "-shortest",

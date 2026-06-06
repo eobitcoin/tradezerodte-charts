@@ -81,11 +81,16 @@ const OUTRO_CARD_PATH = path.join(
  *  ffmpeg loops infinitely and trims to voice length via `-shortest`. */
 const BRIEFING_BGM_KEY = "bgm/olivia_pulse_v1.mp3";
 
-/** Volume reduction applied to BGM in the mix. 0.12 ≈ -18 dB — quiet
- *  enough to live under the voice without competing for the listener's
- *  attention, audible enough to add momentum. Tune here if needed.
- *  Previous value 0.08 (-22 dB) felt too subdued in testing. */
-const BGM_VOLUME = 0.12;
+/** Volume reduction applied to BGM in the mix. 0.20 ≈ -14 dB —
+ *  clearly audible bed under the voice, gives the video real
+ *  momentum. Sidechain compression dips it another ~6 dB while she
+ *  speaks so intelligibility stays intact.
+ *
+ *  Tuning history:
+ *    0.08 (-22 dB) — too subdued, barely audible
+ *    0.12 (-18 dB) — still hard to hear
+ *    0.20 (-14 dB) — current — meaningful presence */
+const BGM_VOLUME = 0.20;
 
 /** Sidechain compression: when the voice signal exceeds threshold, the
  *  BGM gets ducked. Threshold 0.05 (≈-26 dB) catches normal speech
@@ -235,6 +240,11 @@ export async function swapBriefingAudio(
         "-c:v", "copy",
         "-c:a", "aac",
         "-b:a", "192k",
+        // Force stereo output. The voice MP3 is mono; producing a
+        // mono AAC stream triggers QuickTime's "incompatible media"
+        // warning even though the file is fine. Stereo is universally
+        // safe and the BGM is already stereo.
+        "-ac", "2",
         "-map", "0:v:0",
         "-map", "[mixed]",
         "-shortest",
@@ -413,10 +423,54 @@ export async function applyOutroCard(
     const off = xfadeOffset.toFixed(3);
     const total = totalDur.toFixed(3);
 
+    // OPTIONAL — BGM that continues during the outro card hold so the
+    // 2.5s after narration ends doesn't drop into silence. We
+    // download the same BGM the mux step used and concat a fresh
+    // segment onto the trimmed narration audio. If BGM fetch fails,
+    // fall back to silent padding (the original behavior).
+    let outroBgmFile: string | null = null;
+    try {
+      const bgmObj = await getObjectStream(BRIEFING_BGM_KEY);
+      if (bgmObj) {
+        outroBgmFile = path.join(work, "outro-bgm.mp3");
+        await writeFile(
+          outroBgmFile,
+          new Uint8Array(await streamToBuffer(bgmObj.body)),
+        );
+      }
+    } catch {
+      // Silent fallback.
+    }
+
+    // Audio filter: two paths depending on whether BGM is available.
+    let audioFilter: string;
+    let audioInputs: string[] = [];
+    if (outroBgmFile) {
+      // Trim narration audio to the xfade-out point, then concat a
+      // CARD_HOLD_SEC segment of BGM (faded in/out) so music carries
+      // through the card. Total audio length matches `totalDur`.
+      audioInputs = ["-stream_loop", "-1", "-i", outroBgmFile];
+      audioFilter =
+        `[0:a]atrim=0:${t},asetpts=PTS-STARTPTS,` +
+        `afade=t=out:st=${off}:d=${CARD_XFADE_SEC}[narrA];` +
+        `[2:a]volume=${BGM_VOLUME},` +
+        `atrim=0:${CARD_HOLD_SEC.toFixed(3)},asetpts=PTS-STARTPTS,` +
+        `afade=t=in:st=0:d=${CARD_XFADE_SEC},` +
+        `afade=t=out:st=${(CARD_HOLD_SEC - 1.0).toFixed(3)}:d=1.0[bgmTail];` +
+        `[narrA][bgmTail]concat=n=2:v=0:a=1[a]`;
+    } else {
+      // Original silent-pad behavior — no BGM available.
+      audioFilter =
+        `[0:a]atrim=0:${t},asetpts=PTS-STARTPTS,` +
+        `afade=t=out:st=${off}:d=${CARD_XFADE_SEC},` +
+        `apad=whole_dur=${total}[a]`;
+    }
+
     const args = [
       "-y",
       "-i", inFile,
       "-loop", "1", "-t", cardInputDur.toFixed(3), "-i", OUTRO_CARD_PATH,
+      ...audioInputs,
       "-filter_complex",
       // Stream A: Hedra clip trimmed to narration end, normalized.
       `[0:v]trim=0:${t},setpts=PTS-STARTPTS,scale=${vidW}:${vidH},fps=30,format=yuv420p[va];` +
@@ -424,11 +478,7 @@ export async function applyOutroCard(
         `[1:v]scale=${vidW}:${vidH},fps=30,format=yuv420p[vb];` +
         // Crossfade A → card.
         `[va][vb]xfade=transition=fade:duration=${CARD_XFADE_SEC}:offset=${off}[v];` +
-        // Audio: trim to narration end, fade out into the card, pad the
-        // 2.5s card tail with silence so audio length == video length.
-        `[0:a]atrim=0:${t},asetpts=PTS-STARTPTS,` +
-        `afade=t=out:st=${off}:d=${CARD_XFADE_SEC},` +
-        `apad=whole_dur=${total}[a]`,
+        audioFilter,
       "-map", "[v]",
       "-map", "[a]",
       "-c:v", "libx264",
@@ -436,6 +486,7 @@ export async function applyOutroCard(
       "-crf", "20",
       "-c:a", "aac",
       "-b:a", "192k",
+      "-ac", "2",
       "-movflags", "+faststart",
       outFile,
     ];

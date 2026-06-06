@@ -81,10 +81,11 @@ const OUTRO_CARD_PATH = path.join(
  *  ffmpeg loops infinitely and trims to voice length via `-shortest`. */
 const BRIEFING_BGM_KEY = "bgm/olivia_pulse_v1.mp3";
 
-/** Volume reduction applied to BGM in the mix. 0.08 ≈ -22 dB — quiet
+/** Volume reduction applied to BGM in the mix. 0.12 ≈ -18 dB — quiet
  *  enough to live under the voice without competing for the listener's
- *  attention, audible enough to add momentum. Tune here if needed. */
-const BGM_VOLUME = 0.08;
+ *  attention, audible enough to add momentum. Tune here if needed.
+ *  Previous value 0.08 (-22 dB) felt too subdued in testing. */
+const BGM_VOLUME = 0.12;
 
 /** Sidechain compression: when the voice signal exceeds threshold, the
  *  BGM gets ducked. Threshold 0.05 (≈-26 dB) catches normal speech

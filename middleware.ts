@@ -25,6 +25,9 @@ const PUBLIC_PATHS = new Set([
   // Google Search Console site-verification token. Must be reachable
   // unauthenticated so Google's crawler can fetch it.
   "/googlec0640cbf8a1a59b7.html",
+  // TikTok Developer Portal URL-prefix verification. Must be reachable
+  // unauthenticated so TikTok's verifier can fetch the signature file.
+  "/tiktok1AxeWfeC2bcjMMFzq8BfQ2HoyBfSJkpQ.txt",
 ]);
 
 /** Public route prefixes — any path starting with these is unauthenticated.

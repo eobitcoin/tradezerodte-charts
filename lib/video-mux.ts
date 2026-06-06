@@ -100,11 +100,22 @@ const BGM_VOLUME = 0.20;
 const VOICE_VOLUME = 0.80;
 
 /** Sidechain compression: when the voice signal exceeds threshold, the
- *  BGM gets ducked. Threshold 0.05 (≈-26 dB) catches normal speech
- *  levels; ratio 6 means a -6 dB additional dip when she's talking;
- *  attack 5ms (transparent), release 350ms (smooth recovery between
- *  sentences). The net effect: music breathes around the voice. */
-const SIDECHAIN_PARAMS = "threshold=0.05:ratio=6:attack=5:release=350";
+ *  BGM gets gently ducked. The numbers are tuned to feel transparent —
+ *  music keeps playing even when she's emphatic, just sits a touch
+ *  lower so her words aren't fighting the bed.
+ *
+ *  Tuning history:
+ *    ratio 6, no makeup — music DROPPED OUT on emphatic words
+ *    ratio 3 + makeup 1.5 — gentle dip, music stays present
+ *
+ *  threshold 0.07 (≈-23 dB): less sensitive than before so quiet
+ *    delivery doesn't trigger ducking at all
+ *  ratio 3: gentle compression (was 6 = aggressive)
+ *  attack 5ms: fast enough to be transparent
+ *  release 250ms: smooth recovery between phrases
+ *  makeup 1.5: lifts the ducked BGM back up so it never feels gone */
+const SIDECHAIN_PARAMS =
+  "threshold=0.07:ratio=3:attack=5:release=250:makeup=1.5";
 
 /** Fade-in at video start (gentle ramp so music doesn't start cold)
  *  and fade-out at end (avoids hard cut on the loop). */

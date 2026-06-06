@@ -137,7 +137,7 @@ const filter =
   `[1:a]volume=0.80[voiceA];` +
   `[2:a]volume=0.20,afade=t=in:st=0:d=1.5,` +
   `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutSec}:curve=tri[bgmA];` +
-  `[bgmA][voiceA]sidechaincompress=threshold=0.05:ratio=6:attack=5:release=350[bgmD];` +
+  `[bgmA][voiceA]sidechaincompress=threshold=0.07:ratio=3:attack=5:release=250:makeup=1.5[bgmD];` +
   `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]`;
 
 const args = [

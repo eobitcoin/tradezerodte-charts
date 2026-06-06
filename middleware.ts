@@ -15,6 +15,11 @@ const PUBLIC_PATHS = new Set([
   "/tickers",
   "/privacy",
   "/terms",
+  // Public "about" page — used as the OAuth Application home page URL
+  // for Google's verification (reviewers need a public landing page
+  // that explains the brand + purpose of the app without an auth
+  // wall in the way).
+  "/about",
   "/robots.txt",
   "/sitemap.xml",
   // Google Search Console site-verification token. Must be reachable

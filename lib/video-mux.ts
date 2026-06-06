@@ -229,10 +229,16 @@ export async function swapBriefingAudio(
         fadeOutStart != null
           ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${BGM_FADE_OUT_SEC}:curve=tri`
           : "";
+      // amix `normalize=0` keeps voice at its true level. With the
+      // default normalize=1, the output gets divided by the number
+      // of inputs, so bumping BGM_VOLUME would also boost the voice
+      // half because the divisor stays the same but the sum grows.
+      // normalize=0 sums without scaling — voice unaffected by BGM
+      // changes. (BGM is volume-reduced upstream so no clipping.)
       const filter =
         `[2:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=${BGM_FADE_IN_SEC}[bgmA];` +
         `[bgmA][1:a]sidechaincompress=${SIDECHAIN_PARAMS}[bgmD];` +
-        `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0` +
+        `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0` +
         `${fadeOutSegment}[mixed]`;
       args.push(
         "-filter_complex",

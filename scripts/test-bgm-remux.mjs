@@ -129,10 +129,13 @@ console.log(
   `  voice duration: ${voiceDuration.toFixed(2)}s → fade-out starts at ${fadeOutStart.toFixed(2)}s`,
 );
 
+// amix normalize=0 → voice stays at true level; only BGM responds to
+// volume tweaks. Default normalize=1 divides by inputs and made the
+// voice get louder whenever BGM got louder.
 const filter =
   `[2:a]volume=0.20,afade=t=in:st=0:d=1.5[bgmA];` +
   `[bgmA][1:a]sidechaincompress=threshold=0.05:ratio=6:attack=5:release=350[bgmD];` +
-  `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0,` +
+  `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,` +
   `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutSec}:curve=tri[mixed]`;
 
 const args = [
@@ -164,14 +167,106 @@ try {
   console.error(err.stderr?.toString() || err.message);
   process.exit(1);
 }
-console.log(`Done in ${Date.now() - t0}ms.`);
-console.log(`✓ Output: ${outPath}`);
+console.log(`Mux done in ${Date.now() - t0}ms.`);
+
+// =========================================================================
+// PART 2 — apply outro card with continued BGM (full pipeline simulation)
+// =========================================================================
+console.log("\nApplying outro card with continued BGM...");
+const t1 = Date.now();
+
+// Look for the outro PNG in the standard project location.
+const outroCardPath = path.join(
+  process.cwd(),
+  "public/assets/briefing-outro.png",
+);
+
+// Constants must match lib/video-mux.ts.
+const CARD_HOLD_SEC = 2.5;
+const CARD_XFADE_SEC = 0.25;
+
+// Probe the muxed video for dimensions + duration. Re-use ffmpeg via -i.
+async function probeFile(file) {
+  const probe = await execFileP(ffmpegBin, ["-hide_banner", "-i", file], {
+    reject: false,
+  }).catch((e) => ({ stderr: e.stderr?.toString() || "" }));
+  const stderr = probe.stderr || "";
+  const durM = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  const dur =
+    durM && Number(durM[1]) * 3600 + Number(durM[2]) * 60 + Number(durM[3]);
+  const dimM = stderr.match(/Video:[^\n]*?(\d{2,5})x(\d{2,5})/);
+  return {
+    durationSec: Number.isFinite(dur) ? dur : NaN,
+    width: dimM ? Number(dimM[1]) : 720,
+    height: dimM ? Number(dimM[2]) : 1280,
+  };
+}
+
+const muxed = await probeFile(outPath);
+const audio = await probeFile(audioIn);
+const vidDur = muxed.durationSec || 20;
+const vidW = muxed.width;
+const vidH = muxed.height;
+
+const narrationEnd =
+  Number.isFinite(audio.durationSec) && audio.durationSec > 1
+    ? audio.durationSec
+    : vidDur - CARD_XFADE_SEC;
+const trimPoint = Math.min(narrationEnd + CARD_XFADE_SEC, vidDur);
+const xfadeOffset = Math.max(0, trimPoint - CARD_XFADE_SEC);
+const cardInputDur = CARD_HOLD_SEC + CARD_XFADE_SEC;
+
+const tStr = trimPoint.toFixed(3);
+const offStr = xfadeOffset.toFixed(3);
+const outroOut = path.join(homedir(), "Desktop", `test-bgm-outro-${tradingDay}.mp4`);
+
+const audioFilter =
+  `[0:a]atrim=0:${tStr},asetpts=PTS-STARTPTS,` +
+  `afade=t=out:st=${offStr}:d=${CARD_XFADE_SEC}[narrA];` +
+  `[2:a]volume=0.20,` +
+  `atrim=0:${CARD_HOLD_SEC.toFixed(3)},asetpts=PTS-STARTPTS,` +
+  `afade=t=in:st=0:d=${CARD_XFADE_SEC},` +
+  `afade=t=out:st=${(CARD_HOLD_SEC - 1.0).toFixed(3)}:d=1.0[bgmTail];` +
+  `[narrA][bgmTail]concat=n=2:v=0:a=1[a]`;
+
+const outroArgs = [
+  "-y",
+  "-i", outPath,
+  "-loop", "1", "-t", cardInputDur.toFixed(3), "-i", outroCardPath,
+  "-stream_loop", "-1", "-i", bgmIn,
+  "-filter_complex",
+  `[0:v]trim=0:${tStr},setpts=PTS-STARTPTS,scale=${vidW}:${vidH},fps=30,format=yuv420p[va];` +
+    `[1:v]scale=${vidW}:${vidH},fps=30,format=yuv420p[vb];` +
+    `[va][vb]xfade=transition=fade:duration=${CARD_XFADE_SEC}:offset=${offStr}[v];` +
+    audioFilter,
+  "-map", "[v]",
+  "-map", "[a]",
+  "-c:v", "libx264",
+  "-preset", "veryfast",
+  "-crf", "20",
+  "-c:a", "aac",
+  "-b:a", "192k",
+  "-ac", "2",
+  "-movflags", "+faststart",
+  outroOut,
+];
+
+try {
+  await execFileP(ffmpegBin, outroArgs, { maxBuffer: 1024 * 1024 * 50 });
+} catch (err) {
+  console.error("outro ffmpeg failed:");
+  console.error(err.stderr?.toString() || err.message);
+  process.exit(1);
+}
+console.log(`Outro done in ${Date.now() - t1}ms.`);
+console.log(`✓ Full pipeline output: ${outroOut}`);
+console.log(`  (mux-only intermediate kept at: ${outPath})`);
 
 await rm(work, { recursive: true, force: true }).catch(() => {});
 
-// Auto-open on macOS
+// Auto-open the FINAL output on macOS (with outro card)
 if (process.platform === "darwin") {
   try {
-    await execFileP("open", [outPath]);
+    await execFileP("open", [outroOut]);
   } catch {}
 }

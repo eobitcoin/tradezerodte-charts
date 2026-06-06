@@ -25,17 +25,25 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
 const execFileP = promisify(execFile);
 
-const [, , tradingDay, bgmPath] = process.argv;
+// Parse args: [day] [bgmPath] [--weekly]
+const cliArgs = process.argv.slice(2);
+const weekly = cliArgs.includes("--weekly");
+const positional = cliArgs.filter((a) => !a.startsWith("--"));
+const [tradingDay, bgmPath] = positional;
 if (!tradingDay || !bgmPath) {
   console.error(
-    "Usage: node scripts/test-bgm-remux.mjs <tradingDay> <path-to-bgm.mp3>",
+    "Usage: node scripts/test-bgm-remux.mjs <date> <path-to-bgm.mp3> [--weekly]",
   );
+  console.error("  --weekly  Test the weekly earnings briefing pipeline");
+  console.error("            (default = daily briefing)");
   process.exit(1);
 }
 if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDay)) {
-  console.error("tradingDay must be YYYY-MM-DD");
+  console.error("date must be YYYY-MM-DD");
   process.exit(1);
 }
+const kindLabel = weekly ? "weekly earnings" : "daily briefing";
+console.log(`Testing ${kindLabel} pipeline for ${tradingDay}\n`);
 
 for (const k of [
   "BUCKET_ENDPOINT",
@@ -72,22 +80,25 @@ const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 
 console.log(`Fetching production assets for ${tradingDay}...`);
 
-// Fetch the existing muxed briefing video via the public route. Its
-// video stream has the lip-sync; we'll discard its audio and replace.
-const videoUrl = `${APP_URL}/api/briefings/video/${tradingDay}`;
+// Fetch the existing muxed video via the public route. Its video
+// stream has the lip-sync; we'll discard its audio and replace.
+const videoUrl = weekly
+  ? `${APP_URL}/api/weekly-briefings/video/${tradingDay}`
+  : `${APP_URL}/api/briefings/video/${tradingDay}`;
 const videoRes = await fetch(videoUrl);
 if (!videoRes.ok) {
   console.error(
-    `Briefing video for ${tradingDay} not found at ${videoUrl} (HTTP ${videoRes.status})`,
+    `Video for ${tradingDay} not found at ${videoUrl} (HTTP ${videoRes.status})`,
   );
   process.exit(1);
 }
 const videoBytes = Buffer.from(await videoRes.arrayBuffer());
 console.log(`  video:  ${videoBytes.length} bytes`);
 
-// Voice from the briefingAudio key. Matches the production pattern
-// in lib/elevenlabs.ts → buildBriefingAudioKey().
-const audioKey = `briefings/${tradingDay}/voiceover.mp3`;
+// Voice key — matches lib/elevenlabs.ts.
+const audioKey = weekly
+  ? `weekly-earnings-briefings/${tradingDay}/voiceover.mp3`
+  : `briefings/${tradingDay}/voiceover.mp3`;
 let audioBytes;
 try {
   audioBytes = await bucketGet(audioKey);
@@ -104,7 +115,8 @@ const work = await mkdtemp(path.join(tmpdir(), "bgm-test-"));
 const videoIn = path.join(work, "in.mp4");
 const audioIn = path.join(work, "in.mp3");
 const bgmIn = path.join(work, "bgm.mp3");
-const outPath = path.join(homedir(), "Desktop", `test-bgm-${tradingDay}.mp4`);
+const filePrefix = weekly ? "test-weekly-bgm" : "test-bgm";
+const outPath = path.join(homedir(), "Desktop", `${filePrefix}-${tradingDay}.mp4`);
 
 await writeFile(videoIn, videoBytes);
 await writeFile(audioIn, audioBytes);
@@ -220,7 +232,7 @@ const cardInputDur = CARD_HOLD_SEC + CARD_XFADE_SEC;
 
 const tStr = trimPoint.toFixed(3);
 const offStr = xfadeOffset.toFixed(3);
-const outroOut = path.join(homedir(), "Desktop", `test-bgm-outro-${tradingDay}.mp4`);
+const outroOut = path.join(homedir(), "Desktop", `${filePrefix}-outro-${tradingDay}.mp4`);
 
 const audioFilter =
   `[0:a]atrim=0:${tStr},asetpts=PTS-STARTPTS,` +

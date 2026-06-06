@@ -27,6 +27,24 @@ const STATUS_FETCH_URL = "https://open.tiktokapis.com/v2/post/publish/status/fet
 /** Scopes we require. `user.info.basic` is a TikTok-mandated baseline. */
 export const TT_SCOPES = ["user.info.basic", "video.upload"] as const;
 
+/**
+ * Reminder text surfaced after every TikTok inbox upload. AI-generated
+ * content (our talking head + voice) must be disclosed under TikTok's
+ * AIGC labelling policy, but inbox/draft uploads can't carry the label
+ * via API — only the Direct Post API supports `post_info.is_aigc`, and
+ * we deliberately use inbox so the user finalizes on phone.
+ *
+ * So the routine echoes this reminder back to the user every time, and
+ * they toggle the "AI-generated content" switch on the TikTok app before
+ * publishing the draft. Same goes for the Suno music credit — TikTok's
+ * commercial music library disputes are auto-resolved when the creator
+ * has named the source in the caption.
+ */
+export const TIKTOK_AI_DISCLOSURE_REMINDER =
+  "⚠️ Before publishing: tap 'More options' → toggle 'AI-generated content' ON. " +
+  "TikTok's AIGC policy requires this for synthetic presenters/voices. " +
+  "Optional in caption: 'Music: Suno AI (original composition)'.";
+
 function readEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} not configured`);

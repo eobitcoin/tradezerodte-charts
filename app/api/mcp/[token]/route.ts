@@ -5267,6 +5267,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           };
         }
         const { publishBriefingToTikTok } = await import("@/lib/briefing-publish");
+        const { TIKTOK_AI_DISCLOSURE_REMINDER } = await import("@/lib/tiktok");
         const r = await publishBriefingToTikTok(tradingDay, { requireApproved: true });
         if (!r.ok) {
           return { content: [{ type: "text", text: r.error ?? "publish failed" }], isError: true };
@@ -5283,6 +5284,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
                 elapsed_ms: r.elapsedMs,
                 bytes_uploaded: r.bytesUploaded,
                 note: r.note,
+                ai_disclosure_reminder: TIKTOK_AI_DISCLOSURE_REMINDER,
               }),
             },
           ],
@@ -5369,6 +5371,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const { publishWeeklyEarningsToTikTok } = await import(
           "@/lib/weekly-earnings-publish"
         );
+        const { TIKTOK_AI_DISCLOSURE_REMINDER } = await import("@/lib/tiktok");
         const r = await publishWeeklyEarningsToTikTok(weekAnchor, { requireApproved: true });
         if (!r.ok) {
           return { content: [{ type: "text", text: r.error ?? "publish failed" }], isError: true };
@@ -5385,6 +5388,7 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
                 elapsed_ms: r.elapsedMs,
                 bytes_uploaded: r.bytesUploaded,
                 note: r.note,
+                ai_disclosure_reminder: TIKTOK_AI_DISCLOSURE_REMINDER,
               }),
             },
           ],

@@ -18,6 +18,33 @@
 import { Readable } from "node:stream";
 import { google, type youtube_v3 } from "googleapis";
 
+/**
+ * Disclosure footer appended to every briefing description.
+ *
+ * Two regulatory items live here:
+ *
+ *   1. AI-generated content notice. YouTube's "altered or synthetic
+ *      content" policy (June 2024+) requires creators to disclose when
+ *      realistic-looking AI is used for the host/presenter. We also
+ *      set `status.containsSyntheticMedia=true` on the upload itself
+ *      (that's the canonical signal); the text here just makes the
+ *      disclosure visible to viewers.
+ *
+ *   2. Music attribution. The BGM is original composition generated
+ *      via Suno (Pro license, full commercial use). Stating this in
+ *      the description pre-empts erroneous Content ID claims and
+ *      establishes the audit trail if a dispute ever needs filing.
+ *
+ * Edit here to update both daily + weekly + future briefings at once.
+ */
+export const BRIEFING_DISCLOSURE_FOOTER = `
+
+—
+
+This video features an AI-generated presenter created with Hedra; the voice is AI-generated via ElevenLabs. Original soundtrack composed using Suno AI (Pro license — commercial use). Market commentary and analysis is human-curated.
+
+Not investment advice. Trading options involves substantial risk of loss; trade only with capital you can afford to lose.`;
+
 interface UploadOpts {
   /** Video bytes (MP4). Streamed to YouTube; do not load enormous files into memory if you can avoid it. */
   videoBuffer: Buffer;
@@ -80,9 +107,13 @@ export async function uploadBriefingToYouTube(opts: UploadOpts): Promise<UploadR
   const t0 = Date.now();
   const body = Readable.from(opts.videoBuffer);
 
+  // Description = caller's text + standard disclosure footer (AI +
+  // music license). Shorts also get the #Shorts hash so YouTube routes
+  // the video into the Shorts shelf.
+  const baseDescription = opts.description + BRIEFING_DISCLOSURE_FOOTER;
   const description = opts.isShort
-    ? `${opts.description}\n\n#Shorts`
-    : opts.description;
+    ? `${baseDescription}\n\n#Shorts`
+    : baseDescription;
 
   const requestBody: youtube_v3.Schema$Video = {
     snippet: {
@@ -97,6 +128,13 @@ export async function uploadBriefingToYouTube(opts: UploadOpts): Promise<UploadR
       privacyStatus: opts.privacyStatus ?? "public",
       selfDeclaredMadeForKids: false,
       embeddable: true,
+      // YouTube's required AI-disclosure flag. We use a synthetic
+      // talking-head (Hedra) and a synthetic voice (ElevenLabs), so
+      // this is always true for briefings. Setting it from the API
+      // is the canonical signal — viewers see a "Altered or synthetic
+      // content" label on the watch page, and the channel stays in
+      // compliance with the June 2024 YouTube AI-content policy.
+      containsSyntheticMedia: true,
     },
   };
 

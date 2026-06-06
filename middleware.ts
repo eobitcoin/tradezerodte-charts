@@ -27,7 +27,12 @@ const PUBLIC_PATHS = new Set([
   "/googlec0640cbf8a1a59b7.html",
   // TikTok Developer Portal URL-prefix verification. Must be reachable
   // unauthenticated so TikTok's verifier can fetch the signature file.
+  // First token: original "TradeZeroDTE Briefing Publisher" app.
+  // Second token: re-registered "Olivia Trades" app (the production
+  // submission). Both kept for now; can drop the first once we're
+  // sure TikTok won't re-check it.
   "/tiktok1AxeWfeC2bcjMMFzq8BfQ2HoyBfSJkpQ.txt",
+  "/tiktok3X8MMqR3myQm4PedkEImyxThRCkfYvil.txt",
 ]);
 
 /** Public route prefixes — any path starting with these is unauthenticated.

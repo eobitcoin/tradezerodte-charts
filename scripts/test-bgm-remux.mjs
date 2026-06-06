@@ -130,14 +130,15 @@ console.log(
 );
 
 // amix normalize=0 → voice stays at true level; only BGM responds.
-// Voice pre-attenuated to VOICE_VOLUME (0.80, ~-2 dB) to make room
-// for BGM so the mix doesn't sound louder than original briefing.
+// Voice pre-attenuated to ~0.80 (~-2 dB) to make room for BGM.
+// Fade-out applied ONLY to BGM, so voice plays through to its
+// natural last word without any fade.
 const filter =
   `[1:a]volume=0.80[voiceA];` +
-  `[2:a]volume=0.20,afade=t=in:st=0:d=1.5[bgmA];` +
+  `[2:a]volume=0.20,afade=t=in:st=0:d=1.5,` +
+  `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutSec}:curve=tri[bgmA];` +
   `[bgmA][voiceA]sidechaincompress=threshold=0.05:ratio=6:attack=5:release=350[bgmD];` +
-  `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,` +
-  `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutSec}:curve=tri[mixed]`;
+  `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]`;
 
 const args = [
   "-y",

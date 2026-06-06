@@ -231,23 +231,27 @@ export async function swapBriefingAudio(
       //   [2:a] = looped BGM → volume down → fade in at start
       //   [bgm][1:a] = sidechaincompress ducks bgm when voice speaks
       //   [1:a][ducked] = mix voice (unity) + ducked BGM
-      //   final afade fades the mixed stream from fadeOutStart → end
-      const fadeOutSegment =
-        fadeOutStart != null
-          ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${BGM_FADE_OUT_SEC}:curve=tri`
-          : "";
+      //   BGM-only fade-out applied below (voice plays through clean)
       // amix `normalize=0` keeps voice at its true (pre-amix) level.
       // Default normalize=1 would divide the sum by 2, but then any
       // BGM_VOLUME bump would also push voice. normalize=0 sums
       // cleanly — each input's level is what we set it to. Voice is
       // pre-attenuated by VOICE_VOLUME to leave headroom for the BGM
       // and match the original voice-only briefing's perceived level.
+      //
+      // Fade-out is applied ONLY to the BGM track, not the mixed
+      // stream — that way her voice plays through naturally to her
+      // final word (no fade) while music tails out underneath.
+      const bgmFadeOut =
+        fadeOutStart != null
+          ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${BGM_FADE_OUT_SEC}:curve=tri`
+          : "";
       const filter =
         `[1:a]volume=${VOICE_VOLUME}[voiceA];` +
-        `[2:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=${BGM_FADE_IN_SEC}[bgmA];` +
+        `[2:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=${BGM_FADE_IN_SEC}` +
+        `${bgmFadeOut}[bgmA];` +
         `[bgmA][voiceA]sidechaincompress=${SIDECHAIN_PARAMS}[bgmD];` +
-        `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0` +
-        `${fadeOutSegment}[mixed]`;
+        `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]`;
       args.push(
         "-filter_complex",
         filter,

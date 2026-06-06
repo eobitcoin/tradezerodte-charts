@@ -129,13 +129,14 @@ console.log(
   `  voice duration: ${voiceDuration.toFixed(2)}s → fade-out starts at ${fadeOutStart.toFixed(2)}s`,
 );
 
-// amix normalize=0 → voice stays at true level; only BGM responds to
-// volume tweaks. Default normalize=1 divides by inputs and made the
-// voice get louder whenever BGM got louder.
+// amix normalize=0 → voice stays at true level; only BGM responds.
+// Voice pre-attenuated to VOICE_VOLUME (0.80, ~-2 dB) to make room
+// for BGM so the mix doesn't sound louder than original briefing.
 const filter =
+  `[1:a]volume=0.80[voiceA];` +
   `[2:a]volume=0.20,afade=t=in:st=0:d=1.5[bgmA];` +
-  `[bgmA][1:a]sidechaincompress=threshold=0.05:ratio=6:attack=5:release=350[bgmD];` +
-  `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,` +
+  `[bgmA][voiceA]sidechaincompress=threshold=0.05:ratio=6:attack=5:release=350[bgmD];` +
+  `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,` +
   `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutSec}:curve=tri[mixed]`;
 
 const args = [

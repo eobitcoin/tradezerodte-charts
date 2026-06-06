@@ -79,7 +79,7 @@ const OUTRO_CARD_PATH = path.join(
  *
  *  The asset is a seamless 83-second loop (no internal fades) that
  *  ffmpeg loops infinitely and trims to voice length via `-shortest`. */
-const BRIEFING_BGM_KEY = "bgm/olivia_pulse_v1.mp3";
+const BRIEFING_BGM_KEY = "bgm/olivia_pulse_v2.mp3";
 
 /** Volume reduction applied to BGM in the mix. 0.20 ≈ -14 dB —
  *  clearly audible bed under the voice, gives the video real
@@ -91,6 +91,13 @@ const BRIEFING_BGM_KEY = "bgm/olivia_pulse_v1.mp3";
  *    0.12 (-18 dB) — still hard to hear
  *    0.20 (-14 dB) — current — meaningful presence */
 const BGM_VOLUME = 0.20;
+
+/** Voice level applied before mixing. 0.80 ≈ -2 dB — slight headroom
+ *  reduction to "make space" for the BGM. Without this, the voice
+ *  feels louder than the original briefing (which was voice-only at
+ *  unity); plus the sum of voice + BGM can clip above 1.0. This brings
+ *  the perceived voice level back to what the original briefing had. */
+const VOICE_VOLUME = 0.80;
 
 /** Sidechain compression: when the voice signal exceeds threshold, the
  *  BGM gets ducked. Threshold 0.05 (≈-26 dB) catches normal speech
@@ -229,16 +236,17 @@ export async function swapBriefingAudio(
         fadeOutStart != null
           ? `,afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${BGM_FADE_OUT_SEC}:curve=tri`
           : "";
-      // amix `normalize=0` keeps voice at its true level. With the
-      // default normalize=1, the output gets divided by the number
-      // of inputs, so bumping BGM_VOLUME would also boost the voice
-      // half because the divisor stays the same but the sum grows.
-      // normalize=0 sums without scaling — voice unaffected by BGM
-      // changes. (BGM is volume-reduced upstream so no clipping.)
+      // amix `normalize=0` keeps voice at its true (pre-amix) level.
+      // Default normalize=1 would divide the sum by 2, but then any
+      // BGM_VOLUME bump would also push voice. normalize=0 sums
+      // cleanly — each input's level is what we set it to. Voice is
+      // pre-attenuated by VOICE_VOLUME to leave headroom for the BGM
+      // and match the original voice-only briefing's perceived level.
       const filter =
+        `[1:a]volume=${VOICE_VOLUME}[voiceA];` +
         `[2:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=${BGM_FADE_IN_SEC}[bgmA];` +
-        `[bgmA][1:a]sidechaincompress=${SIDECHAIN_PARAMS}[bgmD];` +
-        `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0` +
+        `[bgmA][voiceA]sidechaincompress=${SIDECHAIN_PARAMS}[bgmD];` +
+        `[voiceA][bgmD]amix=inputs=2:duration=first:dropout_transition=0:normalize=0` +
         `${fadeOutSegment}[mixed]`;
       args.push(
         "-filter_complex",

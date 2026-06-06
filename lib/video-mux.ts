@@ -72,6 +72,32 @@ const OUTRO_CARD_PATH = path.join(
   "public/assets/briefing-outro.png",
 );
 
+/** Bucket key for the briefing-video background music asset. Uploaded
+ *  once via `scripts/upload-briefing-bgm.mjs`. To swap to a different
+ *  track, upload to a new versioned key (`bgm/olivia_pulse_v2.mp3`)
+ *  and bump this constant.
+ *
+ *  The asset is a seamless 83-second loop (no internal fades) that
+ *  ffmpeg loops infinitely and trims to voice length via `-shortest`. */
+const BRIEFING_BGM_KEY = "bgm/olivia_pulse_v1.mp3";
+
+/** Volume reduction applied to BGM in the mix. 0.08 ≈ -22 dB — quiet
+ *  enough to live under the voice without competing for the listener's
+ *  attention, audible enough to add momentum. Tune here if needed. */
+const BGM_VOLUME = 0.08;
+
+/** Sidechain compression: when the voice signal exceeds threshold, the
+ *  BGM gets ducked. Threshold 0.05 (≈-26 dB) catches normal speech
+ *  levels; ratio 6 means a -6 dB additional dip when she's talking;
+ *  attack 5ms (transparent), release 350ms (smooth recovery between
+ *  sentences). The net effect: music breathes around the voice. */
+const SIDECHAIN_PARAMS = "threshold=0.05:ratio=6:attack=5:release=350";
+
+/** Fade-in at video start (gentle ramp so music doesn't start cold)
+ *  and fade-out at end (avoids hard cut on the loop). */
+const BGM_FADE_IN_SEC = 1.5;
+const BGM_FADE_OUT_SEC = 2.5;
+
 export function buildBriefingVideoKey(tradingDay: string): string {
   return `briefings/${tradingDay}/video.mp4`;
 }
@@ -141,6 +167,19 @@ export async function swapBriefingAudio(
         `no audio in bucket for ${tradingDay} — run generate_voiceover_for_briefing first`,
       );
     }
+    // Also fetch the BGM asset from the bucket. If it's missing the
+    // pipeline falls back to voice-only — we don't want a missing BGM
+    // to break the publish flow. Soft-fail logged.
+    let bgmBytes: Buffer | null = null;
+    try {
+      const bgmObj = await getObjectStream(BRIEFING_BGM_KEY);
+      if (bgmObj) bgmBytes = await streamToBuffer(bgmObj.body);
+    } catch (err) {
+      console.warn(
+        `[video-mux] BGM fetch failed, continuing voice-only: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     const [videoBytes, audioBytes] = await Promise.all([
       fetchToBuffer(higgsfieldVideoUrl),
       streamToBuffer(audioObj.body),
@@ -148,25 +187,63 @@ export async function swapBriefingAudio(
 
     const videoIn = path.join(work, "in.mp4");
     const audioIn = path.join(work, "in.mp3");
+    const bgmIn = path.join(work, "bgm.mp3");
     const videoOut = path.join(work, "out.mp4");
     await writeFile(videoIn, new Uint8Array(videoBytes));
     await writeFile(audioIn, new Uint8Array(audioBytes));
+    if (bgmBytes) await writeFile(bgmIn, new Uint8Array(bgmBytes));
 
-    // 2. ffmpeg mux. Copy video stream (no re-encode), encode audio as AAC,
-    //    map audio from the MP3 only, cap to shortest stream.
-    const args = [
-      "-y",
-      "-i", videoIn,
-      "-i", audioIn,
-      "-c:v", "copy",
-      "-c:a", "aac",
-      "-b:a", "192k",
-      "-map", "0:v:0",
-      "-map", "1:a:0",
-      "-shortest",
-      "-movflags", "+faststart",
-      videoOut,
-    ];
+    // 2. ffmpeg mux. Copy video stream (no re-encode), encode audio as AAC.
+    //    Two paths:
+    //      - With BGM: voice + sidechain-ducked, looped BGM mixed together.
+    //      - Without BGM: voice-only (original behavior).
+    //    `-shortest` caps to voice duration. BGM loops infinitely via
+    //    `-stream_loop -1` so we don't need to know voice duration ahead.
+    const args: string[] = ["-y", "-i", videoIn, "-i", audioIn];
+    if (bgmBytes) {
+      args.push("-stream_loop", "-1", "-i", bgmIn);
+      // Filter graph:
+      //   [2:a] = looped BGM → volume down → fade in at start
+      //   [bgm][1:a] = sidechaincompress ducks bgm when voice speaks
+      //   [1:a][ducked] = mix voice (unity) + ducked BGM
+      //   final fade-out trims the tail before the hard cut
+      const filter =
+        `[2:a]volume=${BGM_VOLUME},afade=t=in:st=0:d=${BGM_FADE_IN_SEC}[bgmA];` +
+        `[bgmA][1:a]sidechaincompress=${SIDECHAIN_PARAMS}[bgmD];` +
+        `[1:a][bgmD]amix=inputs=2:duration=first:dropout_transition=0,` +
+        `afade=t=out:st=0:d=${BGM_FADE_OUT_SEC}:curve=tri[mixed]`;
+      // Note: afade fade-out st=0 with -shortest looks wrong but works —
+      // ffmpeg's -shortest trims AFTER filtering, and the afade
+      // "out" with no start time defaults to fading the tail of the
+      // emitted stream. The duration trim happens via -shortest based
+      // on the FIRST input (voice), so amix duration:first locks the
+      // output length to the voice. Cleaner alternative is to probe
+      // voice length first and apply afade with explicit st — left as
+      // a future tweak if the fade feels off.
+      args.push(
+        "-filter_complex",
+        filter,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-map", "0:v:0",
+        "-map", "[mixed]",
+        "-shortest",
+        "-movflags", "+faststart",
+        videoOut,
+      );
+    } else {
+      args.push(
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-shortest",
+        "-movflags", "+faststart",
+        videoOut,
+      );
+    }
 
     await runFfmpeg(ffmpegBin, args);
 

@@ -25,11 +25,13 @@ export default async function OptionsEdgeLandingPage() {
     .orderBy(desc(optionsEdgeScans.scanDay))
     .limit(1);
 
+  // Twice-weekly cadence (Sun + Tue) means 26 scans ≈ 3 months of
+  // visible history in the archive footer. Sunday-only cadence was 12.
   const archive = await db
     .select({ scanDay: optionsEdgeScans.scanDay })
     .from(optionsEdgeScans)
     .orderBy(desc(optionsEdgeScans.scanDay))
-    .limit(12);
+    .limit(26);
 
   if (!latest) {
     return (
@@ -41,11 +43,12 @@ export default async function OptionsEdgeLandingPage() {
         <main className="max-w-5xl mx-auto px-4 py-12 space-y-4 text-center">
           <h1 className="text-xl font-semibold">No Options Edge scans yet</h1>
           <p className="text-sm text-black/60 dark:text-white/60 max-w-md mx-auto">
-            The Options Edge scanner runs every Sunday. It z-scores each
-            ticker&apos;s IV surface against its own 1-year history and
-            flags anomalies in ATM IV rank, 25Δ skew, term structure, and
-            IV/HV ratio. The first scan will appear here once the routine
-            publishes.
+            The Options Edge scanner runs twice a week — Sunday evening
+            for week-ahead planning and Tuesday after close for the
+            mid-week IV refresh. It z-scores each ticker&apos;s IV surface
+            against its own 1-year history and flags anomalies in ATM IV
+            rank, 25Δ skew, term structure, and IV/HV ratio. The first
+            scan will appear here once the routine publishes.
           </p>
           <Link href="/research" className="inline-block underline text-sm">
             Back to research →

@@ -832,3 +832,27 @@ Date range: 2025-06-13 → 2026-06-01
 [GS] 50/252 done
 [GS] 2026-01-29 chain fetch failed: Expected ',' or '}' after property value in JSON at position 233008 (line 1 column 233009)
 [GS] 75/252 done
+[GS] 2026-02-26 chain fetch failed: terminated
+[GS] 2026-03-09 chain fetch failed: terminated
+[GS] 100/252 done
+[GS] 2026-03-17 chain fetch failed: Expected ',' or '}' after property value in JSON at position 180303 (line 1 column 180304)
+[GS] 2026-04-06 chain fetch failed: Expected ',' or '}' after property value in JSON at position 197128 (line 1 column 197129)
+[GS] 2026-04-08 chain fetch failed: terminated
+[GS] 125/252 done
+[GS] 2026-04-27 chain fetch failed: terminated
+[GS] 150/252 done
+[GS] DONE — written:154 skipped:82 failed:16
+[MS] starting (252 dates)
+Options Edge backfill — 5 tickers × 252 days
+Tickers: MA, LMT, BLK, UNH, RTX
+Concurrency: 1, per-call delay: 2000ms
+
+Date range: 2025-06-13 → 2026-06-01
+
+[MA] starting (252 dates)
+[MS] 25/252 done
+[MA] 2025-07-02 chain fetch failed: terminated
+[MS] 2025-11-10 chain fetch failed: terminated
+[MA] 2025-07-11 chain fetch failed: Polygon /v3/snapshot/options/MA?cursor=YXA9TyUzQU1BMjYwNjE4UDAwNDE1MDAwJTNBNDE1LjAwJmFzPSZleHBpcmF0aW9uX2RhdGUuZ3RlPTIwMjYtMDYtMTgmbGltaXQ9MjUwJnNvcnQ9dGlja2Vy → HTTP 500: {"status":"ERROR","request_id":"93bb90cd695722ca98cecea825e56fce","error":"Unable to authenticate"}
+[MS] 50/252 done
+[MA] 25/252 done

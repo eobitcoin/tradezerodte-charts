@@ -334,7 +334,7 @@ export default async function OptionsEdgeScanView({ scan, archive }: Props) {
             Recent scans
           </h2>
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {archive.slice(0, 12).map((a) => (
+            {archive.slice(0, 26).map((a) => (
               <li key={a.scanDay}>
                 <Link
                   href={`/research/options-edge/${a.scanDay}`}

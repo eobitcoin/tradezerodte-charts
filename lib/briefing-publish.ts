@@ -133,6 +133,44 @@ export async function publishBriefingToYouTube(
   const { ensureDisclaimer, YT_DISCLAIMER } = await import("@/lib/briefings-copy");
   const description = ensureDisclaimer(rawDescription, YT_DISCLAIMER);
 
+  // Generate a branded thumbnail with today's signature stat. We pull
+  // SPY 0DTE max pain from the max_pain_posts table for the
+  // attention-grabbing big number. Falls back gracefully — if the
+  // thumbnail generation or data query fails, we publish without one
+  // and YouTube auto-picks a frame.
+  let thumbnailBuffer: Buffer | undefined;
+  try {
+    const { maxPainPosts } = await import("@/lib/db/schema");
+    const [latestMaxPain] = await db
+      .select()
+      .from(maxPainPosts)
+      .where(eq(maxPainPosts.scanDay, tradingDay))
+      .limit(1);
+    const spy = latestMaxPain?.tickers?.find((t) => t.ticker === "SPY");
+    const spyZeroDte = spy?.expirations?.find(
+      (e) => e.exp === tradingDay || e.dte === 0,
+    );
+    const bigNumber = spyZeroDte?.maxPain ?? spy?.expirations?.[0]?.maxPain;
+
+    if (bigNumber != null) {
+      const { generateBriefingThumbnail } = await import(
+        "@/lib/thumbnail-generator"
+      );
+      const buf = await generateBriefingThumbnail({
+        videoBuffer,
+        tradingDay,
+        bigNumber: Math.round(bigNumber),
+        bigLabel: "MAX PAIN",
+        bigSubLabel: "SPY",
+      });
+      thumbnailBuffer = buf ?? undefined;
+    }
+  } catch (err) {
+    console.warn(
+      `[briefing-publish] thumbnail prep failed for ${tradingDay}, continuing without: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   try {
     const { uploadBriefingToYouTube } = await import("@/lib/youtube");
     const result = await uploadBriefingToYouTube({
@@ -141,6 +179,7 @@ export async function publishBriefingToYouTube(
       description,
       privacyStatus: opts.privacy ?? "public",
       isShort: opts.isShort ?? true,
+      thumbnailBuffer,
     });
     await db
       .update(briefings)

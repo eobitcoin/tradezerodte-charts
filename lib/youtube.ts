@@ -58,6 +58,11 @@ interface UploadOpts {
   privacyStatus?: "public" | "unlisted" | "private";
   /** True → publishes as a Short (vertical aspect, ≤60s). YouTube auto-detects from aspect ratio + duration, but we tag #Shorts in the description as belt-and-suspenders. */
   isShort?: boolean;
+  /** Optional custom thumbnail (PNG/JPEG buffer, <2MB, 1280×720). If
+   *  provided, we call `thumbnails.set` after `videos.insert`. Failure
+   *  to upload the thumbnail does NOT fail the video upload — we log
+   *  and continue, since the video itself is the critical artifact. */
+  thumbnailBuffer?: Buffer;
 }
 
 export interface UploadResult {
@@ -154,6 +159,26 @@ export async function uploadBriefingToYouTube(opts: UploadOpts): Promise<UploadR
       `YouTube videos.insert returned no id: ${JSON.stringify(data).slice(0, 400)}`,
     );
   }
+
+  // Custom thumbnail (optional). Failure here is logged but doesn't
+  // bubble — the video upload itself succeeded and we never want a
+  // thumbnail issue to cost us the daily publish.
+  if (opts.thumbnailBuffer && opts.thumbnailBuffer.length > 0) {
+    try {
+      await yt.thumbnails.set({
+        videoId: data.id,
+        media: {
+          mimeType: "image/png",
+          body: Readable.from(opts.thumbnailBuffer),
+        },
+      });
+    } catch (err) {
+      console.warn(
+        `[youtube] thumbnail upload failed for video ${data.id}: ${err instanceof Error ? err.message : String(err)}. Video is live; YouTube will use an auto-generated thumbnail.`,
+      );
+    }
+  }
+
   return {
     videoId: data.id,
     privacyStatus: data.status?.privacyStatus ?? "unknown",

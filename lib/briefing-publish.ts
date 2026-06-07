@@ -13,7 +13,7 @@
  * drift apart.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { briefings } from "@/lib/db/schema";
 
@@ -134,23 +134,37 @@ export async function publishBriefingToYouTube(
   const description = ensureDisclaimer(rawDescription, YT_DISCLAIMER);
 
   // Generate a branded thumbnail with today's signature stat. We pull
-  // SPY 0DTE max pain from the max_pain_posts table for the
+  // SPY max pain from the max_pain_posts table for the
   // attention-grabbing big number. Falls back gracefully — if the
   // thumbnail generation or data query fails, we publish without one
   // and YouTube auto-picks a frame.
+  //
+  // Strategy: max-pain only scans on Monday at 9:55am ET, so most
+  // weekdays have no row for tradingDay itself. We pull the LATEST
+  // available scan (by scan_day desc) and use its SPY data — typically
+  // 0-4 days stale but still meaningful for the thumbnail hook. From
+  // that scan we prefer the 0DTE expiration if one matches the current
+  // trading day; otherwise we use the front-month max pain (the
+  // single number most representative of "where SPY pins this week").
   let thumbnailBuffer: Buffer | undefined;
   try {
     const { maxPainPosts } = await import("@/lib/db/schema");
     const [latestMaxPain] = await db
       .select()
       .from(maxPainPosts)
-      .where(eq(maxPainPosts.scanDay, tradingDay))
+      .orderBy(desc(maxPainPosts.scanDay))
       .limit(1);
     const spy = latestMaxPain?.tickers?.find((t) => t.ticker === "SPY");
+    // Prefer today's 0DTE expiration if the scan covers it; otherwise
+    // use the front-month max pain (a clean weekly anchor) and fall
+    // back to whatever first expiration we have.
     const spyZeroDte = spy?.expirations?.find(
       (e) => e.exp === tradingDay || e.dte === 0,
     );
-    const bigNumber = spyZeroDte?.maxPain ?? spy?.expirations?.[0]?.maxPain;
+    const bigNumber =
+      spyZeroDte?.maxPain ??
+      spy?.frontMonthMaxPain ??
+      spy?.expirations?.[0]?.maxPain;
 
     if (bigNumber != null) {
       const { generateBriefingThumbnail } = await import(

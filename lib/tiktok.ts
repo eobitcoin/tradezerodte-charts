@@ -277,25 +277,31 @@ export async function exchangeCodeForTokens(
   redirectUri: string,
   codeVerifier?: string,
 ): Promise<{ refresh_token: string | null; access_token: string | null; open_id: string | null }> {
-  const body = new URLSearchParams({
-    client_key: clientKey,
-    client_secret: clientSecret,
-    code,
-    grant_type: "authorization_code",
-    redirect_uri: redirectUri,
-  });
-  // Only include code_verifier if PKCE was used in the auth step.
-  if (codeVerifier) {
-    body.set("code_verifier", codeVerifier);
-    console.log("Exchange request body:", body.toString().replace(clientSecret, "<SECRET>"));
-  }
+  // Build body manually instead of via URLSearchParams. TikTok's PKCE
+  // validator has been observed rejecting requests where URLSearchParams
+  // over-encodes special chars in the auth `code` (e.g. `!` → `%21`).
+  // We send the code raw — only encoding chars that MUST be encoded in
+  // form-urlencoded (like `:` and `/` in the redirect URI).
+  const fields: Array<[string, string]> = [
+    ["client_key", clientKey],
+    ["client_secret", clientSecret],
+    ["code", code],
+    ["grant_type", "authorization_code"],
+    ["redirect_uri", encodeURIComponent(redirectUri)],
+  ];
+  if (codeVerifier) fields.push(["code_verifier", codeVerifier]);
+  const bodyStr = fields.map(([k, v]) => `${k}=${v}`).join("&");
+  console.log(
+    "Exchange request body (raw):",
+    bodyStr.replace(clientSecret, "<SECRET>"),
+  );
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       "Cache-Control": "no-cache",
     },
-    body: body.toString(),
+    body: bodyStr,
   });
   const text = await res.text();
   let parsed: TokenResponse & { error?: string; error_description?: string };

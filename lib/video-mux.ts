@@ -159,6 +159,48 @@ async function fetchToBuffer(url: string, timeoutMs = 60_000): Promise<Buffer> {
   }
 }
 
+/**
+ * Fetch BGM bytes from the bucket with retries. Production has shown
+ * intermittent failures here — local re-mux works against the same
+ * bucket, the cron occasionally falls back to voice-only. Retry with
+ * exponential backoff (500ms, 1.5s, 4s) before giving up.
+ *
+ * Returns null on a clean miss (no object at that key) or after
+ * exhausting retries — callers fall back to voice-only.
+ */
+async function fetchBgmWithRetry(
+  key: string,
+  attempts = 3,
+): Promise<Buffer | null> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const obj = await getObjectStream(key);
+      if (!obj) return null; // genuine miss — don't retry
+      const bytes = await streamToBuffer(obj.body);
+      if (i > 0) {
+        console.log(
+          `[video-mux] BGM fetch succeeded on attempt ${i + 1}/${attempts}`,
+        );
+      }
+      return bytes;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) {
+        const backoffMs = 500 * Math.pow(3, i);
+        console.warn(
+          `[video-mux] BGM fetch attempt ${i + 1}/${attempts} failed (${err instanceof Error ? err.message : String(err)}), retrying in ${backoffMs}ms`,
+        );
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  console.warn(
+    `[video-mux] BGM fetch failed after ${attempts} attempts, continuing voice-only: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+  );
+  return null;
+}
+
 async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
   const reader = stream.getReader();
@@ -211,18 +253,10 @@ async function swapVideoAudioGeneric(
         `no audio in bucket at ${audioKey} — run ${opts.missingAudioHint} first`,
       );
     }
-    // Also fetch the BGM asset from the bucket. If it's missing the
-    // pipeline falls back to voice-only — we don't want a missing BGM
-    // to break the publish flow. Soft-fail logged.
-    let bgmBytes: Buffer | null = null;
-    try {
-      const bgmObj = await getObjectStream(BRIEFING_BGM_KEY);
-      if (bgmObj) bgmBytes = await streamToBuffer(bgmObj.body);
-    } catch (err) {
-      console.warn(
-        `[video-mux] BGM fetch failed, continuing voice-only: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    // Also fetch the BGM asset from the bucket with retries. Production
+    // had transient failures here on first attempt; retry covers the
+    // intermittent bucket hiccups we've observed.
+    const bgmBytes = await fetchBgmWithRetry(BRIEFING_BGM_KEY);
 
     const [videoBytes, audioBytes] = await Promise.all([
       fetchToBuffer(higgsfieldVideoUrl),
@@ -510,23 +544,14 @@ export async function applyOutroCard(
     const off = xfadeOffset.toFixed(3);
     const total = totalDur.toFixed(3);
 
-    // OPTIONAL — BGM that continues during the outro card hold so the
-    // 2.5s after narration ends doesn't drop into silence. We
-    // download the same BGM the mux step used and concat a fresh
-    // segment onto the trimmed narration audio. If BGM fetch fails,
-    // fall back to silent padding (the original behavior).
+    // OPTIONAL — BGM that continues during the outro card hold. Uses
+    // the same retry helper as the swap step so transient bucket
+    // failures don't silently drop the outro music.
     let outroBgmFile: string | null = null;
-    try {
-      const bgmObj = await getObjectStream(BRIEFING_BGM_KEY);
-      if (bgmObj) {
-        outroBgmFile = path.join(work, "outro-bgm.mp3");
-        await writeFile(
-          outroBgmFile,
-          new Uint8Array(await streamToBuffer(bgmObj.body)),
-        );
-      }
-    } catch {
-      // Silent fallback.
+    const outroBgmBytes = await fetchBgmWithRetry(BRIEFING_BGM_KEY);
+    if (outroBgmBytes) {
+      outroBgmFile = path.join(work, "outro-bgm.mp3");
+      await writeFile(outroBgmFile, new Uint8Array(outroBgmBytes));
     }
 
     // Audio filter: two paths depending on whether BGM is available.

@@ -248,7 +248,7 @@ export function buildAuthUrl(
   clientKey: string,
   redirectUri: string,
   state: string,
-  codeChallenge: string,
+  codeChallenge?: string,
 ): string {
   const params = new URLSearchParams({
     client_key: clientKey,
@@ -256,12 +256,17 @@ export function buildAuthUrl(
     scope: TT_SCOPES.join(","),
     redirect_uri: redirectUri,
     state,
-    // PKCE — required by TikTok as of 2024+. We use the S256 method (SHA-256
-    // of the verifier, base64url-encoded). The verifier travels back to us
-    // in exchangeCodeForTokens so TikTok can verify the pair.
-    code_challenge: codeChallenge,
-    code_challenge_method: "S256",
   });
+  // PKCE is OPTIONAL for confidential clients (those sending client_secret
+  // at exchange). TikTok's sandbox PKCE validator has historically been
+  // buggy ("Code verifier or code challenge is invalid" even with correct
+  // S256 hashes). Since we have client_secret, we omit PKCE entirely
+  // unless an explicit challenge is provided — same security posture as a
+  // standard authorization-code-with-secret flow.
+  if (codeChallenge) {
+    params.set("code_challenge", codeChallenge);
+    params.set("code_challenge_method", "S256");
+  }
   return `${AUTH_BASE}?${params.toString()}`;
 }
 
@@ -270,7 +275,7 @@ export async function exchangeCodeForTokens(
   clientSecret: string,
   code: string,
   redirectUri: string,
-  codeVerifier: string,
+  codeVerifier?: string,
 ): Promise<{ refresh_token: string | null; access_token: string | null; open_id: string | null }> {
   const body = new URLSearchParams({
     client_key: clientKey,
@@ -278,8 +283,12 @@ export async function exchangeCodeForTokens(
     code,
     grant_type: "authorization_code",
     redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
   });
+  // Only include code_verifier if PKCE was used in the auth step.
+  if (codeVerifier) {
+    body.set("code_verifier", codeVerifier);
+    console.log("Exchange request body:", body.toString().replace(clientSecret, "<SECRET>"));
+  }
   const res = await fetch(TOKEN_URL, {
     method: "POST",
     headers: {

@@ -32,6 +32,7 @@ const PUBLIC_PATHS = new Set([
   "/tiktok1AxeWfeC2bcjMMFzq8BfQ2HoyBfSJkpQ.txt",
   "/tiktok3X8MMqR3myQm4PedkEImyxThRCkfYvil.txt",
   "/tiktokE2TBjUCqXfjIUmUc5HHvvhFTRA9Ps7Lu.txt",
+  "/tiktokERzzhCIRtkcUffKvKzbfpY3JNTO5Fuol.txt",
 ]);
 
 /** Public route prefixes — any path starting with these is unauthenticated.

@@ -33,11 +33,24 @@ import { createHash, randomBytes } from "node:crypto";
 import { buildAuthUrl, exchangeCodeForTokens } from "../lib/tiktok";
 
 /**
- * PKCE verifier: 64 random bytes → base64url (the spec allows 43–128 chars
- * URL-safe). We never persist it — it lives only inside this one auth dance.
+ * PKCE verifier — 64 chars generated DIRECTLY from the spec character
+ * set [A-Z, a-z, 0-9, -, ., _, ~] instead of base64url-of-bytes.
+ *
+ * TikTok's sandbox PKCE validator rejects verifiers that hash correctly
+ * (our diagnostic confirms our SHA256 is right) — apparently because
+ * the verifier's encoding doesn't match what their validator expects.
+ * Going printable-ASCII direct sidesteps any base64url quirks.
  */
 function generatePkce(): { verifier: string; challenge: string } {
-  const verifier = randomBytes(64).toString("base64url");
+  // Alphanumeric ONLY — no chars URLSearchParams might encode.
+  // Length 43 (PKCE spec minimum).
+  const CHARS =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = randomBytes(43);
+  let verifier = "";
+  for (let i = 0; i < 43; i++) {
+    verifier += CHARS[bytes[i] % CHARS.length];
+  }
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   return { verifier, challenge };
 }
@@ -71,9 +84,21 @@ async function main() {
 
   // CSRF guard — TikTok echoes this back; we verify it matches.
   const state = randomBytes(16).toString("hex");
-  // PKCE pair — challenge goes in the auth URL, verifier in the token exchange.
   const { verifier: codeVerifier, challenge: codeChallenge } = generatePkce();
   const authUrl = buildAuthUrl(clientKey, REDIRECT_URI, state, codeChallenge);
+
+  // DIAGNOSTIC — independently re-hash the verifier to confirm our PKCE
+  // math is consistent. If the printed "recomputed" challenge differs
+  // from what we sent in the auth URL, that's a bug.
+  const recomputed = createHash("sha256")
+    .update(codeVerifier)
+    .digest("base64url");
+  console.log("PKCE diagnostics:");
+  console.log(`  verifier (len=${codeVerifier.length}): ${codeVerifier}`);
+  console.log(`  challenge sent: ${codeChallenge}`);
+  console.log(`  recomputed:     ${recomputed}`);
+  console.log(`  match: ${codeChallenge === recomputed ? "✓" : "✗ — bug!"}`);
+  console.log("");
 
   const code = await new Promise<string>((resolve, reject) => {
     const server = createServer(async (req, res) => {

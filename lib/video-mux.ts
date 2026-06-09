@@ -163,40 +163,61 @@ async function fetchToBuffer(url: string, timeoutMs = 60_000): Promise<Buffer> {
  * Fetch BGM bytes from the bucket with retries. Production has shown
  * intermittent failures here — local re-mux works against the same
  * bucket, the cron occasionally falls back to voice-only. Retry with
- * exponential backoff (500ms, 1.5s, 4s) before giving up.
+ * exponential backoff (500ms, 1.5s, 4.5s) before giving up.
  *
- * Returns null on a clean miss (no object at that key) or after
- * exhausting retries — callers fall back to voice-only.
+ * Retries on BOTH thrown errors and null-returns (Tigris has occasionally
+ * returned 404 transiently for objects that exist — our retry-on-null
+ * covers that case). Only after `attempts` failures do we return null,
+ * which is the "genuine miss" signal callers fall back to.
+ *
+ * Heavily logged so production failures are debuggable from Railway logs.
  */
 async function fetchBgmWithRetry(
   key: string,
   attempts = 3,
+  label = "BGM",
 ): Promise<Buffer | null> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
+    const t0 = Date.now();
     try {
+      console.log(`[video-mux] ${label} fetch attempt ${i + 1}/${attempts} (key=${key})`);
       const obj = await getObjectStream(key);
-      if (!obj) return null; // genuine miss — don't retry
-      const bytes = await streamToBuffer(obj.body);
-      if (i > 0) {
-        console.log(
-          `[video-mux] BGM fetch succeeded on attempt ${i + 1}/${attempts}`,
+      if (!obj) {
+        // Treat as transient — retry. Genuine misses tend to be consistent;
+        // transient nulls clear on retry.
+        console.warn(
+          `[video-mux] ${label} fetch attempt ${i + 1}/${attempts} returned null (no object) — will retry`,
         );
+        if (i < attempts - 1) {
+          const backoffMs = 500 * Math.pow(3, i);
+          await new Promise((r) => setTimeout(r, backoffMs));
+          continue;
+        }
+        console.warn(
+          `[video-mux] ${label} fetch failed: all ${attempts} attempts returned null`,
+        );
+        return null;
       }
+      const bytes = await streamToBuffer(obj.body);
+      console.log(
+        `[video-mux] ${label} fetch OK on attempt ${i + 1}/${attempts}: ${bytes.length} bytes in ${Date.now() - t0}ms`,
+      );
       return bytes;
     } catch (err) {
       lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
       if (i < attempts - 1) {
         const backoffMs = 500 * Math.pow(3, i);
         console.warn(
-          `[video-mux] BGM fetch attempt ${i + 1}/${attempts} failed (${err instanceof Error ? err.message : String(err)}), retrying in ${backoffMs}ms`,
+          `[video-mux] ${label} fetch attempt ${i + 1}/${attempts} threw: ${msg} — retrying in ${backoffMs}ms`,
         );
         await new Promise((r) => setTimeout(r, backoffMs));
       }
     }
   }
   console.warn(
-    `[video-mux] BGM fetch failed after ${attempts} attempts, continuing voice-only: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    `[video-mux] ${label} fetch failed after ${attempts} attempts, continuing voice-only. Last error: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
   );
   return null;
 }
@@ -256,7 +277,7 @@ async function swapVideoAudioGeneric(
     // Also fetch the BGM asset from the bucket with retries. Production
     // had transient failures here on first attempt; retry covers the
     // intermittent bucket hiccups we've observed.
-    const bgmBytes = await fetchBgmWithRetry(BRIEFING_BGM_KEY);
+    const bgmBytes = await fetchBgmWithRetry(BRIEFING_BGM_KEY, 3, "BGM-swap");
 
     const [videoBytes, audioBytes] = await Promise.all([
       fetchToBuffer(higgsfieldVideoUrl),
@@ -548,7 +569,7 @@ export async function applyOutroCard(
     // the same retry helper as the swap step so transient bucket
     // failures don't silently drop the outro music.
     let outroBgmFile: string | null = null;
-    const outroBgmBytes = await fetchBgmWithRetry(BRIEFING_BGM_KEY);
+    const outroBgmBytes = await fetchBgmWithRetry(BRIEFING_BGM_KEY, 3, "BGM-outro");
     if (outroBgmBytes) {
       outroBgmFile = path.join(work, "outro-bgm.mp3");
       await writeFile(outroBgmFile, new Uint8Array(outroBgmBytes));

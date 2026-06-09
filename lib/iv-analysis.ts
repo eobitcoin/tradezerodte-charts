@@ -519,16 +519,28 @@ async function reSnapAnomaliesToListedStrikes(
     byTicker.get(a.ticker)!.push(a);
   }
 
-  // Throttle slightly to stay polite to Polygon — same per-ticker cadence
-  // as the IV snapshot cron. ~13 tickers max × ~3 anomalies each.
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  let first = true;
-  for (const [ticker, anoms] of byTicker) {
-    if (!first) await sleep(500);
-    first = false;
+  // Only snap the TOP N anomalies (by ranking — these are the ones
+  // displayed and most likely to be acted on). The expanded 67-name
+  // watchlist would otherwise generate too many strike-snap calls and
+  // blow past the MCP tool's 60s timeout. Lower-ranked anomalies keep
+  // their theoretical strikes; if a routine wants them snapped, it can
+  // call separately.
+  const TOP_N_FOR_SNAP = 20;
+  const topTickers = new Set(
+    anomalies.slice(0, TOP_N_FOR_SNAP).map((a) => a.ticker),
+  );
+  const tickersToSnap = [...byTicker.keys()].filter((t) => topTickers.has(t));
+
+  // Run chain fetches in parallel with a concurrency cap. Sequential
+  // 500ms throttle was reasonable for 13 tickers; with 67-name watchlist
+  // it exploded past the 60s MCP timeout. Concurrency=4 keeps Polygon
+  // happy while finishing in ~10-15s for typical loads.
+  const CONCURRENCY = 4;
+  async function snapTicker(ticker: string): Promise<void> {
+    const anoms = byTicker.get(ticker)!;
     try {
       const chain = await fetchOptionChain(ticker);
-      if (chain.length === 0) continue;
+      if (chain.length === 0) return;
 
       // Narrow to expiries in the 21-45 day window — that's where our
       // theoretical strikes target (~30 DTE). The strike grid is
@@ -570,6 +582,20 @@ async function reSnapAnomaliesToListedStrikes(
       // fail the whole publish.
     }
   }
+
+  // Run snapTicker over tickersToSnap with bounded concurrency.
+  // Simple worker pool: shift items off a queue until empty.
+  const queue = [...tickersToSnap];
+  const workers = Array.from(
+    { length: Math.min(CONCURRENCY, queue.length) },
+    async () => {
+      while (queue.length > 0) {
+        const ticker = queue.shift();
+        if (ticker) await snapTicker(ticker);
+      }
+    },
+  );
+  await Promise.all(workers);
 }
 
 export async function scanOptionsEdgeUniverse(): Promise<{

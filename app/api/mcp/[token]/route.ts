@@ -814,7 +814,7 @@ const TOOLS = [
   {
     name: "scan_options_edge",
     description:
-      "Run the Options Edge IV anomaly scanner across the 25-name watchlist (SPY, QQQ, IWM + mega-caps + semis + high-IV retail + sector ETFs). Reads from the iv_snapshots table built by the daily backfill. For each ticker computes 1-year z-scores on four metrics — ATM IV rank, 25Δ skew, term structure slope (60d-30d), and IV/HV ratio. Returns the ranked anomalies (|z| ≥ 2.0 by default) plus per-ticker analysis. Anomaly objects include suggested trade strategy and thesis. Use this in the weekly Options Edge research routine before publishing. Returns {scanDate, universeSize, rankedAnomalies, byTicker}.",
+      "Run the Options Edge IV anomaly scanner across the ~67-name watchlist (SPY, QQQ, IWM + mega-caps + semis + high-IV retail + financials + healthcare + sector ETFs). Reads from the iv_snapshots table built by the daily backfill. For each ticker computes 1-year z-scores on four metrics — ATM IV rank, 25Δ skew, term structure slope (60d-30d), and IV/HV ratio. Returns the ranked anomalies (|z| ≥ 2.0 by default) plus compact per-ticker summaries (ticker, observations, anomalyCount — NOT full series data). Anomaly objects include suggested trade strategy and thesis. Use this in the weekly Options Edge research routine; pass rankedAnomalies verbatim to publish_options_edge_scan. Returns {scanDate, universeSize, rankedAnomalies, tickerSummary}.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -5628,7 +5628,28 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
     if (name === "scan_options_edge") {
       try {
         const { scanOptionsEdgeUniverse } = await import("@/lib/iv-analysis");
-        const out = await scanOptionsEdgeUniverse();
+        const full = await scanOptionsEdgeUniverse();
+        // Trim the response down to what the publishing routine actually
+        // consumes — rankedAnomalies + summary stats. The full byTicker
+        // analyses (current metrics + 1-year series + per-ticker
+        // anomaly lists) blow the agent's context budget; the routine
+        // only needs the rankedAnomalies array to call
+        // publish_options_edge_scan. Per-ticker detail is recomputable
+        // on the page render side.
+        const out = {
+          scanDate: full.scanDate,
+          universeSize: full.universeSize,
+          rankedAnomalies: full.rankedAnomalies,
+          // Compact per-ticker summary: only ticker name + observation
+          // count + count of anomalies it surfaced. Lets the routine
+          // explain coverage in its prose without holding the full
+          // analysis objects.
+          tickerSummary: full.byTicker.map((t) => ({
+            ticker: t.ticker,
+            observations: t.observations,
+            anomalyCount: t.anomalies.length,
+          })),
+        };
         return {
           content: [{ type: "text", text: JSON.stringify(out) }],
           isError: false,

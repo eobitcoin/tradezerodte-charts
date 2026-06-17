@@ -5640,14 +5640,24 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           scanDate: full.scanDate,
           universeSize: full.universeSize,
           rankedAnomalies: full.rankedAnomalies,
-          // Compact per-ticker summary: only ticker name + observation
-          // count + count of anomalies it surfaced. Lets the routine
-          // explain coverage in its prose without holding the full
-          // analysis objects.
+          // Compact per-ticker summary — drops the full 1-year series
+          // and individual anomaly objects but KEEPS the current metric
+          // percentiles. The routine uses these to write the regime
+          // paragraph ("most names sit in normal ranges" / "leaning
+          // sell-vol" etc.) without needing the full byTicker payload.
           tickerSummary: full.byTicker.map((t) => ({
             ticker: t.ticker,
             observations: t.observations,
             anomalyCount: t.anomalies.length,
+            // Current metric snapshot — percentiles only (numeric 0..100)
+            // so the routine can quickly read "is this ticker stretched
+            // or normal" without parsing z-scores.
+            percentiles: {
+              atmIvRank: t.metrics.atm_iv_rank.percentile,
+              skew: t.metrics.skew_z.percentile,
+              termSlope: t.metrics.term_z.percentile,
+              ivHvRatio: t.metrics.iv_hv_ratio.percentile,
+            },
           })),
         };
         return {

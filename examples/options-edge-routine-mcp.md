@@ -32,12 +32,25 @@ Call **`scan_options_edge`** with no arguments. Returns:
 ```
 {
   scanDate: "YYYY-MM-DD",
-  universeSize: 25,
+  universeSize: 67,
   rankedAnomalies: [
     { ticker, metric, currentValue, zScore, percentileRank, direction, suggestedStrategy, thesis, surface: {...} },
     ...
   ],
-  byTicker: [...]  // full per-ticker analysis for context
+  tickerSummary: [
+    {
+      ticker: "SPY",
+      observations: 252,
+      anomalyCount: 0,
+      percentiles: {
+        atmIvRank: 12.3,   // 0..100 — IV rank percentile vs own 1yr range
+        skew: 48.5,        // 0..100 — 25Δ skew percentile
+        termSlope: 71.2,   // 0..100 — 60d-30d slope percentile
+        ivHvRatio: 34.7    // 0..100 — IV/HV ratio percentile
+      }
+    },
+    // ...one entry per ticker in the ~67-name universe
+  ]
 }
 ```
 
@@ -67,7 +80,7 @@ Earnings calendar, Fed meeting, OPEX, election — anything in the next 5 tradin
 
 **Section guidance:**
 
-1. **Regime context** (1 paragraph, NO heading). What's the vol environment telling us right now? Look at the `byTicker` data for SPY/QQQ — are most names sitting in normal ranges or stretched? Is the universe leaning sell-vol (most names at high IV ranks) or buy-vol (low IV ranks)? This is the macro framing.
+1. **Regime context** (1 paragraph, NO heading). What's the vol environment telling us right now? Look at the `tickerSummary` percentiles for SPY/QQQ — are most names sitting in normal ranges (`atmIvRank` between 30–70) or stretched (>80 or <20)? Compute a quick aggregate across the universe: count how many tickers have `atmIvRank` above 70 (vol-stretched) vs below 30 (vol-compressed). If most names lean high IV rank, the universe is in a premium-selling regime; if most lean low, it's a premium-buying regime. This is the macro framing.
 
 2. **`## Anomalies` — REQUIRED heading.** Pick the 2–3 most extreme anomalies (highest |z|) and write them as a numbered list. The website lifts this entire section into a green hero box at the top of the post, so DO emit the heading exactly as `## Anomalies` and DO use the numbered-list format. Lead each item with bold `**TICKER (metric, z=±X.X)**` so the box reads like a scan-and-go briefing.
 

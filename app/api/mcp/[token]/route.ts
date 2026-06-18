@@ -4830,11 +4830,38 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           isError: false,
         };
       } catch (err) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        try {
+          const a = args as { week_anchor?: string };
+          const weekAnchor = a.week_anchor || nyTradingDay();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(weekAnchor)) {
+            const { weeklyEarningsBriefings } = await import("@/lib/db/schema");
+            const [row] = await db
+              .select({ errorLog: weeklyEarningsBriefings.errorLog })
+              .from(weeklyEarningsBriefings)
+              .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor))
+              .limit(1);
+            if (row) {
+              const errorLog = Array.isArray(row.errorLog) ? row.errorLog : [];
+              errorLog.push({
+                at: new Date().toISOString(),
+                step: "generating",
+                message: `voiceover failed: ${errMessage}`,
+              });
+              await db
+                .update(weeklyEarningsBriefings)
+                .set({ errorLog, updatedAt: sql`now()` })
+                .where(eq(weeklyEarningsBriefings.weekAnchor, weekAnchor));
+            }
+          }
+        } catch (logErr) {
+          console.error("[voiceover-weekly] failed to persist error breadcrumb", logErr);
+        }
         return {
           content: [
             {
               type: "text",
-              text: `generate_voiceover_for_weekly_earnings_brief failed: ${err instanceof Error ? err.message : String(err)}`,
+              text: `generate_voiceover_for_weekly_earnings_brief failed: ${errMessage}`,
             },
           ],
           isError: true,

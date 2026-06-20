@@ -1,11 +1,15 @@
 /**
  * Sector Flow scanner.
  *
- * Pulls 2-min windows of stock trades + NBBO for the 22-name universe,
+ * Pulls 5-min windows of stock trades + NBBO for the 22-name universe,
  * classifies each print as aggressive-buy / aggressive-sell / ambiguous
  * via classifyAggressor (same Lee-Ready-style rule UOA uses), aggregates
  * per ticker, and upserts one row per (ticker, window_start) into
  * sector_flow_bars.
+ *
+ * 5-min cadence is set by Railway's cron floor (minimum interval is 5
+ * minutes). The window size matches the cadence so each cron run owns
+ * the bar it produces — no overlap, no gaps.
  *
  * Universe (22 names):
  *   Sector SPDRs (11): XLK XLF XLE XLV XLY XLP XLI XLB XLU XLRE XLC
@@ -13,8 +17,8 @@
  *   Mag 7         (7): AAPL MSFT NVDA GOOGL AMZN META TSLA
  *
  * The /sector page rolls bars up at read time:
- *   5m  = SUM of last 3 bars
- *   1h  = SUM of last 30 bars
+ *   5m  = last single bar
+ *   1h  = SUM of last 12 bars
  *   1d  = SUM since session open
  *   1w  = SUM since 5 trading days ago
  */
@@ -161,13 +165,14 @@ export interface SectorFlowScanResult {
 }
 
 /**
- * Run one scan cycle across the universe. The window is the 2 minutes
- * immediately before `nowMs` (default now), aligned to the nearest 2-min
+ * Run one scan cycle across the universe. The window is the 5 minutes
+ * immediately before `nowMs` (default now), aligned to the nearest 5-min
  * boundary so retries hit the same bar.
  *
  * `perTickerDelayMs` (default 250) — small inter-ticker pause to spread
  * Polygon load over the cron's wall-clock budget. With 22 tickers and 250ms
- * spacing that's ~5.5s of sleep + the per-ticker fetch time (1-3s each).
+ * spacing that's ~5.5s of sleep + the per-ticker fetch time (2-5s each
+ * since 5-min windows pull ~2.5x the volume of the prior 2-min design).
  *
  * Tickers that error are skipped — they get retried on the next cycle.
  */
@@ -179,12 +184,12 @@ export async function runSectorFlowScan(opts: {
   const perTickerDelayMs = opts.perTickerDelayMs ?? 250;
   const now = opts.nowMs ?? Date.now();
 
-  // The completed window is the one ending at the nearest 2-min boundary
+  // The completed window is the one ending at the nearest 5-min boundary
   // <= now. Polygon trades for the current open window are still
   // streaming, so we always look one bar back.
-  const boundaryMs = floorToWindowMs(now, 2);
+  const boundaryMs = floorToWindowMs(now, 5);
   const windowEndMs = boundaryMs;
-  const windowStartMs = boundaryMs - 2 * 60_000;
+  const windowStartMs = boundaryMs - 5 * 60_000;
   const tsGteNs = windowStartMs * NS_PER_MS;
   const tsLteNs = (windowEndMs - 1) * NS_PER_MS;
 

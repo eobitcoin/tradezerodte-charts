@@ -2586,12 +2586,13 @@ export type CalendarScan = typeof calendarScans.$inferSelect;
 // XLY XLP XLI XLB XLU XLRE XLC), 4 index ETFs (SPY QQQ IWM DIA), 7 Mag (AAPL
 // MSFT NVDA GOOGL AMZN META TSLA).
 //
-// Wire-format: one row per (ticker, window_start). The cron pulls 2-min
-// windows of stock trades + NBBO from Polygon, classifies each trade via the
-// existing classifyAggressor helper, and upserts a row. The read endpoint
-// rolls bars up server-side: 5m = SUM of last 3 bars, 1h = SUM of last 30,
-// 1d = SUM since session open, 1w = SUM since 5 sessions ago. A rolling
-// retention prunes rows older than 8 days to keep the table tight.
+// Wire-format: one row per (ticker, window_start). The cron pulls 5-min
+// windows of stock trades + NBBO from Polygon (5 min matches Railway's cron
+// floor), classifies each trade via the existing classifyAggressor helper,
+// and upserts a row. The read endpoint rolls bars up server-side: 5m = last
+// single bar, 1h = SUM of last 12, 1d = SUM since session open, 1w = SUM
+// since 5 sessions ago. A rolling retention prunes rows older than 8 days
+// to keep the table tight (~14k live rows: 22 × 78 RTH windows × 8 days).
 // ============================================================================
 
 export const sectorFlowBars = pgTable(

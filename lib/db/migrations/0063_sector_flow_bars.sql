@@ -1,8 +1,8 @@
--- Sector Flow bubbles — 2-min windows of aggressor-classified stock flow
+-- Sector Flow bubbles — 5-min windows of aggressor-classified stock flow
 -- for the 22-name sector + index + Mag 7 universe. The cron upserts one
 -- row per (ticker, window_start). The /sector page rolls bars up at
 -- read time for 5m / 1h / 1d / 1w views. A rolling 8-day retention
--- prunes the table so it stays small (~22 × 195 × 8 ≈ 34k live rows).
+-- prunes the table so it stays small (~22 × 78 × 8 ≈ 14k live rows).
 
 CREATE TABLE IF NOT EXISTS sector_flow_bars (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

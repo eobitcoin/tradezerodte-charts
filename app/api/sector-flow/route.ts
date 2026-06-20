@@ -33,8 +33,11 @@ import {
  */
 
 const TIMEFRAMES = {
-  "5m": { lookbackMs: 6 * 60_000, label: "5 min" },         // ~3 bars
-  "1h": { lookbackMs: 60 * 60_000, label: "1 hour" },       // ~30 bars
+  // Lookbacks are slightly longer than the label so a just-closed bar
+  // is always in scope (cron fires every 5 min; a "5m" request at
+  // boundary+1m needs lookback ≥ 6m to catch the bar just written).
+  "5m": { lookbackMs: 7 * 60_000, label: "5 min" },         // ~1 bar
+  "1h": { lookbackMs: 65 * 60_000, label: "1 hour" },       // ~12 bars
   "1d": { lookbackMs: 24 * 60 * 60_000, label: "1 day" },   // since session open (capped by retention)
   "1w": { lookbackMs: 8 * 24 * 60 * 60_000, label: "1 week" },
 } as const;

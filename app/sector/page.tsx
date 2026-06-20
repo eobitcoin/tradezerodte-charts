@@ -1,10 +1,11 @@
 import SiteHeader from "@/components/SiteHeader";
 import SectorBubbles from "@/components/SectorBubbles";
+import SectorSubNav from "@/components/SectorSubNav";
 
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Sector Flow — 0DTE Research",
+  title: "Sector Flow — Bubbles",
   description:
     "Real-time aggressor flow across sector ETFs, indices, and the Mag 7 — bubble size is net buy/sell volume, color is % change.",
 };
@@ -14,13 +15,15 @@ export default function SectorPage() {
     <>
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 space-y-4">
+        <SectorSubNav active="bubbles" />
+
         <header className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">Sector Flow</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Sector Flow — Bubbles</h1>
           <p className="text-sm text-black/60 dark:text-white/60">
             Real-time aggressor flow across 11 sector ETFs, 4 index ETFs, and the
             Mag 7. Bubble size is <span className="font-mono">|buy − sell volume|</span>{" "}
             classified from NBBO; color is price change over the selected timeframe.
-            Updates every 2 min during market hours.
+            Updates every 5 min during market hours.
           </p>
         </header>
 

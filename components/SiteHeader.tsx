@@ -29,6 +29,7 @@ export default async function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/" className="hover:underline">Today</Link>
+          <Link href="/sector" className="hover:underline">Sector</Link>
           {/* Stocks is now a hub link — landing on /research surfaces the
            *  Research|Metals|Quantum|Radar sub-nav so users can pivot
            *  between equity research surfaces without going through the

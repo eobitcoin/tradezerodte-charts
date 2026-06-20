@@ -2576,3 +2576,63 @@ export const calendarScans = pgTable(
 );
 
 export type CalendarScan = typeof calendarScans.$inferSelect;
+
+// ============================================================================
+// SECTOR FLOW BUBBLES
+//
+// Powers /sector — a cryptobubbles-style packed bubble chart where size = net
+// aggressor flow (|buy_vol − sell_vol|), color = price change % over the
+// selected timeframe. Universe is 22 names: 11 sector SPDRs (XLK XLF XLE XLV
+// XLY XLP XLI XLB XLU XLRE XLC), 4 index ETFs (SPY QQQ IWM DIA), 7 Mag (AAPL
+// MSFT NVDA GOOGL AMZN META TSLA).
+//
+// Wire-format: one row per (ticker, window_start). The cron pulls 2-min
+// windows of stock trades + NBBO from Polygon, classifies each trade via the
+// existing classifyAggressor helper, and upserts a row. The read endpoint
+// rolls bars up server-side: 5m = SUM of last 3 bars, 1h = SUM of last 30,
+// 1d = SUM since session open, 1w = SUM since 5 sessions ago. A rolling
+// retention prunes rows older than 8 days to keep the table tight.
+// ============================================================================
+
+export const sectorFlowBars = pgTable(
+  "sector_flow_bars",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ticker: text("ticker").notNull(),
+    /** Start of the 2-min window (NY session-aligned). */
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    /** Exclusive end of the window. */
+    windowEnd: timestamp("window_end", { withTimezone: true }).notNull(),
+
+    /** Shares classified as aggressive buys (price ≥ ask). */
+    buyVolume: numeric("buy_volume", { precision: 18, scale: 0 }).notNull().default("0"),
+    /** Shares classified as aggressive sells (price ≤ bid). */
+    sellVolume: numeric("sell_volume", { precision: 18, scale: 0 }).notNull().default("0"),
+    /** Shares between bid and ask (unclassifiable). */
+    ambiguousVolume: numeric("ambiguous_volume", { precision: 18, scale: 0 }).notNull().default("0"),
+    /** Total shares traded in the window (buy + sell + ambiguous). */
+    totalVolume: numeric("total_volume", { precision: 18, scale: 0 }).notNull().default("0"),
+
+    /** Notional traded in window (Σ price × size). */
+    notionalUsd: numeric("notional_usd", { precision: 20, scale: 2 }).notNull().default("0"),
+
+    /** First print in window (used to derive open). */
+    openPrice: numeric("open_price", { precision: 12, scale: 4 }),
+    /** Last print in window. */
+    closePrice: numeric("close_price", { precision: 12, scale: 4 }),
+
+    /** Trade count — useful for sanity checks against rate limits. */
+    tradeCount: integer("trade_count").notNull().default(0),
+
+    capturedAt: timestamp("captured_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("sector_flow_bars_ticker_window_idx").on(t.ticker, t.windowStart),
+    index("sector_flow_bars_window_idx").on(t.windowStart.desc()),
+    index("sector_flow_bars_ticker_window_desc_idx").on(t.ticker, t.windowStart.desc()),
+  ],
+);
+
+export type SectorFlowBar = typeof sectorFlowBars.$inferSelect;

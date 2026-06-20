@@ -107,6 +107,15 @@ export function requireCalendarCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("CALENDAR_CRON_TOKEN", req);
 }
 
+/**
+ * Sector Flow cron token. Used by the every-2-min sector-flow cron that
+ * pulls aggressor-classified stock prints for the 22-name universe
+ * powering /sector. Set as `SECTOR_FLOW_CRON_TOKEN` in Railway env.
+ */
+export function requireSectorFlowCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("SECTOR_FLOW_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

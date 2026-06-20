@@ -832,3 +832,127 @@ export async function fetchEarningsHistoryFromPolygon(
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Stock tape + NBBO — used by the Sector Flow bubble scanner.
+//
+// /v3/trades/{ticker} returns equity prints; /v3/quotes/{ticker} returns
+// NBBO updates. Same pagination semantics as the options trades endpoint
+// already used by UOA. Timestamps are nanoseconds since epoch.
+// ---------------------------------------------------------------------------
+
+export interface PolygonStockTrade {
+  sip_timestamp?: number;       // ns since epoch
+  participant_timestamp?: number;
+  price: number;
+  size: number;
+  conditions?: number[];
+  exchange?: number;
+  sequence_number?: number;
+}
+
+export interface PolygonStockQuote {
+  sip_timestamp?: number;       // ns since epoch
+  participant_timestamp?: number;
+  bid_price?: number;
+  bid_size?: number;
+  ask_price?: number;
+  ask_size?: number;
+  bid_exchange?: number;
+  ask_exchange?: number;
+  sequence_number?: number;
+}
+
+interface PolygonStockTradesResponse {
+  status?: string;
+  results?: PolygonStockTrade[];
+  next_url?: string;
+}
+
+interface PolygonStockQuotesResponse {
+  status?: string;
+  results?: PolygonStockQuote[];
+  next_url?: string;
+}
+
+/**
+ * Fetch equity prints for a ticker over a narrow window. Pulled in
+ * ascending timestamp order (oldest first) so the caller can walk
+ * trades + quotes in lockstep without re-sorting.
+ *
+ * `tsGteNs` / `tsLteNs` are NANOSECONDS since epoch (Polygon native).
+ * Always pass both for a Sector Flow window to bound the call.
+ */
+export async function fetchStockTrades(
+  ticker: string,
+  opts: {
+    tsGteNs: number;
+    tsLteNs: number;
+    limit?: number;
+    maxPages?: number;
+  },
+): Promise<PolygonStockTrade[]> {
+  const limit = opts.limit ?? 50000;
+  const maxPages = opts.maxPages ?? 20;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  qs.set("order", "asc");
+  qs.set("sort", "timestamp");
+  qs.set("timestamp.gte", String(opts.tsGteNs));
+  qs.set("timestamp.lte", String(opts.tsLteNs));
+
+  let next: string | null = `/v3/trades/${encodeURIComponent(ticker)}?${qs}`;
+  const all: PolygonStockTrade[] = [];
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const path = next.startsWith("http")
+      ? next.replace(/^https?:\/\/api\.polygon\.io/, "")
+      : next;
+    const body: PolygonStockTradesResponse = await polygonGet(path);
+    if (body.results) all.push(...body.results);
+    next = body.next_url ?? null;
+    pages++;
+  }
+  return all;
+}
+
+/**
+ * Fetch NBBO quote updates for a ticker over a narrow window. Same
+ * order/bounding semantics as fetchStockTrades.
+ *
+ * Quote rate is typically 2-5x trade rate on liquid names; SPY in a
+ * 2-min window can return tens of thousands of quotes. The caller is
+ * expected to sort + binary-search them per trade.
+ */
+export async function fetchStockQuotes(
+  ticker: string,
+  opts: {
+    tsGteNs: number;
+    tsLteNs: number;
+    limit?: number;
+    maxPages?: number;
+  },
+): Promise<PolygonStockQuote[]> {
+  const limit = opts.limit ?? 50000;
+  const maxPages = opts.maxPages ?? 20;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  qs.set("order", "asc");
+  qs.set("sort", "timestamp");
+  qs.set("timestamp.gte", String(opts.tsGteNs));
+  qs.set("timestamp.lte", String(opts.tsLteNs));
+
+  let next: string | null = `/v3/quotes/${encodeURIComponent(ticker)}?${qs}`;
+  const all: PolygonStockQuote[] = [];
+  let pages = 0;
+  while (next && pages < maxPages) {
+    const path = next.startsWith("http")
+      ? next.replace(/^https?:\/\/api\.polygon\.io/, "")
+      : next;
+    const body: PolygonStockQuotesResponse = await polygonGet(path);
+    if (body.results) all.push(...body.results);
+    next = body.next_url ?? null;
+    pages++;
+  }
+  return all;
+}

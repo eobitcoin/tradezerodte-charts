@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
+import { asc, gte, sql } from "drizzle-orm";
+import { formatInTimeZone } from "date-fns-tz";
 import { db } from "@/lib/db";
 import { sectorFlowBars } from "@/lib/db/schema";
 import {
@@ -14,32 +15,33 @@ import {
  * Rolls sector_flow_bars up to a per-ticker aggregate for the requested
  * window. Powers the /sector page's bubble chart.
  *
- * For each ticker, returns:
+ * Timeframes anchor to the MOST RECENT bar in the table — not wall-clock
+ * `now()`. That way the chart stays useful overnight, on weekends, and
+ * across market holidays: "1d" always means "the most recent trading
+ * session," not "the last 24 calendar hours" (which on a Saturday morning
+ * would catch zero bars because both today and Friday-as-Juneteenth had
+ * no trades).
+ *
+ *   5m  = last single bar
+ *   1h  = last ~12 bars
+ *   1d  = bars whose NY-tz date == NY-tz date of the latest bar
+ *   1w  = bars in the last 5 distinct NY-tz session dates
+ *
+ * Each ticker returns:
  *   buyVolume, sellVolume, totalVolume      — summed across the window
  *   netFlow = buy − sell                    — signed share count
  *   priceChangePct                          — (latest close − first open) / first open
  *   tradeCount                              — sanity check
  *   firstWindowStart / lastWindowEnd        — actual covered span
- *
- * Sizing the bubbles is the client's job (it knows the viewport); the
- * server only returns the raw aggregate values. The page derives:
- *   size  = √(|netFlow|) scaled to viewport
- *   color = priceChangePct mapped to a red↔green gradient
- *
- * Cache hint: this endpoint is hit by the page every 90s with no params
- * changing across users. A 30s edge cache would deduplicate concurrent
- * loads cleanly. For now it's a plain server-rendered fetch — add cache
- * once the page is actually hot.
  */
 
+const NY_TZ = "America/New_York";
+
 const TIMEFRAMES = {
-  // Lookbacks are slightly longer than the label so a just-closed bar
-  // is always in scope (cron fires every 5 min; a "5m" request at
-  // boundary+1m needs lookback ≥ 6m to catch the bar just written).
-  "5m": { lookbackMs: 7 * 60_000, label: "5 min" },         // ~1 bar
-  "1h": { lookbackMs: 65 * 60_000, label: "1 hour" },       // ~12 bars
-  "1d": { lookbackMs: 24 * 60 * 60_000, label: "1 day" },   // since session open (capped by retention)
-  "1w": { lookbackMs: 8 * 24 * 60 * 60_000, label: "1 week" },
+  "5m": { label: "5 min" },
+  "1h": { label: "1 hour" },
+  "1d": { label: "1 day" },
+  "1w": { label: "1 week" },
 } as const;
 
 type Timeframe = keyof typeof TIMEFRAMES;
@@ -77,21 +79,89 @@ export async function GET(req: Request) {
     );
   }
   const tf = rawTf as Timeframe;
-  const lookbackMs = TIMEFRAMES[tf].lookbackMs;
-  const cutoff = new Date(Date.now() - lookbackMs);
 
-  // Pull every bar in the window. ~22 tickers × up to ~2400 bars (1w) =
-  // ~53k rows worst case; fine for one read. We aggregate in JS so the
-  // open/close handling (first vs last bar) is straightforward.
+  // 1. Find the most recent bar across the universe. Everything anchors
+  //    to this so weekends + holidays still surface the latest session.
+  const [latestRow] = await db
+    .select({ max: sql<Date>`MAX(${sectorFlowBars.windowStart})` })
+    .from(sectorFlowBars);
+  const latest = latestRow?.max ? new Date(latestRow.max) : null;
+
+  if (!latest) {
+    // No data at all — return zero rows so the page renders empty bubbles.
+    return NextResponse.json({
+      ok: true,
+      timeframe: tf,
+      timeframeLabel: TIMEFRAMES[tf].label,
+      windowStart: null,
+      universeSize: SECTOR_FLOW_UNIVERSE.length,
+      groups: SECTOR_FLOW_GROUPS,
+      tickers: SECTOR_FLOW_UNIVERSE.map((ticker) => ({
+        ticker,
+        group: pickGroup(ticker),
+        buyVolume: 0,
+        sellVolume: 0,
+        ambiguousVolume: 0,
+        totalVolume: 0,
+        netFlow: 0,
+        notionalUsd: 0,
+        priceChangePct: null,
+        openPrice: null,
+        closePrice: null,
+        tradeCount: 0,
+        firstWindowStart: null,
+        lastWindowEnd: null,
+      })),
+    });
+  }
+
+  // 2. Compute the wide cutoff for the SQL query — we still want a
+  //    cheap server-side filter, then narrow to the exact window in JS.
+  //    Generous bounds: 9 days back is enough for 1w (5 sessions across
+  //    a holiday-shortened week + weekends).
+  const wideCutoff = new Date(latest.getTime() - 9 * 24 * 60 * 60_000);
   const rows = await db
     .select()
     .from(sectorFlowBars)
-    .where(gte(sectorFlowBars.windowStart, cutoff))
+    .where(gte(sectorFlowBars.windowStart, wideCutoff))
     .orderBy(asc(sectorFlowBars.ticker), asc(sectorFlowBars.windowStart));
 
-  // Group by ticker.
+  // 3. Decide the precise inclusion test per timeframe. All tests are
+  //    "is this bar in scope" against the latest-bar anchor.
+  const latestMs = latest.getTime();
+  const latestNyDate = formatInTimeZone(latest, NY_TZ, "yyyy-MM-dd");
+
+  // Last 5 distinct NY-tz dates present in the result set, descending.
+  // Built once outside the per-bar loop.
+  const last5Dates = (() => {
+    const seen = new Set<string>();
+    const dates: string[] = [];
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const d = formatInTimeZone(rows[i].windowStart, NY_TZ, "yyyy-MM-dd");
+      if (!seen.has(d)) {
+        seen.add(d);
+        dates.push(d);
+        if (dates.length >= 5) break;
+      }
+    }
+    return new Set(dates);
+  })();
+
+  function inScope(windowStart: Date): boolean {
+    const ms = windowStart.getTime();
+    if (tf === "5m") return ms >= latestMs - 7 * 60_000;
+    if (tf === "1h") return ms >= latestMs - 65 * 60_000;
+    if (tf === "1d") {
+      return formatInTimeZone(windowStart, NY_TZ, "yyyy-MM-dd") === latestNyDate;
+    }
+    // 1w
+    return last5Dates.has(formatInTimeZone(windowStart, NY_TZ, "yyyy-MM-dd"));
+  }
+
+  // 4. Group + aggregate.
   const byTicker = new Map<string, typeof rows>();
   for (const r of rows) {
+    if (!inScope(r.windowStart)) continue;
     const arr = byTicker.get(r.ticker) ?? [];
     arr.push(r);
     byTicker.set(r.ticker, arr);
@@ -101,7 +171,6 @@ export async function GET(req: Request) {
   for (const ticker of SECTOR_FLOW_UNIVERSE) {
     const bars = byTicker.get(ticker) ?? [];
     if (bars.length === 0) {
-      // No data — emit a zero row so the bubble still renders (greyed).
       out.push({
         ticker,
         buyVolume: 0,
@@ -158,7 +227,8 @@ export async function GET(req: Request) {
     ok: true,
     timeframe: tf,
     timeframeLabel: TIMEFRAMES[tf].label,
-    windowStart: cutoff.toISOString(),
+    anchor: latest.toISOString(),
+    anchorNyDate: latestNyDate,
     universeSize: SECTOR_FLOW_UNIVERSE.length,
     groups: SECTOR_FLOW_GROUPS,
     tickers: out.map((t) => ({ ...t, group: pickGroup(t.ticker) })),

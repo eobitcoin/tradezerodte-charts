@@ -358,19 +358,19 @@ export default function SectorBubbles() {
                   fill="white"
                   fontWeight={700}
                   fontFamily="ui-sans-serif, system-ui, -apple-system"
-                  fontSize={Math.max(10, Math.min(18, n.r * 0.34))}
-                  y={n.r > 38 ? -2 : 4}
+                  fontSize={Math.max(9, Math.min(18, n.r * 0.34))}
+                  y={n.priceChangePct != null ? -Math.max(2, n.r * 0.08) : 4}
                   style={{ pointerEvents: "none" }}
                 >
                   {n.ticker}
                 </text>
-                {n.r > 38 && n.priceChangePct != null && (
+                {n.priceChangePct != null && (
                   <text
                     textAnchor="middle"
                     fill="white"
                     fontFamily="ui-sans-serif, system-ui, -apple-system"
-                    fontSize={Math.max(9, Math.min(13, n.r * 0.22))}
-                    y={n.r * 0.4}
+                    fontSize={Math.max(8, Math.min(13, n.r * 0.22))}
+                    y={Math.max(10, n.r * 0.38)}
                     style={{ pointerEvents: "none", opacity: 0.9 }}
                   >
                     {formatPct(n.priceChangePct)}

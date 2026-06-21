@@ -1566,6 +1566,20 @@ const TOOLS = [
     },
   },
   {
+    name: "fetch_latest_earnings_scan",
+    description:
+      "Read the most-recent raw weekly earnings_scans row produced by the Railway earnings-scan-cron. Unlike fetch_earnings_whiplash (which reads the prose-published earnings_posts), this returns the FORWARD calendar with pre-computed per-ticker stats: impliedMovePct from the live straddle, historyStats.medianAbs from 8 prior earnings cycles, etc. Designed for the Saturday Earnings Whiplash claude.ai routine to consume — no Finnhub or Polygon calls needed downstream; the heavy lifting already happened in the cron.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scan_week: {
+          type: "string",
+          description: "Optional YYYY-MM-DD. If omitted, returns the most recent scan_week.",
+        },
+      },
+    },
+  },
+  {
     name: "publish_sector_rotation",
     description:
       "Publish (UPSERT) the weekly Sector Rotation Detector scan to the /research/rotation tab. ONE row per scan_day. The `sectors` array drives the page render directly — no markdown body. For each of the 11 S&P 500 sectors, supply RS now vs RS prior year and a direction (turning_positive / turning_negative / stable_positive / stable_negative). Sectors with isRotating=true ALSO need a topEtfs array (5 entries ranked by 10-day money flow). Call exactly once per run.",
@@ -5990,6 +6004,59 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             {
               type: "text",
               text: `fetch_earnings_whiplash failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "fetch_latest_earnings_scan") {
+      try {
+        const a = args as { scan_week?: string };
+        const { earningsScans } = await import("@/lib/db/schema");
+        const { desc } = await import("drizzle-orm");
+        let row;
+        if (a.scan_week) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(a.scan_week)) {
+            return {
+              content: [{ type: "text", text: "scan_week must be YYYY-MM-DD" }],
+              isError: true,
+            };
+          }
+          [row] = await db
+            .select()
+            .from(earningsScans)
+            .where(eq(earningsScans.scanWeek, a.scan_week))
+            .limit(1);
+        } else {
+          [row] = await db
+            .select()
+            .from(earningsScans)
+            .orderBy(desc(earningsScans.scanWeek))
+            .limit(1);
+        }
+        const payload = row
+          ? {
+              found: true,
+              scan_week: row.scanWeek,
+              universe_size: row.universeSize,
+              computed_size: row.computedSize,
+              covered_from: row.data?.coveredFrom ?? null,
+              covered_to: row.data?.coveredTo ?? null,
+              tickers: row.data?.tickers ?? [],
+              run_at: row.runAt ? row.runAt.toISOString() : null,
+            }
+          : { found: false };
+        return {
+          content: [{ type: "text", text: JSON.stringify(payload) }],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `fetch_latest_earnings_scan failed: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,

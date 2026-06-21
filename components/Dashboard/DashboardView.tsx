@@ -29,10 +29,9 @@ const CARD_CLASS =
 export default function DashboardView({ data }: { data: DashboardData }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Premium Content</h1>
+      <header>
         <p className="text-sm text-white/55">
-          Your hub for daily analysis, weekly updates, and curated picks
+          Premium Content — Your hub for daily analysis, weekly updates, and curated picks.
         </p>
       </header>
 
@@ -106,7 +105,7 @@ function VideoCard({ data }: { data: DashboardData }) {
 
         <span className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent pointer-events-none" />
 
-        <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-amber-300 font-semibold px-2 py-1 rounded bg-black/55 ring-1 ring-amber-500/30">
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-white/75 font-semibold px-2 py-1 rounded bg-black/55 ring-1 ring-white/15">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
           {kindLabel}
         </span>
@@ -243,9 +242,9 @@ function OptionsEdgeCard({ data }: { data: DashboardData }) {
       href="/research/options-edge"
       className={CARD_CLASS + " block hover:bg-white/[0.04] transition-colors"}
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className={TITLE_CLASS}>Options Edge anomalies</span>
-        <span className="text-[11px] text-white/50">{oe?.scanDay ?? "—"}</span>
+      <div className="mb-3">
+        <div className={TITLE_CLASS}>Options Anomalies</div>
+        <div className="text-[11px] text-white/50 mt-0.5">{oe?.scanDay ?? "—"}</div>
       </div>
       {oe && oe.top.length > 0 ? (
         <>

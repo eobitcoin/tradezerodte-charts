@@ -15,7 +15,7 @@ export default async function SiteHeader() {
 
   return (
     <header className="border-b border-black/10 dark:border-white/10">
-      <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
         <Link
           href="/"
           className="flex items-baseline gap-2 group"

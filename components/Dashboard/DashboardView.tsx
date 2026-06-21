@@ -38,7 +38,7 @@ const CARD_CLASS =
 
 export default function DashboardView({ data }: { data: DashboardData }) {
   return (
-    <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 space-y-4">
+    <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
         <p className="text-sm text-white/55">
@@ -49,23 +49,24 @@ export default function DashboardView({ data }: { data: DashboardData }) {
 
       <HeroRow data={data} />
       <SnippetsRow data={data} />
-      <ActivityFeed events={data.feed} />
     </main>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Hero row — video on the left, [market pulse + options edge] stacked right.
+// Hero row — three columns. Video (wide left) | stacked Market Pulse +
+// Options Edge (middle) | Activity feed (full-height right column).
 // ---------------------------------------------------------------------------
 
 function HeroRow({ data }: { data: DashboardData }) {
   return (
-    <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] gap-3">
+    <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3">
       <VideoCard data={data} />
-      <div className="grid grid-rows-2 gap-3">
+      <div className="grid grid-rows-[auto_1fr] gap-3 min-h-0">
         <MarketPulseCard data={data} />
         <OptionsEdgeCard data={data} />
       </div>
+      <ActivityFeed events={data.feed} />
     </section>
   );
 }
@@ -472,8 +473,8 @@ function tintFor(surface: string) {
 
 function ActivityFeed({ events }: { events: DashboardData["feed"] }) {
   return (
-    <section className={CARD_CLASS}>
-      <div className="flex items-center justify-between mb-4">
+    <section className={CARD_CLASS + " flex flex-col min-h-0"}>
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <span className={TITLE_CLASS}>Recent updates</span>
         <span className="text-[11px] text-white/50">
           {events.length} {events.length === 1 ? "event" : "events"}
@@ -482,41 +483,39 @@ function ActivityFeed({ events }: { events: DashboardData["feed"] }) {
       {events.length === 0 ? (
         <EmptyMsg>No recent activity</EmptyMsg>
       ) : (
-        <ul className="space-y-3">
+        <ul className="flex-1 overflow-y-auto space-y-2 -mr-2 pr-2">
           {events.map((e, i) => {
             const tint = tintFor(e.surface);
             return (
               <li key={`${e.surface}-${i}`}>
                 <Link
                   href={e.href}
-                  className="flex gap-3 -mx-2 px-2 py-2 rounded-md hover:bg-white/[0.03] transition-colors group"
+                  className="flex gap-2.5 -mx-1.5 px-1.5 py-1.5 rounded-md hover:bg-white/[0.04] transition-colors group"
                 >
                   <span
-                    className={`flex-shrink-0 w-9 h-9 rounded-full ${tint.bg} flex items-center justify-center mt-0.5`}
+                    className={`flex-shrink-0 w-8 h-8 rounded-full ${tint.bg} flex items-center justify-center mt-0.5`}
                   >
-                    <i className={`ti ti-${e.icon} ${tint.text} text-base`} aria-hidden="true" />
+                    <i className={`ti ti-${e.icon} ${tint.text} text-[15px]`} aria-hidden="true" />
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-0.5">
-                      <span className={`text-[11px] uppercase tracking-widest font-semibold ${tint.text}`}>
+                    <div className="flex items-baseline gap-1.5 mb-0.5">
+                      <span className={`text-[10px] uppercase tracking-wider font-semibold ${tint.text} truncate`}>
                         {e.surface}
                       </span>
-                      <span className="text-[11px] text-white/40 font-mono">·</span>
-                      <span className="text-[11px] text-white/45 font-mono">
+                      <span className="text-[10px] text-white/40 font-mono flex-shrink-0">·</span>
+                      <span className="text-[10px] text-white/45 font-mono flex-shrink-0">
                         {relativeTime(e.at)}
                       </span>
                     </div>
-                    <div className="text-sm text-white/85 leading-snug">
+                    <div className="text-[13px] text-white/85 leading-snug truncate">
                       {e.title}
-                      {e.detail && (
-                        <span className="text-white/55"> — {e.detail}</span>
-                      )}
                     </div>
+                    {e.detail && (
+                      <div className="text-[11px] text-white/50 leading-snug truncate">
+                        {e.detail}
+                      </div>
+                    )}
                   </div>
-                  <i
-                    className="ti ti-arrow-up-right text-white/30 group-hover:text-white/60 transition-colors mt-1"
-                    aria-hidden="true"
-                  />
                 </Link>
               </li>
             );

@@ -99,7 +99,7 @@ function VideoCard({ data }: { data: DashboardData }) {
           <img
             src={hero.thumbnailUrl}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover opacity-95 group-hover:opacity-100 transition-opacity"
+            className="absolute inset-0 w-full h-full object-cover object-top opacity-95 group-hover:opacity-100 transition-opacity"
           />
         ) : (
           <OliviaPosterFallback />

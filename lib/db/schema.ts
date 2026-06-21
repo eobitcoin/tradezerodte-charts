@@ -2637,3 +2637,79 @@ export const sectorFlowBars = pgTable(
 );
 
 export type SectorFlowBar = typeof sectorFlowBars.$inferSelect;
+
+// ============================================================================
+// SQUEEZE WATCH — weekly Sunday scan that ranks short-squeeze candidates
+// from a curated ~150-name universe (small/mid-cap + historically high-SI
+// names). Scoring blends short-interest-to-shares-outstanding, days-to-cover,
+// 5-day price momentum, and IV rank into a composite 0-100 score. Top 25
+// surface on /research/squeeze.
+//
+// Data sources (all Polygon, no third-party):
+//   - FINRA short interest (/stocks/v1/short-interest) — bi-monthly, ~3wk lag
+//   - Shares outstanding (/v3/reference/tickers/{ticker})
+//   - 5-day momentum (/v2/aggs/ticker/{ticker}/range/1/day)
+//   - IV rank (existing iv_snapshots if covered, else null)
+//
+// Known data gaps vs Ortex/S3: no cost-to-borrow, no real-time utilization.
+// Surfaces "candidates worth watching," not "shorts are actively bleeding."
+// ============================================================================
+
+export interface SqueezeCandidate {
+  ticker: string;
+  companyName: string | null;
+  /** FINRA settlement date the SI snapshot was reported as of. */
+  siSettlementDate: string;
+  /** Shares short at last settlement. */
+  shortInterest: number;
+  /** Polygon's reported avg daily volume from the SI release. */
+  avgDailyVolume: number;
+  /** SI ÷ ADV. */
+  daysToCover: number;
+  /** Total shares outstanding (from /v3/reference/tickers). */
+  sharesOutstanding: number | null;
+  /** SI ÷ shares outstanding × 100. NULL when sharesOutstanding unknown.
+   *  This is "of shares outstanding," not "of float" — true float requires
+   *  subtracting insider/restricted shares which Polygon doesn't expose. */
+  shortInterestPctSO: number | null;
+
+  /** Most recent close. */
+  lastClose: number;
+  /** 5-trading-day return in percent. */
+  priceChange5dPct: number | null;
+  /** 30-trading-day return in percent — captures the squeeze trajectory. */
+  priceChange30dPct: number | null;
+  /** Latest atm_iv_rank from iv_snapshots, if scanned. */
+  atmIvRank: number | null;
+
+  // Composite 0-100 sub-scores. Higher = more squeeze-y.
+  siPctScore: number;
+  dtcScore: number;
+  momentumScore: number;
+  ivRankScore: number;
+
+  /** Weighted composite 0-100. Drives the ranking. */
+  compositeScore: number;
+  /** Short prose explaining what's driving the score (≤200 chars). */
+  thesis: string;
+}
+
+export const squeezeScans = pgTable(
+  "squeeze_scans",
+  {
+    id: serial("id").primaryKey(),
+    scanDay: date("scan_day").notNull().unique(),
+    universeSize: integer("universe_size").notNull().default(0),
+    /** Number of candidates that scored above threshold + made the top-N cut. */
+    rankedSize: integer("ranked_size").notNull().default(0),
+    candidates: jsonb("candidates").$type<SqueezeCandidate[]>().notNull().default([]),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("squeeze_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type SqueezeScan = typeof squeezeScans.$inferSelect;

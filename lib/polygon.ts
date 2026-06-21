@@ -956,3 +956,87 @@ export async function fetchStockQuotes(
   }
   return all;
 }
+
+// ---------------------------------------------------------------------------
+// Short interest (FINRA via Polygon Stocks Advanced) — used by Squeeze Watch.
+//
+// /stocks/v1/short-interest?ticker={TICKER} returns the full bi-monthly FINRA
+// history (~200 rows over 8 years, single page at limit=1000). Sort is
+// ascending by settlement_date regardless of `order` param, so the LATEST
+// entry is the last one in `results`.
+// ---------------------------------------------------------------------------
+
+export interface PolygonShortInterestRow {
+  settlement_date: string;   // YYYY-MM-DD
+  ticker: string;
+  short_interest: number;
+  avg_daily_volume: number;
+  days_to_cover: number;
+}
+
+interface PolygonShortInterestResponse {
+  status?: string;
+  results?: PolygonShortInterestRow[];
+  next_url?: string;
+}
+
+/** Fetch a ticker's most recent FINRA short interest. Returns null when the
+ *  ticker has no reported SI history (typical for very illiquid names or
+ *  recent IPOs). */
+export async function fetchLatestShortInterest(
+  ticker: string,
+): Promise<PolygonShortInterestRow | null> {
+  const path = `/stocks/v1/short-interest?ticker=${encodeURIComponent(ticker)}&limit=1000`;
+  const body: PolygonShortInterestResponse = await polygonGet(path);
+  const rows = body.results ?? [];
+  if (rows.length === 0) return null;
+  // Endpoint returns asc by settlement_date — take the last one.
+  return rows[rows.length - 1];
+}
+
+/** Fetch the full ~8yr SI history (used for trend computation later). */
+export async function fetchShortInterestHistory(
+  ticker: string,
+): Promise<PolygonShortInterestRow[]> {
+  const path = `/stocks/v1/short-interest?ticker=${encodeURIComponent(ticker)}&limit=1000`;
+  const body: PolygonShortInterestResponse = await polygonGet(path);
+  return body.results ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Ticker overview — used to pull shares_outstanding for SI% computation.
+// ---------------------------------------------------------------------------
+
+export interface PolygonTickerOverview {
+  ticker: string;
+  name?: string;
+  share_class_shares_outstanding?: number;
+  weighted_shares_outstanding?: number;
+  market_cap?: number;
+  total_employees?: number;
+  homepage_url?: string;
+  primary_exchange?: string;
+  type?: string;
+}
+
+interface PolygonTickerOverviewResponse {
+  status?: string;
+  results?: PolygonTickerOverview;
+}
+
+/** Fetch ticker overview (shares outstanding, name, market cap, etc.).
+ *  Returns null when the ticker is unknown to Polygon. */
+export async function fetchTickerOverview(
+  ticker: string,
+): Promise<PolygonTickerOverview | null> {
+  try {
+    const body: PolygonTickerOverviewResponse = await polygonGet(
+      `/v3/reference/tickers/${encodeURIComponent(ticker)}`,
+    );
+    return body.results ?? null;
+  } catch (err) {
+    // 404 on unknown ticker — treat as null.
+    if (err instanceof Error && /HTTP 404/.test(err.message)) return null;
+    throw err;
+  }
+}

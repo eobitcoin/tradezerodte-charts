@@ -1,0 +1,156 @@
+/**
+ * Renders the top-ranked squeeze candidates from one weekly squeeze_scans
+ * row. Pure server component — no interactivity beyond row hover. Columns
+ * are pre-sorted by composite score descending.
+ */
+import type { SqueezeScan, SqueezeCandidate } from "@/lib/db/schema";
+
+function fmtPct(v: number | null, signed = false): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const sign = signed && v > 0 ? "+" : "";
+  return `${sign}${v.toFixed(1)}%`;
+}
+function fmtNum(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}B`;
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+  return v.toFixed(0);
+}
+function fmtPrice(v: number | null): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `$${v.toFixed(2)}`;
+}
+
+function pctClass(v: number | null): string {
+  if (v == null) return "text-black/50 dark:text-white/50";
+  if (v > 0) return "text-emerald-600 dark:text-emerald-400";
+  if (v < 0) return "text-red-600 dark:text-red-400";
+  return "text-black/60 dark:text-white/60";
+}
+
+function scoreBadge(score: number): string {
+  if (score >= 75) return "bg-red-500/20 text-red-700 dark:text-red-300 ring-1 ring-red-500/40";
+  if (score >= 60) return "bg-amber-500/20 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/40";
+  if (score >= 45) return "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 ring-1 ring-yellow-500/30";
+  return "bg-black/5 dark:bg-white/10 text-black/60 dark:text-white/60";
+}
+
+export default function SqueezeView({ scan }: { scan: SqueezeScan }) {
+  const candidates: SqueezeCandidate[] = scan.candidates ?? [];
+  if (candidates.length === 0) {
+    return (
+      <div className="rounded-lg border border-black/10 dark:border-white/10 p-8 text-center space-y-2">
+        <h1 className="text-xl font-semibold">No squeeze candidates this scan</h1>
+        <p className="text-sm text-black/60 dark:text-white/60 max-w-prose mx-auto">
+          The {scan.universeSize}-name universe scanned this Sunday produced no names that cleared the
+          filter bar (SI ≥ 10% of shares outstanding OR days-to-cover ≥ 3). Crowded
+          shorts dried up across the watchlist this week.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <section className="space-y-4">
+      <header className="space-y-1">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">Squeeze Watch</h1>
+          <div className="text-xs text-black/50 dark:text-white/50">
+            scan {scan.scanDay} · {scan.rankedSize} of {scan.universeSize} universe ranked
+          </div>
+        </div>
+        <p className="text-sm text-black/60 dark:text-white/60">
+          Weekly scan of high-short-interest candidates from a curated {scan.universeSize}-name
+          universe. Composite score blends SI% of shares outstanding, days-to-cover,
+          5-day price momentum, and IV rank. <strong>This is a watchlist, not a buy
+          list</strong> — FINRA short interest is bi-monthly with a ~3-week lag, and
+          we don&apos;t have cost-to-borrow signal so &quot;crowded&quot; doesn&apos;t
+          always mean &quot;actively bleeding.&quot;
+        </p>
+      </header>
+
+      <div className="overflow-x-auto rounded-lg ring-1 ring-black/10 dark:ring-white/10">
+        <table className="w-full text-sm">
+          <thead className="bg-black/[0.03] dark:bg-white/[0.03] text-[10px] uppercase tracking-wider text-black/55 dark:text-white/55">
+            <tr>
+              <th className="text-left px-3 py-2">#</th>
+              <th className="text-left px-3 py-2">Ticker</th>
+              <th className="text-left px-3 py-2 hidden sm:table-cell">Company</th>
+              <th className="text-center px-3 py-2">Score</th>
+              <th className="text-right px-3 py-2">SI%</th>
+              <th className="text-right px-3 py-2">DTC</th>
+              <th className="text-right px-3 py-2">5d</th>
+              <th className="text-right px-3 py-2 hidden md:table-cell">30d</th>
+              <th className="text-right px-3 py-2 hidden lg:table-cell">IV rank</th>
+              <th className="text-right px-3 py-2">Price</th>
+              <th className="text-right px-3 py-2 hidden md:table-cell">SI date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.map((c, i) => (
+              <tr
+                key={c.ticker}
+                className="border-t border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+              >
+                <td className="px-3 py-2 text-black/40 dark:text-white/40 tabular-nums">{i + 1}</td>
+                <td className="px-3 py-2 font-mono font-bold">{c.ticker}</td>
+                <td className="px-3 py-2 text-black/60 dark:text-white/60 hidden sm:table-cell truncate max-w-[260px]">
+                  {c.companyName ?? "—"}
+                </td>
+                <td className="px-3 py-2 text-center">
+                  <span className={`inline-flex px-2 py-0.5 rounded font-mono text-xs font-semibold ${scoreBadge(c.compositeScore)}`}>
+                    {c.compositeScore.toFixed(0)}
+                  </span>
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtPct(c.shortInterestPctSO)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{c.daysToCover.toFixed(1)}</td>
+                <td className={`px-3 py-2 text-right tabular-nums ${pctClass(c.priceChange5dPct)}`}>
+                  {fmtPct(c.priceChange5dPct, true)}
+                </td>
+                <td className={`px-3 py-2 text-right tabular-nums hidden md:table-cell ${pctClass(c.priceChange30dPct)}`}>
+                  {fmtPct(c.priceChange30dPct, true)}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums hidden lg:table-cell text-black/60 dark:text-white/60">
+                  {c.atmIvRank != null ? c.atmIvRank.toFixed(0) : "—"}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtPrice(c.lastClose)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-black/50 dark:text-white/50 hidden md:table-cell">
+                  {c.siSettlementDate}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <details className="text-xs text-black/60 dark:text-white/60 space-y-2">
+        <summary className="cursor-pointer font-semibold text-black/70 dark:text-white/70 select-none">
+          How the composite score works
+        </summary>
+        <div className="mt-2 space-y-2 pl-1">
+          <p>
+            Each candidate gets four 0-100 sub-scores blended into a single composite:
+          </p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li><strong>SI% (weight 35)</strong> — short interest ÷ shares outstanding, ramped 10% → 40%</li>
+            <li><strong>DTC (weight 25)</strong> — days to cover (SI ÷ ADV), ramped 2 → 10</li>
+            <li><strong>Momentum (weight 20)</strong> — 5-day total return, ramped −5% → +15%</li>
+            <li><strong>IV rank (weight 20)</strong> — current 30d ATM IV percentile vs 1y history; neutral 50 when not covered by IV scan</li>
+          </ul>
+          <p className="text-black/50 dark:text-white/50">
+            Score ≥ 75 = red badge (high conviction). 60-75 amber (worth watching). 45-60 yellow
+            (on the radar). Below 45 grey.
+          </p>
+        </div>
+      </details>
+
+      <p className="text-[11px] text-black/40 dark:text-white/40 leading-relaxed">
+        Data: FINRA short interest (bi-monthly, ~3-week lag) via Polygon. Shares outstanding from
+        Polygon ticker overview. Price + volume from Polygon aggregates. IV rank from in-house
+        iv_snapshots scan. We do <strong>not</strong> have real-time cost-to-borrow or utilization
+        data — that would require Ortex / S3 Partners / Fintel integration.
+      </p>
+    </section>
+  );
+}

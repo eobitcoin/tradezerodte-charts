@@ -116,6 +116,15 @@ export function requireSectorFlowCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("SECTOR_FLOW_CRON_TOKEN", req);
 }
 
+/**
+ * Squeeze Watch cron token. Used by the weekly Sunday squeeze-scan cron
+ * that ranks short-squeeze candidates from the curated universe. Set as
+ * `SQUEEZE_CRON_TOKEN` in Railway env.
+ */
+export function requireSqueezeCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("SQUEEZE_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

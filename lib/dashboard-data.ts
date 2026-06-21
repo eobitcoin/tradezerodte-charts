@@ -116,7 +116,6 @@ export interface DashboardData {
   optionsEdge: DashboardOptionsEdgeSnippet | null;
   earnings: DashboardEarningsSnippet | null;
   squeeze: DashboardSqueezeSnippet | null;
-  sectorFlow: DashboardSectorFlowSnippet | null;
   feed: DashboardActivityEvent[];
 }
 
@@ -490,14 +489,13 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
 // ---------------------------------------------------------------------------
 
 export async function loadDashboardData(): Promise<DashboardData> {
-  const [hero, pulse, optionsEdge, earnings, squeeze, sectorFlow, feed] = await Promise.all([
+  const [hero, pulse, optionsEdge, earnings, squeeze, feed] = await Promise.all([
     loadHero(),
     loadMarketPulse(),
     loadOptionsEdgeSnippet(),
     loadEarningsSnippet(),
     loadSqueezeSnippet(),
-    loadSectorFlowSnippet(),
     loadActivityFeed(),
   ]);
-  return { hero, pulse, optionsEdge, earnings, squeeze, sectorFlow, feed };
+  return { hero, pulse, optionsEdge, earnings, squeeze, feed };
 }

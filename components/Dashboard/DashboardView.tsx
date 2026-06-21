@@ -12,16 +12,6 @@ import Link from "next/link";
 import type { DashboardData, DashboardEconEvent } from "@/lib/dashboard-data";
 import { relativeTime } from "@/lib/dashboard-data";
 
-function fmtPct(v: number | null | undefined, signed = false): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = signed && v > 0 ? "+" : "";
-  return `${s}${v.toFixed(1)}%`;
-}
-function fmtShares(v: number): string {
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
-  return v.toFixed(0);
-}
 function fmtScoreBadge(score: number): string {
   if (score >= 75) return "bg-red-500/20 text-red-300 ring-1 ring-red-500/40";
   if (score >= 60) return "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/40";
@@ -47,24 +37,29 @@ export default function DashboardView({ data }: { data: DashboardData }) {
         </p>
       </header>
 
-      <HeroRow data={data} />
-      <SnippetsRow data={data} />
+      <ContentGrid data={data} />
     </main>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Hero row — three columns. Video (wide left) | stacked Market Pulse +
-// Options Edge (middle) | Activity feed (full-height right column).
+// Single three-column grid:
+//   Col 1: Latest Video → Earnings This Week
+//   Col 2: Market Pulse → Options Edge → Top Short Squeeze
+//   Col 3: Recent Updates (full height)
 // ---------------------------------------------------------------------------
 
-function HeroRow({ data }: { data: DashboardData }) {
+function ContentGrid({ data }: { data: DashboardData }) {
   return (
-    <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3">
-      <VideoCard data={data} />
-      <div className="grid grid-rows-[auto_1fr] gap-3 min-h-0">
+    <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 items-start">
+      <div className="flex flex-col gap-3">
+        <VideoCard data={data} />
+        <EarningsCard data={data} />
+      </div>
+      <div className="flex flex-col gap-3">
         <MarketPulseCard data={data} />
         <OptionsEdgeCard data={data} />
+        <SqueezeCard data={data} />
       </div>
       <ActivityFeed events={data.feed} />
     </section>
@@ -165,7 +160,7 @@ function MarketPulseCard({ data }: { data: DashboardData }) {
     <article className={CARD_CLASS + " flex flex-col"}>
       <div className="flex items-center justify-between mb-3">
         <span className={TITLE_CLASS}>Market pulse</span>
-        <Link href="/calendar/economic" className="text-[11px] text-amber-300 hover:underline">
+        <Link href="/calendar/economic" className="text-[11px] text-white/60 hover:text-white hover:underline">
           Full calendar →
         </Link>
       </div>
@@ -297,18 +292,8 @@ function formatMetric(m: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Snippets row — Earnings / Squeeze / Sector Flow
+// Surface cards — used by the ContentGrid above
 // ---------------------------------------------------------------------------
-
-function SnippetsRow({ data }: { data: DashboardData }) {
-  return (
-    <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <EarningsCard data={data} />
-      <SqueezeCard data={data} />
-      <SectorFlowCard data={data} />
-    </section>
-  );
-}
 
 function EarningsCard({ data }: { data: DashboardData }) {
   const e = data.earnings;
@@ -383,52 +368,6 @@ function SqueezeCard({ data }: { data: DashboardData }) {
         </>
       ) : (
         <EmptyMsg>No squeeze scan yet</EmptyMsg>
-      )}
-    </Link>
-  );
-}
-
-function SectorFlowCard({ data }: { data: DashboardData }) {
-  const sf = data.sectorFlow;
-  return (
-    <Link
-      href="/sector"
-      className={CARD_CLASS + " block hover:bg-white/[0.04] transition-colors"}
-    >
-      <CardHeader label="Sector flow" icon="chart-bubble" />
-      {sf?.top ? (
-        <>
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-2xl font-mono font-semibold">{sf.top.ticker}</span>
-            <span
-              className={`text-sm font-semibold ${
-                (sf.top.priceChangePct ?? 0) >= 0 ? "text-emerald-300" : "text-red-300"
-              }`}
-            >
-              {fmtPct(sf.top.priceChangePct, true)}
-            </span>
-          </div>
-          <div className="text-xs text-white/55 mb-3">
-            {sf.top.netFlowShares >= 0 ? "Net buying" : "Net selling"} ·{" "}
-            {fmtShares(Math.abs(sf.top.netFlowShares))} shares
-          </div>
-          <div className="flex items-end gap-1 h-9">
-            {sf.bars.map((b) => {
-              const max = Math.max(...sf.bars.map((x) => Math.abs(x.netFlowShares)), 1);
-              const height = Math.max(8, (Math.abs(b.netFlowShares) / max) * 36);
-              return (
-                <div
-                  key={b.ticker}
-                  className={`flex-1 rounded-sm ${b.up ? "bg-emerald-500/80" : "bg-red-500/80"}`}
-                  style={{ height: `${height}px` }}
-                  title={`${b.ticker} ${b.up ? "+" : ""}${fmtShares(b.netFlowShares)}`}
-                />
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <EmptyMsg>No sector flow data yet</EmptyMsg>
       )}
     </Link>
   );

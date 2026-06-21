@@ -91,7 +91,7 @@ function VideoCard({ data }: { data: DashboardData }) {
 
       <Link
         href={hero.videoHref}
-        className="block relative aspect-video rounded-md overflow-hidden bg-gradient-to-b from-zinc-900 to-black group ring-1 ring-white/10"
+        className="block relative aspect-[4/3] rounded-md overflow-hidden bg-gradient-to-b from-zinc-900 to-black group ring-1 ring-white/10"
         aria-label={`Play ${kindLabel}`}
       >
         {hero.thumbnailUrl ? (

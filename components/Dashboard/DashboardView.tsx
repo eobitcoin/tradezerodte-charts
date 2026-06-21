@@ -30,10 +30,9 @@ export default function DashboardView({ data }: { data: DashboardData }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 space-y-4">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Premium Content</h1>
         <p className="text-sm text-white/55">
-          Today&apos;s view across the research suite. Jump to a tab above, or pick from the
-          highlights below.
+          Your hub for daily analysis, weekly updates, and curated picks
         </p>
       </header>
 

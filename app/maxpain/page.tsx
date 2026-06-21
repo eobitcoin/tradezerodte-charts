@@ -37,7 +37,7 @@ export default async function MaxPainTodayPage({
               The Max Pain scanner runs every weekday at 9:55 AM ET. Once it publishes, the most
               recent results will appear here.
             </p>
-            <Link href="/" className="inline-block underline text-sm">
+            <Link href="/today" className="inline-block underline text-sm">
               Back to today&apos;s 0DTE research →
             </Link>
           </div>

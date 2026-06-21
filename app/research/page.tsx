@@ -52,7 +52,7 @@ export default async function ResearchTodayPage() {
               The Wicked Research routine publishes per-ticker writeups daily.
               Once it runs for the first time, the latest will appear here.
             </p>
-            <Link href="/" className="inline-block underline text-sm">
+            <Link href="/today" className="inline-block underline text-sm">
               Back to today&apos;s 0DTE research →
             </Link>
           </div>

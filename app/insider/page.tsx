@@ -51,7 +51,7 @@ export default async function InsiderTodayPage() {
               The SEC Form 4 Insider Scanner runs every weekday morning. Once it publishes,
               the most recent results will appear here.
             </p>
-            <Link href="/" className="inline-block underline text-sm">
+            <Link href="/today" className="inline-block underline text-sm">
               Back to today&apos;s 0DTE research →
             </Link>
           </div>

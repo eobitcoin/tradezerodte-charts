@@ -21,14 +21,14 @@ export default async function SiteHeader() {
           className="flex items-baseline gap-2 group"
         >
           <span className="inline-block px-3 py-1 rounded-md bg-red-600 text-white font-sans font-semibold tracking-tight ring-2 ring-red-500/25 group-hover:ring-red-500/50 shadow-sm shadow-red-900/30 transition-all">
-            0DTE Market Research
+            Olivia Trades
           </span>
           <span className="font-sans text-[10px] uppercase tracking-[0.22em] text-black/40 dark:text-white/40 group-hover:text-black/60 dark:group-hover:text-white/60 transition-colors">
             private
           </span>
         </Link>
         <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className="hover:underline">Today</Link>
+          <Link href="/today" className="hover:underline">Today</Link>
           <Link href="/sector" className="hover:underline">Sector</Link>
           {/* Stocks is now a hub link — landing on /research surfaces the
            *  Research|Metals|Quantum|Radar sub-nav so users can pivot

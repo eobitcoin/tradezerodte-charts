@@ -99,7 +99,11 @@ function VideoCard({ data }: { data: DashboardData }) {
           <img
             src={hero.thumbnailUrl}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover object-top opacity-95 group-hover:opacity-100 transition-opacity"
+            // Higgsfield renders are 9:16 portrait; this card is 16:9 landscape.
+            // Default object-center crops the face out (shows body); object-top
+            // shows mostly sky. Anchor at 25% from top — lands on the face for
+            // typical Soul renders where the head sits in the upper third.
+            className="absolute inset-0 w-full h-full object-cover object-[center_25%] opacity-95 group-hover:opacity-100 transition-opacity"
           />
         ) : (
           <OliviaPosterFallback />

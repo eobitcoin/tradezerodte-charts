@@ -38,7 +38,7 @@ const CARD_CLASS =
 
 export default function DashboardView({ data }: { data: DashboardData }) {
   return (
-    <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6 space-y-4">
+    <main className="mx-auto max-w-5xl px-4 py-6 space-y-4">
       <header className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
         <p className="text-sm text-white/55">

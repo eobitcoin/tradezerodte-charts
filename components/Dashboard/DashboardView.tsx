@@ -113,7 +113,7 @@ function VideoCard({ data }: { data: DashboardData }) {
           {hero.caption ?? "Tap to play"}
         </span>
         <span className="absolute inset-0 flex items-center justify-center">
-          <span className="w-16 h-16 rounded-full bg-white/95 text-black flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xl">
+          <span className="w-11 h-11 rounded-full bg-white/95 text-black flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xl">
             <PlayIcon />
           </span>
         </span>
@@ -156,10 +156,9 @@ function MarketPulseCard({ data }: { data: DashboardData }) {
   const { nextEconEvents, topTradeIdea } = data.pulse;
   return (
     <article className={CARD_CLASS + " flex flex-col"}>
-      <div className="flex items-center justify-between mb-3">
-        <span className={TITLE_CLASS}>Market pulse</span>
-        <Link href="/calendar/economic" className="text-[11px] text-white/60 hover:text-white hover:underline">
-          Full calendar →
+      <div className="mb-3">
+        <Link href="/calendar/economic" className={TITLE_CLASS + " hover:opacity-80 transition-opacity"}>
+          Market pulse
         </Link>
       </div>
       <dl className="space-y-2.5 text-sm flex-1">
@@ -444,11 +443,11 @@ function ActivityFeed({ events }: { events: DashboardData["feed"] }) {
                         {relativeTime(e.at)}
                       </span>
                     </div>
-                    <div className="text-[13px] text-white/85 leading-snug truncate">
+                    <div className="text-[11px] text-white/85 leading-snug truncate">
                       {e.title}
                     </div>
                     {e.detail && (
-                      <div className="text-[11px] text-white/50 leading-snug truncate">
+                      <div className="text-[10px] text-white/50 leading-snug truncate">
                         {e.detail}
                       </div>
                     )}
@@ -465,7 +464,7 @@ function ActivityFeed({ events }: { events: DashboardData["feed"] }) {
 
 function PlayIcon() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M8 5v14l11-7z" />
     </svg>
   );

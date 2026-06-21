@@ -8,6 +8,34 @@
  */
 import { Fragment, useState } from "react";
 import type { SqueezeScan, SqueezeCandidate, SqueezeTradeIdea } from "@/lib/db/schema";
+import { legsToUrlParams } from "@/lib/earnings-trade-builder";
+
+/** Build the /research/risk-graph URL that auto-loads this trade idea
+ *  into the builder. Reuses the same prefill encoder Earnings Scans /
+ *  LEAPs / Options Edge already use, so Risk Graph parses it for free.
+ *
+ *  For single-expiry strategies (long call, bull call spread) we hand a
+ *  payload expiry plus bare leg strikes. For the diagonal we set the
+ *  payload expiry to the long leg AND tag the short leg with `@<expiry>`
+ *  so RiskGraphBuilder lands it on the front month. */
+function tradeIdeaToUrl(ticker: string, idea: SqueezeTradeIdea): string {
+  const longLeg = idea.legs.find((l) => l.side === "long") ?? idea.legs[0];
+  const primaryExpiry = longLeg?.expiration ?? "";
+  const expiries = new Set(idea.legs.map((l) => l.expiration));
+  const multiExpiry = expiries.size > 1;
+  return `/research/risk-graph?${legsToUrlParams({
+    ticker,
+    strategy: idea.strategy,
+    expiry: primaryExpiry,
+    legs: idea.legs.map((l) => ({
+      side: l.side === "long" ? "buy" : "sell",
+      type: l.type,
+      strike: l.strike,
+      // Only emit per-leg @expiry when legs straddle different months.
+      expiry: multiExpiry ? l.expiration : undefined,
+    })),
+  })}`;
+}
 
 function fmtPct(v: number | null, signed = false): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -26,7 +54,7 @@ function pctClass(v: number | null): string {
   return "text-black/60 dark:text-white/60";
 }
 
-function TradeIdeaCard({ idea }: { idea: SqueezeTradeIdea }) {
+function TradeIdeaCard({ idea, ticker }: { idea: SqueezeTradeIdea; ticker: string }) {
   const strategyLabel = {
     long_call: "Long call",
     bull_call_spread: "Bull call spread",
@@ -47,10 +75,10 @@ function TradeIdeaCard({ idea }: { idea: SqueezeTradeIdea }) {
       </div>
       <div className="text-black/55 dark:text-white/55 italic leading-snug">{idea.notes}</div>
       <a
-        href="/research/risk-graph"
+        href={tradeIdeaToUrl(ticker, idea)}
         className="inline-block mt-0.5 underline text-emerald-700 dark:text-emerald-400 text-[11px]"
       >
-        Build in Risk Graph →
+        Open in Risk Graph →
       </a>
     </div>
   );
@@ -176,7 +204,7 @@ export default function SqueezeView({ scan }: { scan: SqueezeScan }) {
                           )}
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
                             {ideas.map((idea) => (
-                              <TradeIdeaCard key={idea.strategy} idea={idea} />
+                              <TradeIdeaCard key={idea.strategy} idea={idea} ticker={c.ticker} />
                             ))}
                           </div>
                           <div className="text-[10px] text-black/45 dark:text-white/45 pt-1">

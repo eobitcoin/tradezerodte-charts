@@ -4141,6 +4141,11 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           .set({
             status: "generating",
             videoS3Key: null,
+            // Capture the Higgsfield Soul PNG URL as the briefing's poster.
+            // Surfaces on the dashboard hero + anywhere else that wants a
+            // thumbnail. Lives behind a Higgsfield-hosted URL so it's stable
+            // across the briefing's lifetime.
+            thumbnailUrl: a.soul_image_url,
             meta,
             updatedAt: sql`now()`,
           })
@@ -4975,6 +4980,8 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
           .set({
             status: "generating",
             videoS3Key: null,
+            // Same as the daily path — capture Higgsfield Soul PNG as poster.
+            thumbnailUrl: a.soul_image_url,
             meta,
             updatedAt: sql`now()`,
           })

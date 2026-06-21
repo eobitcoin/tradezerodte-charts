@@ -62,9 +62,9 @@ export default async function SqueezePage({ searchParams }: PageProps) {
 function EmptyState() {
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/10 p-8 text-center space-y-3">
-      <h1 className="text-xl font-semibold">No squeeze scans yet</h1>
+      <h1 className="text-xl font-semibold">No Short Interest scans yet</h1>
       <p className="text-sm text-black/60 dark:text-white/60 max-w-prose mx-auto">
-        Squeeze Watch runs weekly on Sunday afternoon. It walks a curated ~150-name
+        Short Interest Squeeze runs weekly on Sunday afternoon. It walks a curated ~150-name
         universe of high-SI candidates, pulls FINRA short interest + Polygon ticker
         overview, and ranks the top 25 by a composite score (SI% of shares outstanding,
         days-to-cover, 5-day momentum, IV rank). Once the first scan runs, results

@@ -34,7 +34,7 @@ function apiKey(): string {
 // Raw API shapes (subset of what Polygon returns).
 // ---------------------------------------------------------------------------
 
-interface PolygonContract {
+export interface PolygonContract {
   details: {
     ticker: string;
     expiration_date: string;

@@ -3,7 +3,7 @@
  * row. Pure server component — no interactivity beyond row hover. Columns
  * are pre-sorted by composite score descending.
  */
-import type { SqueezeScan, SqueezeCandidate } from "@/lib/db/schema";
+import type { SqueezeScan, SqueezeCandidate, SqueezeTradeIdea } from "@/lib/db/schema";
 
 function fmtPct(v: number | null, signed = false): string {
   if (v == null || !Number.isFinite(v)) return "—";
@@ -29,6 +29,36 @@ function pctClass(v: number | null): string {
   return "text-black/60 dark:text-white/60";
 }
 
+function TradeIdeaCard({ idea, ticker }: { idea: SqueezeTradeIdea; ticker: string }) {
+  const strategyLabel = {
+    long_call: "Long call",
+    bull_call_spread: "Bull call spread",
+    diagonal_call: "Diagonal",
+  }[idea.strategy];
+  return (
+    <div className="rounded border border-black/10 dark:border-white/10 px-2.5 py-2 text-[11px] space-y-1 bg-black/[0.02] dark:bg-white/[0.02]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-black/80 dark:text-white/80">{strategyLabel}</span>
+        <span className="font-mono text-black/50 dark:text-white/50">{idea.dte}d</span>
+      </div>
+      <div className="text-black/60 dark:text-white/60 font-mono">{idea.label}</div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-black/55 dark:text-white/55">
+        {idea.netDebit != null && <span>debit ${idea.netDebit.toFixed(2)}</span>}
+        {idea.maxProfit != null && <span>max profit ${idea.maxProfit.toFixed(0)}</span>}
+        {idea.maxLoss != null && <span>max loss ${idea.maxLoss.toFixed(0)}</span>}
+        {idea.breakeven != null && <span>BE ${idea.breakeven.toFixed(2)}</span>}
+      </div>
+      <div className="text-black/55 dark:text-white/55 italic leading-snug">{idea.notes}</div>
+      <a
+        href="/research/risk-graph"
+        className="inline-block mt-0.5 underline text-emerald-700 dark:text-emerald-400"
+      >
+        Build in Risk Graph →
+      </a>
+    </div>
+  );
+}
+
 function scoreBadge(score: number): string {
   if (score >= 75) return "bg-red-500/20 text-red-700 dark:text-red-300 ring-1 ring-red-500/40";
   if (score >= 60) return "bg-amber-500/20 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/40";
@@ -41,7 +71,7 @@ export default function SqueezeView({ scan }: { scan: SqueezeScan }) {
   if (candidates.length === 0) {
     return (
       <div className="rounded-lg border border-black/10 dark:border-white/10 p-8 text-center space-y-2">
-        <h1 className="text-xl font-semibold">No squeeze candidates this scan</h1>
+        <h1 className="text-xl font-semibold">No Short Interest Squeeze candidates this scan</h1>
         <p className="text-sm text-black/60 dark:text-white/60 max-w-prose mx-auto">
           The {scan.universeSize}-name universe scanned this Sunday produced no names that cleared the
           filter bar (SI ≥ 10% of shares outstanding OR days-to-cover ≥ 3). Crowded
@@ -55,7 +85,7 @@ export default function SqueezeView({ scan }: { scan: SqueezeScan }) {
     <section className="space-y-4">
       <header className="space-y-1">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">Squeeze Watch</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Short Interest Squeeze</h1>
           <div className="text-xs text-black/50 dark:text-white/50">
             scan {scan.scanDay} · {scan.rankedSize} of {scan.universeSize} universe ranked
           </div>
@@ -88,38 +118,53 @@ export default function SqueezeView({ scan }: { scan: SqueezeScan }) {
             </tr>
           </thead>
           <tbody>
-            {candidates.map((c, i) => (
-              <tr
-                key={c.ticker}
-                className="border-t border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-              >
-                <td className="px-3 py-2 text-black/40 dark:text-white/40 tabular-nums">{i + 1}</td>
-                <td className="px-3 py-2 font-mono font-bold">{c.ticker}</td>
-                <td className="px-3 py-2 text-black/60 dark:text-white/60 hidden sm:table-cell truncate max-w-[260px]">
-                  {c.companyName ?? "—"}
-                </td>
-                <td className="px-3 py-2 text-center">
-                  <span className={`inline-flex px-2 py-0.5 rounded font-mono text-xs font-semibold ${scoreBadge(c.compositeScore)}`}>
-                    {c.compositeScore.toFixed(0)}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtPct(c.shortInterestPctSO)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{c.daysToCover.toFixed(1)}</td>
-                <td className={`px-3 py-2 text-right tabular-nums ${pctClass(c.priceChange5dPct)}`}>
-                  {fmtPct(c.priceChange5dPct, true)}
-                </td>
-                <td className={`px-3 py-2 text-right tabular-nums hidden md:table-cell ${pctClass(c.priceChange30dPct)}`}>
-                  {fmtPct(c.priceChange30dPct, true)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums hidden lg:table-cell text-black/60 dark:text-white/60">
-                  {c.atmIvRank != null ? c.atmIvRank.toFixed(0) : "—"}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtPrice(c.lastClose)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-black/50 dark:text-white/50 hidden md:table-cell">
-                  {c.siSettlementDate}
-                </td>
-              </tr>
-            ))}
+            {candidates.map((c, i) => {
+              const ideas = c.tradeIdeas ?? [];
+              return (
+                <tr
+                  key={c.ticker}
+                  className="border-t border-black/5 dark:border-white/5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] align-top"
+                >
+                  <td className="px-3 py-2 text-black/40 dark:text-white/40 tabular-nums">{i + 1}</td>
+                  <td className="px-3 py-2 font-mono font-bold">{c.ticker}</td>
+                  <td className="px-3 py-2 text-black/60 dark:text-white/60 hidden sm:table-cell truncate max-w-[260px]">
+                    {c.companyName ?? "—"}
+                    {ideas.length > 0 && (
+                      <details className="mt-1 group">
+                        <summary className="cursor-pointer text-[11px] uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-semibold select-none">
+                          Trade ideas ({ideas.length})
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          {ideas.map((idea) => (
+                            <TradeIdeaCard key={idea.strategy} idea={idea} ticker={c.ticker} />
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`inline-flex px-2 py-0.5 rounded font-mono text-xs font-semibold ${scoreBadge(c.compositeScore)}`}>
+                      {c.compositeScore.toFixed(0)}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtPct(c.shortInterestPctSO)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{c.daysToCover.toFixed(1)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${pctClass(c.priceChange5dPct)}`}>
+                    {fmtPct(c.priceChange5dPct, true)}
+                  </td>
+                  <td className={`px-3 py-2 text-right tabular-nums hidden md:table-cell ${pctClass(c.priceChange30dPct)}`}>
+                    {fmtPct(c.priceChange30dPct, true)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums hidden lg:table-cell text-black/60 dark:text-white/60">
+                    {c.atmIvRank != null ? c.atmIvRank.toFixed(0) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtPrice(c.lastClose)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-black/50 dark:text-white/50 hidden md:table-cell">
+                    {c.siSettlementDate}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

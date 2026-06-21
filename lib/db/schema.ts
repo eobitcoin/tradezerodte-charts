@@ -2655,6 +2655,33 @@ export type SectorFlowBar = typeof sectorFlowBars.$inferSelect;
 // Surfaces "candidates worth watching," not "shorts are actively bleeding."
 // ============================================================================
 
+/** One leg of a suggested option trade. The OPRA ticker lets the UI deep-link
+ *  into Risk Graph with the exact contract pre-loaded. */
+export interface SqueezeTradeLeg {
+  side: "long" | "short";
+  type: "call" | "put";
+  strike: number;
+  expiration: string;          // YYYY-MM-DD
+  contractTicker: string;      // OPRA-format symbol (e.g. "O:GME260117C00050000")
+  mid: number | null;
+}
+
+/** A suggested option trade attached to a top-N squeeze candidate. */
+export interface SqueezeTradeIdea {
+  strategy: "long_call" | "bull_call_spread" | "diagonal_call";
+  label: string;
+  legs: SqueezeTradeLeg[];
+  /** Net debit per spread (positive = pay). 100x for share contract. */
+  netDebit: number | null;
+  /** Max profit per spread, or null when unbounded (long call) or hard to model (diagonal). */
+  maxProfit: number | null;
+  maxLoss: number | null;
+  breakeven: number | null;
+  /** DTE of the longest leg. */
+  dte: number;
+  notes: string;
+}
+
 export interface SqueezeCandidate {
   ticker: string;
   companyName: string | null;
@@ -2692,6 +2719,11 @@ export interface SqueezeCandidate {
   compositeScore: number;
   /** Short prose explaining what's driving the score (≤200 chars). */
   thesis: string;
+
+  /** Optional — present for top-10 candidates only. Generated from live
+   *  options chain at scan time. May be omitted entirely if the chain
+   *  pull failed for this ticker. */
+  tradeIdeas?: SqueezeTradeIdea[];
 }
 
 export const squeezeScans = pgTable(

@@ -18,7 +18,7 @@ const TABS: Array<{ id: ResearchTab; label: string; href: string }> = [
   { id: "economic", label: "Economic Calendar", href: "/calendar/economic" },
   { id: "institutional", label: "Institutional", href: "/research/institutional" },
   { id: "earnings", label: "Earnings", href: "/research/earnings" },
-  { id: "squeeze", label: "Squeeze", href: "/research/squeeze" },
+  { id: "squeeze", label: "Short Interest", href: "/research/squeeze" },
   { id: "insider", label: "Insider", href: "/insider" },
 ];
 

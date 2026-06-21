@@ -16,7 +16,7 @@ export default function PublicHeader() {
           className="flex items-baseline gap-2 group"
         >
           <span className="inline-block px-2.5 py-1 rounded-md bg-red-600 text-white font-sans font-semibold tracking-tight ring-2 ring-red-500/25 group-hover:ring-red-500/50 shadow-sm shadow-red-900/30 transition-all text-sm">
-            Olivia Trades
+            OliviaTrades Research
           </span>
           <span className="font-sans text-[10px] uppercase tracking-[0.22em] text-white/40">
             private

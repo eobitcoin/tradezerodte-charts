@@ -82,7 +82,7 @@ export default function PublicFooter() {
         <div className="space-y-2">
           <h3 className="text-[10px] uppercase tracking-[0.22em] text-white/40">Disclosures</h3>
           <p className="text-[11px] text-white/45 leading-relaxed">
-            Olivia Trades is a private, invite-only research tool. Content
+            OliviaTrades Research is a private, invite-only research tool. Content
             on this site is for informational and educational purposes only —
             not investment advice. Options trading involves substantial risk of
             loss and is not suitable for every investor.
@@ -99,7 +99,7 @@ export default function PublicFooter() {
       </div>
       <div className="border-t border-white/5">
         <div className="max-w-6xl mx-auto px-6 py-4 text-[11px] text-white/35 flex flex-wrap items-center justify-between gap-2">
-          <span>© {new Date().getFullYear()} Olivia Trades</span>
+          <span>© {new Date().getFullYear()} OliviaTrades Research</span>
           <div className="flex items-center gap-3">
             <Link href="/privacy" className="hover:text-white/65">
               Privacy

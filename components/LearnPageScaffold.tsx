@@ -55,7 +55,7 @@ export default function LearnPageScaffold({
     url: `${APP_URL}/learn/${slug}`,
     publisher: {
       "@type": "Organization",
-      name: "Olivia Trades",
+      name: "OliviaTrades Research",
       url: APP_URL,
     },
   };
@@ -114,7 +114,7 @@ export default function LearnPageScaffold({
             Get the daily research that puts this into practice.
           </h2>
           <p className="text-sm text-white/65">
-            Olivia Trades is invite-only. We use these primitives every
+            OliviaTrades Research is invite-only. We use these primitives every
             morning to size our own positions — the daily brief ships before
             the open.
           </p>

@@ -78,7 +78,7 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
                 className="absolute top-3 left-4 z-20 flex items-baseline gap-2 group [text-shadow:0_1px_8px_rgba(0,0,0,0.6)]"
               >
                 <span className="font-sans font-semibold tracking-tight text-base text-white">
-                  Olivia Trades
+                  OliviaTrades Research
                 </span>
                 <span className="font-sans text-[10px] uppercase tracking-[0.22em] text-white/60 group-hover:text-white/80 transition-colors">
                   private
@@ -98,7 +98,7 @@ export default function AuthShell({ children }: { children: React.ReactNode }) {
           className="lg:hidden flex items-baseline gap-2 mb-6 group"
         >
           <span className="font-sans font-semibold tracking-tight text-base">
-            Olivia Trades
+            OliviaTrades Research
           </span>
           <span className="font-sans text-[10px] uppercase tracking-[0.22em] text-white/40">
             private

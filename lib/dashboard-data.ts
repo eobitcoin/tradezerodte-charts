@@ -12,7 +12,7 @@
  * for the page to load.
  */
 
-import { desc, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   briefings,
@@ -23,9 +23,10 @@ import {
   optionsEdgeScans,
   leapScans,
   sectorFlowBars,
-  gexSnapshots,
+  economicEvents,
   type SqueezeCandidate,
   type SqueezeTradeIdea,
+  type OptionsEdgeAnomaly,
 } from "@/lib/db/schema";
 
 // ---------------------------------------------------------------------------
@@ -42,20 +43,33 @@ export interface DashboardHeroVideo {
   tickers: string[];            // surfaced as chips
 }
 
+export interface DashboardEconEvent {
+  title: string;
+  country: string | null;
+  when: string;                 // ISO
+  importance: "low" | "medium" | "high";
+}
+
 export interface DashboardMarketPulse {
-  gex: {
-    spot: number | null;
-    flipStrike: number | null;
-    flipPct: number | null;     // signed (negative = below spot)
-    totalGex: number | null;    // in $billions
-    asOf: string | null;        // ISO
-  } | null;
+  nextEconEvents: DashboardEconEvent[];
   topTradeIdea: {
     ticker: string;
     strategy: string;
     label: string;
     href: string;
   } | null;
+}
+
+export interface DashboardOptionsEdgeSnippet {
+  scanDay: string;
+  totalAnomalies: number;
+  top: Array<{
+    ticker: string;
+    metric: string;             // "atm_iv_rank" / "skew_z" / etc
+    zScore: number;
+    direction: "high" | "low";
+    suggestedStrategy: string;
+  }>;
 }
 
 export interface DashboardEarningsSnippet {
@@ -99,6 +113,7 @@ export interface DashboardActivityEvent {
 export interface DashboardData {
   hero: DashboardHeroVideo | null;
   pulse: DashboardMarketPulse;
+  optionsEdge: DashboardOptionsEdgeSnippet | null;
   earnings: DashboardEarningsSnippet | null;
   squeeze: DashboardSqueezeSnippet | null;
   sectorFlow: DashboardSectorFlowSnippet | null;
@@ -189,12 +204,39 @@ async function loadHero(): Promise<DashboardHeroVideo | null> {
 }
 
 async function loadMarketPulse(): Promise<DashboardMarketPulse> {
-  const [gex] = await db
+  // Next 3 high/medium-importance economic events from now forward.
+  const now = new Date();
+  const upcomingHorizon = new Date(now.getTime() + 14 * 24 * 60 * 60_000);
+  const econ = await db
     .select()
-    .from(gexSnapshots)
-    .where(eq(gexSnapshots.ticker, "SPY"))
-    .orderBy(desc(gexSnapshots.ts))
-    .limit(1);
+    .from(economicEvents)
+    .where(
+      and(
+        gte(economicEvents.eventTime, now),
+        gte(economicEvents.eventTime, now),
+        inArray(economicEvents.importance, ["high", "medium"]),
+      ),
+    )
+    .orderBy(economicEvents.eventTime)
+    .limit(20);
+  const nextEconEvents: DashboardEconEvent[] = econ
+    .filter((e) => e.eventTime <= upcomingHorizon)
+    // Prefer high-importance first, then chronological within importance.
+    .sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 } as const;
+      const ai = order[a.importance];
+      const bi = order[b.importance];
+      if (ai !== bi) return ai - bi;
+      return a.eventTime.getTime() - b.eventTime.getTime();
+    })
+    .slice(0, 3)
+    .map((e) => ({
+      title: e.title,
+      country: e.country,
+      when: e.eventTime.toISOString(),
+      importance: e.importance,
+    }));
+
   const [topSqueeze] = await db
     .select()
     .from(squeezeScans)
@@ -205,15 +247,7 @@ async function loadMarketPulse(): Promise<DashboardMarketPulse> {
   const topIdea = topCandidate?.tradeIdeas?.[0] ?? null;
 
   return {
-    gex: gex
-      ? {
-          spot: Number(gex.spot),
-          flipStrike: gex.zeroGammaStrike != null ? Number(gex.zeroGammaStrike) : null,
-          flipPct: gex.zeroGammaPct != null ? Number(gex.zeroGammaPct) : null,
-          totalGex: Number(gex.totalGex) / 1_000_000_000,
-          asOf: gex.ts.toISOString(),
-        }
-      : null,
+    nextEconEvents,
     topTradeIdea:
       topCandidate && topIdea
         ? {
@@ -223,6 +257,27 @@ async function loadMarketPulse(): Promise<DashboardMarketPulse> {
             href: "/research/squeeze",
           }
         : null,
+  };
+}
+
+async function loadOptionsEdgeSnippet(): Promise<DashboardOptionsEdgeSnippet | null> {
+  const [row] = await db
+    .select()
+    .from(optionsEdgeScans)
+    .orderBy(desc(optionsEdgeScans.scanDay))
+    .limit(1);
+  if (!row) return null;
+  const anomalies = (row.anomalies ?? []) as OptionsEdgeAnomaly[];
+  return {
+    scanDay: row.scanDay,
+    totalAnomalies: anomalies.length,
+    top: anomalies.slice(0, 3).map((a) => ({
+      ticker: a.ticker,
+      metric: a.metric,
+      zScore: a.zScore,
+      direction: a.direction,
+      suggestedStrategy: a.suggestedStrategy ?? "",
+    })),
   };
 }
 
@@ -435,13 +490,14 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
 // ---------------------------------------------------------------------------
 
 export async function loadDashboardData(): Promise<DashboardData> {
-  const [hero, pulse, earnings, squeeze, sectorFlow, feed] = await Promise.all([
+  const [hero, pulse, optionsEdge, earnings, squeeze, sectorFlow, feed] = await Promise.all([
     loadHero(),
     loadMarketPulse(),
+    loadOptionsEdgeSnippet(),
     loadEarningsSnippet(),
     loadSqueezeSnippet(),
     loadSectorFlowSnippet(),
     loadActivityFeed(),
   ]);
-  return { hero, pulse, earnings, squeeze, sectorFlow, feed };
+  return { hero, pulse, optionsEdge, earnings, squeeze, sectorFlow, feed };
 }

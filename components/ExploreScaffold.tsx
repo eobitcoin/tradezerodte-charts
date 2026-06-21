@@ -58,7 +58,7 @@ export default function ExploreScaffold({
     datePublished: runAt ? runAt.toISOString() : undefined,
     publisher: {
       "@type": "Organization",
-      name: "Olivia Trades",
+      name: "OliviaTrades Research",
       url: APP_URL,
     },
   };

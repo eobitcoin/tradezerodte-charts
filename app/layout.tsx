@@ -17,8 +17,8 @@ const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
   title: {
-    default: "Olivia Trades — Invite-Only Private Research",
-    template: "%s · Olivia Trades",
+    default: "OliviaTrades Research — Invite-Only Private Research",
+    template: "%s · OliviaTrades Research",
   },
   description:
     "Trader-grade daily 0DTE options research, Max Pain & gamma-exposure analytics, Polymarket whale tracking, and a regime-aware economic calendar. Invite-only.",
@@ -38,8 +38,8 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "Olivia Trades",
-    title: "Olivia Trades — Invite-Only Private Research",
+    siteName: "OliviaTrades Research",
+    title: "OliviaTrades Research — Invite-Only Private Research",
     description:
       "Trader-grade daily 0DTE options research, Max Pain & gamma analytics, Polymarket whale tracking, and a regime-aware economic calendar. Invite-only.",
     url: APP_URL,
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Olivia Trades",
+    title: "OliviaTrades Research",
     description:
       "Trader-grade daily 0DTE research, Max Pain & GEX analytics, Polymarket whale tracking. Invite-only.",
   },

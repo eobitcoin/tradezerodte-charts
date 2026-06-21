@@ -24,9 +24,11 @@ import {
   leapScans,
   sectorFlowBars,
   economicEvents,
+  cryptoPosts,
   type SqueezeCandidate,
   type SqueezeTradeIdea,
   type OptionsEdgeAnomaly,
+  type CryptoTrade,
 } from "@/lib/db/schema";
 
 // ---------------------------------------------------------------------------
@@ -110,12 +112,19 @@ export interface DashboardActivityEvent {
   icon: string;                 // Tabler icon name (without "ti-" prefix)
 }
 
+export interface DashboardCryptoSnippet {
+  scanDay: string;
+  headline: string;
+  trades: CryptoTrade[];      // filtered to BTC/ETH/SOL, in that order
+}
+
 export interface DashboardData {
   hero: DashboardHeroVideo | null;
   pulse: DashboardMarketPulse;
   optionsEdge: DashboardOptionsEdgeSnippet | null;
   earnings: DashboardEarningsSnippet | null;
   squeeze: DashboardSqueezeSnippet | null;
+  crypto: DashboardCryptoSnippet | null;
   feed: DashboardActivityEvent[];
 }
 
@@ -488,14 +497,44 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
 // Entry point
 // ---------------------------------------------------------------------------
 
+async function loadCryptoSnippet(): Promise<DashboardCryptoSnippet | null> {
+  const [row] = await db
+    .select()
+    .from(cryptoPosts)
+    .orderBy(desc(cryptoPosts.scanDay))
+    .limit(1);
+  if (!row) return null;
+  const all = (row.trades ?? []) as CryptoTrade[];
+  // Pull BTC/ETH/SOL in that fixed order. Match common ticker shapes:
+  // "BTCUSDT", "BTC-USD", "BTC", etc.
+  const want: Array<{ key: string; aliases: string[] }> = [
+    { key: "BTC", aliases: ["BTC", "BTCUSDT", "BTC-USD", "BTCUSD"] },
+    { key: "ETH", aliases: ["ETH", "ETHUSDT", "ETH-USD", "ETHUSD"] },
+    { key: "SOL", aliases: ["SOL", "SOLUSDT", "SOL-USD", "SOLUSD"] },
+  ];
+  const trades: CryptoTrade[] = [];
+  for (const w of want) {
+    const found = all.find((t) =>
+      w.aliases.some((a) => (t.ticker ?? "").toUpperCase() === a),
+    );
+    if (found) trades.push(found);
+  }
+  return {
+    scanDay: row.scanDay,
+    headline: row.headline ?? "",
+    trades,
+  };
+}
+
 export async function loadDashboardData(): Promise<DashboardData> {
-  const [hero, pulse, optionsEdge, earnings, squeeze, feed] = await Promise.all([
+  const [hero, pulse, optionsEdge, earnings, squeeze, crypto, feed] = await Promise.all([
     loadHero(),
     loadMarketPulse(),
     loadOptionsEdgeSnippet(),
     loadEarningsSnippet(),
     loadSqueezeSnippet(),
+    loadCryptoSnippet(),
     loadActivityFeed(),
   ]);
-  return { hero, pulse, optionsEdge, earnings, squeeze, feed };
+  return { hero, pulse, optionsEdge, earnings, squeeze, crypto, feed };
 }

@@ -10,6 +10,7 @@
  */
 import Link from "next/link";
 import type { DashboardData, DashboardEconEvent } from "@/lib/dashboard-data";
+import type { CryptoTrade } from "@/lib/db/schema";
 import { relativeTime } from "@/lib/dashboard-data";
 
 function fmtScoreBadge(score: number): string {
@@ -36,6 +37,7 @@ export default function DashboardView({ data }: { data: DashboardData }) {
       </header>
 
       <ContentGrid data={data} />
+      <CryptoCard data={data} />
     </main>
   );
 }
@@ -468,4 +470,105 @@ function PlayIcon() {
       <path d="M8 5v14l11-7z" />
     </svg>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Crypto Daily — full-width card with BTC / ETH / SOL trade plans
+// ---------------------------------------------------------------------------
+
+function CryptoCard({ data }: { data: DashboardData }) {
+  const c = data.crypto;
+  return (
+    <section className={CARD_CLASS}>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <Link
+          href="/crypto"
+          className={TITLE_CLASS + " hover:opacity-80 transition-opacity"}
+        >
+          Crypto daily
+        </Link>
+        <span className="text-[11px] text-white/50">{c?.scanDay ?? "—"}</span>
+      </div>
+      {c && c.trades.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {c.trades.map((t) => (
+            <CryptoTradeRow key={t.ticker} trade={t} />
+          ))}
+        </div>
+      ) : (
+        <EmptyMsg>No crypto research yet</EmptyMsg>
+      )}
+    </section>
+  );
+}
+
+function CryptoTradeRow({ trade }: { trade: CryptoTrade }) {
+  const biasTint =
+    trade.bias === "long"
+      ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+      : trade.bias === "short"
+        ? "bg-red-500/15 text-red-300 ring-red-500/30"
+        : trade.bias === "avoid"
+          ? "bg-zinc-500/15 text-zinc-300 ring-zinc-500/30"
+          : "bg-white/10 text-white/70 ring-white/20";
+  const shortTicker = trade.ticker.replace(/USDT?$|-USD$/i, "");
+  return (
+    <div className="rounded-md ring-1 ring-white/[0.08] bg-white/[0.02] p-3">
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="font-mono font-bold text-sm">{shortTicker}</span>
+        {trade.bias && (
+          <span
+            className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ring-1 ${biasTint}`}
+          >
+            {trade.bias}
+          </span>
+        )}
+      </div>
+      <dl className="space-y-1 text-[11px]">
+        <CryptoRow label="Entry" value={trade.entry_zone ?? "—"} />
+        {trade.entry_trigger && (
+          <CryptoRow label="Trigger" value={trade.entry_trigger} />
+        )}
+        <CryptoRow label="Target 1" value={fmtLevel(trade.target1)} tone="pos" />
+        {trade.target2 != null && trade.target2 !== "" && (
+          <CryptoRow label="Target 2" value={fmtLevel(trade.target2)} tone="pos" />
+        )}
+        <CryptoRow label="Stop" value={fmtLevel(trade.stop)} tone="neg" />
+      </dl>
+      {trade.time_horizon && (
+        <div className="text-[10px] text-white/45 mt-2 uppercase tracking-wider">
+          {trade.time_horizon}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CryptoRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "pos" | "neg";
+}) {
+  const valueClass =
+    tone === "pos"
+      ? "text-emerald-300"
+      : tone === "neg"
+        ? "text-red-300"
+        : "text-white/85";
+  return (
+    <div className="flex items-baseline justify-between gap-2">
+      <dt className="text-white/55">{label}</dt>
+      <dd className={`font-mono ${valueClass}`}>{value}</dd>
+    </div>
+  );
+}
+
+function fmtLevel(v: number | string | undefined | null): string {
+  if (v == null || v === "") return "—";
+  if (typeof v === "number") return `$${v.toLocaleString()}`;
+  return String(v);
 }

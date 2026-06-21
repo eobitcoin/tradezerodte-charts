@@ -25,10 +25,12 @@ import {
   sectorFlowBars,
   economicEvents,
   cryptoPosts,
+  posts,
   type SqueezeCandidate,
   type SqueezeTradeIdea,
   type OptionsEdgeAnomaly,
   type CryptoTrade,
+  type Trade,
 } from "@/lib/db/schema";
 
 // ---------------------------------------------------------------------------
@@ -52,13 +54,18 @@ export interface DashboardEconEvent {
   importance: "low" | "medium" | "high";
 }
 
+export interface DashboardPreMarketPick {
+  ticker: string;
+  direction: "long" | "short" | "neutral" | "avoid" | null;
+  strike: string | null;
+  expiry: string | null;
+}
+
 export interface DashboardMarketPulse {
   nextEconEvents: DashboardEconEvent[];
-  topTradeIdea: {
-    ticker: string;
-    strategy: string;
-    label: string;
-    href: string;
+  preMarketPicks: {
+    tradingDay: string;
+    picks: DashboardPreMarketPick[];
   } | null;
 }
 
@@ -245,26 +252,35 @@ async function loadMarketPulse(): Promise<DashboardMarketPulse> {
       importance: e.importance,
     }));
 
-  const [topSqueeze] = await db
+  // Most recent premarket post — pick the top 3 trades, normalize shape.
+  const [premarket] = await db
     .select()
-    .from(squeezeScans)
-    .orderBy(desc(squeezeScans.scanDay))
+    .from(posts)
+    .where(eq(posts.scanKind, "premarket"))
+    .orderBy(desc(posts.tradingDay))
     .limit(1);
 
-  const topCandidate = (topSqueeze?.candidates ?? [])[0] as SqueezeCandidate | undefined;
-  const topIdea = topCandidate?.tradeIdeas?.[0] ?? null;
+  let preMarketPicks: DashboardMarketPulse["preMarketPicks"] = null;
+  if (premarket) {
+    const trades = (premarket.trades ?? []) as Trade[];
+    // Trades may already be ranked; if not, the first N is fine.
+    const ranked = [...trades].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)).slice(0, 3);
+    if (ranked.length > 0) {
+      preMarketPicks = {
+        tradingDay: premarket.tradingDay,
+        picks: ranked.map((t) => ({
+          ticker: t.ticker,
+          direction: (t.direction ?? null) as DashboardPreMarketPick["direction"],
+          strike: t.strike != null ? String(t.strike) : null,
+          expiry: t.expiry ?? null,
+        })),
+      };
+    }
+  }
 
   return {
     nextEconEvents,
-    topTradeIdea:
-      topCandidate && topIdea
-        ? {
-            ticker: topCandidate.ticker,
-            strategy: topIdea.strategy,
-            label: topIdea.label,
-            href: "/research/squeeze",
-          }
-        : null,
+    preMarketPicks,
   };
 }
 

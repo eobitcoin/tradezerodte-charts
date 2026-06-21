@@ -118,10 +118,8 @@ function VideoCard({ data }: { data: DashboardData }) {
         <span className="absolute bottom-3 left-3 right-3 text-white text-sm font-medium drop-shadow line-clamp-2">
           {hero.caption ?? "Tap to play"}
         </span>
-        <span className="absolute inset-0 flex items-center justify-center">
-          <span className="w-11 h-11 rounded-full bg-white/95 text-black flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xl">
-            <PlayIcon />
-          </span>
+        <span className="absolute bottom-3 right-3 w-11 h-11 rounded-full bg-white/95 text-black flex items-center justify-center group-hover:scale-110 transition-transform shadow-2xl">
+          <PlayIcon />
         </span>
       </Link>
 
@@ -159,7 +157,7 @@ function OliviaPosterFallback() {
 }
 
 function MarketPulseCard({ data }: { data: DashboardData }) {
-  const { nextEconEvents, topTradeIdea } = data.pulse;
+  const { nextEconEvents, preMarketPicks } = data.pulse;
   return (
     <article className={CARD_CLASS + " flex flex-col"}>
       <div className="mb-3">
@@ -185,21 +183,36 @@ function MarketPulseCard({ data }: { data: DashboardData }) {
           )}
         </div>
         <div className="pt-2 border-t border-white/[0.08]">
-          <dt className="text-white/55 text-[12px] uppercase tracking-wider mb-1.5">
-            Top trade idea
-          </dt>
-          <dd>
-            {topTradeIdea ? (
-              <Link
-                href={topTradeIdea.href}
-                className="text-emerald-300 hover:underline font-mono text-sm"
-              >
-                {topTradeIdea.ticker} · {topTradeIdea.label}
-              </Link>
-            ) : (
-              <span className="text-white/40 text-xs italic">No live ideas yet.</span>
+          <dt className="text-white/55 text-[12px] uppercase tracking-wider mb-1.5 flex items-baseline justify-between gap-2">
+            <span>Pre-market picks</span>
+            {preMarketPicks && (
+              <span className="text-white/40 text-[10px] normal-case tracking-normal">
+                {preMarketPicks.tradingDay}
+              </span>
             )}
-          </dd>
+          </dt>
+          {preMarketPicks && preMarketPicks.picks.length > 0 ? (
+            <ul className="space-y-1">
+              {preMarketPicks.picks.map((p, i) => (
+                <li key={i}>
+                  <Link
+                    href="/today"
+                    className="flex items-baseline justify-between gap-2 text-[13px] hover:bg-white/[0.03] -mx-1 px-1 py-0.5 rounded transition-colors"
+                  >
+                    <span className="font-mono font-bold text-white/85">{p.ticker}</span>
+                    <span className="font-mono text-white/55 truncate">
+                      {p.direction === "long" ? "long" : p.direction === "short" ? "short" : ""}{" "}
+                      {p.strike ?? ""}
+                      {p.strike && (p.direction === "long" || p.direction === "short") ? " " : ""}
+                      {p.expiry ? `· ${p.expiry}` : ""}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <dd className="text-white/40 text-xs italic">No premarket scan yet.</dd>
+          )}
         </div>
       </dl>
     </article>
@@ -332,6 +345,7 @@ function EarningsCard({ data }: { data: DashboardData }) {
 
 function SqueezeCard({ data }: { data: DashboardData }) {
   const top = data.squeeze?.top ?? null;
+  const longCall = top?.tradeIdeas.find((i) => i.strategy === "long_call") ?? null;
   return (
     <Link
       href="/research/squeeze"
@@ -353,21 +367,11 @@ function SqueezeCard({ data }: { data: DashboardData }) {
             {top.siPct != null ? `${top.siPct.toFixed(0)}% SI` : "—"} · DTC{" "}
             {top.daysToCover.toFixed(1)}
           </div>
-          {top.tradeIdeas.slice(0, 2).map((idea) => (
-            <div key={idea.strategy} className="flex justify-between text-xs">
-              <span className="text-white/55">
-                {idea.strategy === "long_call"
-                  ? "Long call"
-                  : idea.strategy === "bull_call_spread"
-                    ? "Spread"
-                    : "Diagonal"}{" "}
-                ({idea.dte}d)
-              </span>
-              <span className="font-mono">
-                {idea.netDebit != null ? `debit $${idea.netDebit.toFixed(2)}` : "—"}
-              </span>
+          {longCall && (
+            <div className="text-emerald-300 font-mono text-sm pt-1 border-t border-white/[0.08]">
+              {top.ticker} · {longCall.label}
             </div>
-          ))}
+          )}
         </>
       ) : (
         <EmptyMsg>No squeeze scan yet</EmptyMsg>

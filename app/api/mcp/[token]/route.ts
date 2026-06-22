@@ -4526,16 +4526,22 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
         const platformInit: Record<string, unknown> = {};
         if (existing.ytStatus == null) platformInit.ytStatus = "pending_review";
         if (existing.ttStatus == null) platformInit.ttStatus = "pending_review";
+        // Only OVERWRITE thumbnailUrl when this caller explicitly passed
+        // a.thumbnail_url. Without this guard, an attach call from a routine
+        // that doesn't know about thumbnails would null out the Higgsfield
+        // Soul URL we captured during submit_briefing_video_via_hedra.
+        const updateSet: Record<string, unknown> = {
+          higgsfieldJobId: a.higgsfield_job_id ?? null,
+          videoS3Key: a.video_url,
+          status: "pending_upload",
+          ...platformInit,
+          updatedAt: sql`now()`,
+        };
+        if (a.thumbnail_url) updateSet.thumbnailUrl = a.thumbnail_url;
+
         const [row] = await db
           .update(briefings)
-          .set({
-            higgsfieldJobId: a.higgsfield_job_id ?? null,
-            videoS3Key: a.video_url, // store the URL directly until we mirror to our bucket in Phase 5
-            thumbnailUrl: a.thumbnail_url ?? null,
-            status: "pending_upload",
-            ...platformInit,
-            updatedAt: sql`now()`,
-          })
+          .set(updateSet)
           .where(eq(briefings.tradingDay, tradingDay))
           .returning({
             id: briefings.id,

@@ -28,12 +28,12 @@ const CARD_CLASS =
   "rounded-lg ring-1 ring-white/10 bg-white/[0.02] p-4";
 
 /** Stable Olivia poster image for the dashboard video card. We intentionally
- *  use the same Higgsfield render across every briefing instead of trying
- *  to capture+persist the per-video Soul URL — brand consistency, no
- *  per-row plumbing, no clobber-from-attach bugs. Swap this constant to
- *  change the hero image; it's the single source of truth. */
-const DASHBOARD_HERO_POSTER =
-  "https://d8j0ntlcm91z4.cloudfront.net/user_3Dr7a4UQeVdIhvZqwokhbnlVyPs/hf_20260621_170829_d06186ba-d120-4600-8107-6c3e2f756807.png";
+ *  use the same render across every briefing — brand consistency, no per-row
+ *  plumbing. Bytes live in our Tigris bucket (mirrored from Higgsfield CDN
+ *  by scripts/mirror-hero-poster.mjs) so we're not dependent on third-party
+ *  CDN URLs that may rotate. Swap the bucket object via the mirror script
+ *  to change the hero image. */
+const DASHBOARD_HERO_POSTER = "/api/dashboard/hero-poster";
 
 export default function DashboardView({ data }: { data: DashboardData }) {
   return (

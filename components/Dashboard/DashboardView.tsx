@@ -175,7 +175,6 @@ function VideoCard({ data }: { data: DashboardData }) {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white whitespace-nowrap transition-colors group/yt"
           aria-label="OliviaTrades YouTube Shorts channel"
-          onClick={(e) => e.stopPropagation()}
         >
           <svg
             viewBox="0 0 24 24"

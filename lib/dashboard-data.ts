@@ -14,6 +14,7 @@
 
 import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { fetchMarketTape, type MarketTapeData } from "@/lib/market-tape";
 import {
   briefings,
   weeklyEarningsBriefings,
@@ -126,6 +127,7 @@ export interface DashboardCryptoSnippet {
 }
 
 export interface DashboardData {
+  tape: MarketTapeData;
   hero: DashboardHeroVideo | null;
   pulse: DashboardMarketPulse;
   optionsEdge: DashboardOptionsEdgeSnippet | null;
@@ -543,7 +545,15 @@ async function loadCryptoSnippet(): Promise<DashboardCryptoSnippet | null> {
 }
 
 export async function loadDashboardData(): Promise<DashboardData> {
-  const [hero, pulse, optionsEdge, earnings, squeeze, crypto, feed] = await Promise.all([
+  // Market tape failure is non-fatal — we just render an empty strip.
+  const tapePromise = fetchMarketTape().catch((err): MarketTapeData => ({
+    asOf: new Date().toISOString(),
+    metrics: [],
+    errors: [err instanceof Error ? err.message : String(err)],
+  }));
+
+  const [tape, hero, pulse, optionsEdge, earnings, squeeze, crypto, feed] = await Promise.all([
+    tapePromise,
     loadHero(),
     loadMarketPulse(),
     loadOptionsEdgeSnippet(),
@@ -552,5 +562,5 @@ export async function loadDashboardData(): Promise<DashboardData> {
     loadCryptoSnippet(),
     loadActivityFeed(),
   ]);
-  return { hero, pulse, optionsEdge, earnings, squeeze, crypto, feed };
+  return { tape, hero, pulse, optionsEdge, earnings, squeeze, crypto, feed };
 }

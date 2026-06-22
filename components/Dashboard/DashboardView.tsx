@@ -31,14 +31,49 @@ export default function DashboardView({ data }: { data: DashboardData }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 space-y-4">
       <header>
-        <p className="text-sm text-white/55">
+        <p className="text-sm text-white/55 text-center">
           Premium Content — Your hub for daily analysis, weekly updates, and curated picks.
         </p>
       </header>
 
+      <MarketTape data={data.tape} />
+
       <ContentGrid data={data} />
       <CryptoCard data={data} />
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Market tape — VIX / VIX3M / ratio / slope / SKEW / term structure / DXY
+// ---------------------------------------------------------------------------
+
+function MarketTape({ data }: { data: DashboardData["tape"] }) {
+  if (data.metrics.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-baseline justify-center gap-x-6 gap-y-2 text-[12px] py-1">
+      {data.metrics.map((m) => {
+        const toneClass =
+          m.tone === "pos"
+            ? "text-emerald-300"
+            : m.tone === "neg"
+              ? "text-red-300"
+              : m.tone === "warn"
+                ? "text-amber-300"
+                : "text-white/85";
+        return (
+          <span key={m.label} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+            <span className="uppercase tracking-wider text-white/45 font-semibold text-[10px]">
+              {m.label}
+            </span>
+            <span className={`font-mono font-semibold ${toneClass}`}>{m.value}</span>
+            {m.hint && (
+              <span className="text-white/45 text-[11px] font-mono">{m.hint}</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

@@ -27,6 +27,14 @@ const TITLE_CLASS =
 const CARD_CLASS =
   "rounded-lg ring-1 ring-white/10 bg-white/[0.02] p-4";
 
+/** Stable Olivia poster image for the dashboard video card. We intentionally
+ *  use the same Higgsfield render across every briefing instead of trying
+ *  to capture+persist the per-video Soul URL — brand consistency, no
+ *  per-row plumbing, no clobber-from-attach bugs. Swap this constant to
+ *  change the hero image; it's the single source of truth. */
+const DASHBOARD_HERO_POSTER =
+  "https://d8j0ntlcm91z4.cloudfront.net/user_3Dr7a4UQeVdIhvZqwokhbnlVyPs/hf_20260621_170829_d06186ba-d120-4600-8107-6c3e2f756807.png";
+
 export default function DashboardView({ data }: { data: DashboardData }) {
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 space-y-4">
@@ -129,20 +137,16 @@ function VideoCard({ data }: { data: DashboardData }) {
         className="block relative aspect-[4/3] rounded-md overflow-hidden bg-gradient-to-b from-zinc-900 to-black group ring-1 ring-white/10"
         aria-label={`Play ${kindLabel}`}
       >
-        {hero.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={hero.thumbnailUrl}
-            alt=""
-            // Higgsfield renders are 9:16 portrait; this card is 16:9 landscape.
-            // Default object-center crops the face out (shows body); object-top
-            // shows mostly sky. Anchor at 25% from top — lands on the face for
-            // typical Soul renders where the head sits in the upper third.
-            className="absolute inset-0 w-full h-full object-cover object-[center_25%] opacity-95 group-hover:opacity-100 transition-opacity"
-          />
-        ) : (
-          <OliviaPosterFallback />
-        )}
+        {/* Always render the stable poster constant — we intentionally
+         *  ignore hero.thumbnailUrl (the per-video Higgsfield URL) for brand
+         *  consistency. Object-cover anchored 25% from top lands the face
+         *  behind the bottom-right play button. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={DASHBOARD_HERO_POSTER}
+          alt=""
+          className="absolute inset-0 w-full h-full object-cover object-[center_25%] opacity-95 group-hover:opacity-100 transition-opacity"
+        />
 
         <span className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent pointer-events-none" />
 
@@ -187,23 +191,6 @@ function VideoCard({ data }: { data: DashboardData }) {
         </a>
       </div>
     </article>
-  );
-}
-
-function OliviaPosterFallback() {
-  return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center text-white/40">
-      <svg
-        viewBox="0 0 64 64"
-        className="w-20 h-20 mb-2 text-amber-400/60"
-        fill="currentColor"
-        aria-hidden="true"
-      >
-        <circle cx="32" cy="22" r="11" />
-        <path d="M10 60 C 10 44, 20 36, 32 36 S 54 44, 54 60 Z" />
-      </svg>
-      <span className="text-[10px] uppercase tracking-[0.3em] text-amber-300/70">OliviaTrades</span>
-    </div>
   );
 }
 

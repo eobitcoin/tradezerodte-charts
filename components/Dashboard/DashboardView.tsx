@@ -170,7 +170,7 @@ function VideoCard({ data }: { data: DashboardData }) {
           ))}
         </div>
         <a
-          href="https://www.youtube.com/@oliviatrades/shorts"
+          href="https://www.youtube.com/@OliviaTrades0DTE/shorts"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white whitespace-nowrap transition-colors group/yt"

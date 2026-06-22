@@ -158,8 +158,8 @@ function VideoCard({ data }: { data: DashboardData }) {
         </span>
       </Link>
 
-      {hero.tickers.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-3">
+      <div className="flex items-center justify-between gap-3 mt-3">
+        <div className="flex flex-wrap gap-1.5 min-w-0">
           {hero.tickers.slice(0, 6).map((t) => (
             <span
               key={t}
@@ -169,7 +169,24 @@ function VideoCard({ data }: { data: DashboardData }) {
             </span>
           ))}
         </div>
-      )}
+        <a
+          href="https://www.youtube.com/@oliviatrades/shorts"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-[11px] text-white/55 hover:text-white whitespace-nowrap transition-colors group/yt"
+          aria-label="OliviaTrades YouTube Shorts channel"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="w-4 h-4 fill-[#FF0000] opacity-90 group-hover/yt:opacity-100"
+            aria-hidden="true"
+          >
+            <path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2C0 8.1 0 12 0 12s0 3.9.5 5.8a3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z" />
+          </svg>
+          <span>Olivia Shorts</span>
+        </a>
+      </div>
     </article>
   );
 }

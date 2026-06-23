@@ -238,6 +238,26 @@ const TOOLS = [
     },
   },
   {
+    name: "pick_daily_briefing_setting_prompt",
+    description:
+      "Pick a setting_prompt for today's daily briefing from a locked 10-prompt rotation. Returns the prompt VERBATIM — the script-writer routine should pass it straight to publish_briefing_script without modifying. Eliminates free-form composition drift (root cause of past double-cup scenes + lack of beverage variety). Deterministic per trading_day: index = (day-of-year) % 10. Pass `index` (0-9) to force a specific one for re-renders. See examples/daily-briefing-setting-prompts.md for the full rotation + design notes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        trading_day: {
+          type: "string",
+          description: "Optional YYYY-MM-DD; defaults to today in America/New_York. Drives the day-of-year-based rotation index.",
+        },
+        index: {
+          type: "integer",
+          minimum: 0,
+          maximum: 9,
+          description: "Optional 0-9. Forces a specific prompt regardless of trading_day. Use for re-renders or A/B testing.",
+        },
+      },
+    },
+  },
+  {
     name: "fetch_briefing",
     description:
       "Fetch the briefing row for a trading_day. Returns null when no briefing exists. Used by the video-gen pipeline (Phase 2) to read the script + setting_prompt; used by the admin review surface to inspect status and error_log.",
@@ -3789,6 +3809,71 @@ async function dispatch(method: string, params: Record<string, unknown> | undefi
             {
               type: "text",
               text: `publish_briefing_script failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+    if (name === "pick_daily_briefing_setting_prompt") {
+      // Locked rotation of 10 setting prompts for the daily briefing video.
+      // Each prompt is EXPLICIT about cup placement (`NO cup on the desk`,
+      // `held up near her chin`, etc) so Higgsfield Soul stops generating
+      // double-cup scenes. 6 of 10 are beverage-free for variety. Edit only
+      // with intent — also update examples/daily-briefing-setting-prompts.md
+      // so the docs stay in sync.
+      const DAILY_BRIEFING_SETTING_PROMPTS = [
+        "Sun-drenched home office, small espresso cup held up near her shoulder, NO cup on the desk, crisp white linen shirt, confident upright posture, easy morning energy, soft smile",
+        "Bright morning home office, hands resting on the desk gesturing as she speaks, NO coffee cup in the frame, white linen shirt with sleeves rolled, confident posture, warm professional energy",
+        "Cozy kitchen corner at sunrise, mug of tea on the counter beside her, hands free and gesturing, soft cream sweater, easy confident smile, warm morning glow",
+        "Modern home office with floor-to-ceiling windows, leaning slightly forward in her chair, hands clasped on the desk, NO beverage in shot, structured white blouse, polished morning energy",
+        "Sunlit kitchen island, glass of water in hand, white linen shirt, easy confident posture, soft morning light from the side, warm friendly smile",
+        "Home office at golden hour, sketchpad and pen in front of her on the desk, hands gesturing as she speaks, NO cup anywhere, navy cashmere crewneck, focused upbeat energy",
+        "Bright breakfast nook, half-eaten croissant on a small plate beside her, hands free and animated, oversized white button-up, easy magnetic smile, casual Monday energy",
+        "Cozy home library corner, hardcover book closed on the desk, hands gesturing as she speaks, NO mug or cup visible, soft beige turtleneck, confident posture, warm intellectual energy",
+        "Sunny home office, small cappuccino in hand held near her chin between sentences, NO additional cups on the desk, crisp white shirt, easy confident smile, bright morning vibe",
+        "Minimalist home office at sunrise, laptop open in front of her, hands resting on the keyboard then gesturing, NO drinkware in frame, fitted white tee under an open blazer, polished upbeat morning energy",
+      ];
+      try {
+        const a = args as { trading_day?: string; index?: number };
+        const tradingDay = a.trading_day || nyTradingDay();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDay)) {
+          return {
+            content: [{ type: "text", text: "trading_day must be YYYY-MM-DD" }],
+            isError: true,
+          };
+        }
+        let idx: number;
+        if (typeof a.index === "number" && a.index >= 0 && a.index < DAILY_BRIEFING_SETTING_PROMPTS.length) {
+          idx = Math.floor(a.index);
+        } else {
+          // day-of-year mod 10. Deterministic per date, no DB needed.
+          const d = new Date(tradingDay + "T00:00:00Z");
+          const start = new Date(Date.UTC(d.getUTCFullYear(), 0, 0));
+          const dayOfYear = Math.floor((d.getTime() - start.getTime()) / (24 * 60 * 60_000));
+          idx = ((dayOfYear % DAILY_BRIEFING_SETTING_PROMPTS.length) + DAILY_BRIEFING_SETTING_PROMPTS.length) %
+            DAILY_BRIEFING_SETTING_PROMPTS.length;
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                trading_day: tradingDay,
+                index: idx,
+                prompt: DAILY_BRIEFING_SETTING_PROMPTS[idx],
+                total: DAILY_BRIEFING_SETTING_PROMPTS.length,
+              }),
+            },
+          ],
+          isError: false,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `pick_daily_briefing_setting_prompt failed: ${err instanceof Error ? err.message : String(err)}`,
             },
           ],
           isError: true,

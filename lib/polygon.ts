@@ -1040,3 +1040,91 @@ export async function fetchTickerOverview(
     throw err;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Full-market snapshot + constrained chain slice — used by the Premium Ranker.
+// ---------------------------------------------------------------------------
+
+/** One row from the all-tickers stocks snapshot. We only read price + volume,
+ *  preferring today's session and falling back to the prior day (the realistic
+ *  state for a weekend cron when `day` is empty). */
+export interface PolygonTickerSnapshot {
+  ticker: string;
+  /** Most recent usable last/close price. */
+  price: number | null;
+  /** Most recent usable session share volume. */
+  dayVolume: number | null;
+}
+
+interface RawSnapshotEntry {
+  ticker?: string;
+  day?: { c?: number; v?: number };
+  prevDay?: { c?: number; v?: number };
+  lastTrade?: { p?: number };
+}
+
+interface AllTickersSnapshotResponse {
+  status?: string;
+  tickers?: RawSnapshotEntry[];
+}
+
+/**
+ * Pull the entire US-stocks snapshot in ONE call (~12-13k tickers, several MB).
+ * Returns a normalized price+volume per ticker, preferring the live session and
+ * falling back to prevDay when markets are closed.
+ *
+ * The Premium Ranker uses this as the top of its funnel — filter to
+ * price >= $20 + dayVolume > 500k before spending option-chain calls.
+ */
+export async function fetchAllTickersSnapshot(): Promise<PolygonTickerSnapshot[]> {
+  const body: AllTickersSnapshotResponse = await polygonGet(
+    `/v2/snapshot/locale/us/markets/stocks/tickers`,
+  );
+  const out: PolygonTickerSnapshot[] = [];
+  for (const t of body.tickers ?? []) {
+    if (!t.ticker) continue;
+    const price = t.day?.c && t.day.c > 0 ? t.day.c
+      : t.prevDay?.c && t.prevDay.c > 0 ? t.prevDay.c
+      : t.lastTrade?.p && t.lastTrade.p > 0 ? t.lastTrade.p
+      : null;
+    const dayVolume = t.day?.v && t.day.v > 0 ? t.day.v
+      : t.prevDay?.v && t.prevDay.v > 0 ? t.prevDay.v
+      : null;
+    out.push({ ticker: t.ticker, price, dayVolume });
+  }
+  return out;
+}
+
+/**
+ * Fetch a CONSTRAINED slice of an underlying's option chain — one page,
+ * bounded by expiry window + strike band — so we can deep-scan thousands of
+ * names without paginating full chains. Returns greeks + IV + quotes + OI.
+ *
+ * Empty result is a clean signal that the underlying has no listed options
+ * in the requested window (used by the Premium Ranker as the "has options"
+ * gate). Never paginates: if the band somehow exceeds 250 contracts we take
+ * the first page (sufficient for ATM IV + near-30-delta put selection).
+ */
+export async function fetchOptionChainSlice(
+  underlying: string,
+  opts: {
+    contractType?: "call" | "put";
+    expirationGte?: string;  // YYYY-MM-DD
+    expirationLte?: string;
+    strikeGte?: number;
+    strikeLte?: number;
+    limit?: number;
+  } = {},
+): Promise<PolygonContract[]> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(opts.limit ?? 250));
+  if (opts.contractType) qs.set("contract_type", opts.contractType);
+  if (opts.expirationGte) qs.set("expiration_date.gte", opts.expirationGte);
+  if (opts.expirationLte) qs.set("expiration_date.lte", opts.expirationLte);
+  if (opts.strikeGte != null) qs.set("strike_price.gte", String(opts.strikeGte));
+  if (opts.strikeLte != null) qs.set("strike_price.lte", String(opts.strikeLte));
+  const body: PolygonChainResponse = await polygonGet(
+    `/v3/snapshot/options/${encodeURIComponent(underlying)}?${qs}`,
+  );
+  return body.results ?? [];
+}

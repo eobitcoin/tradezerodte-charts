@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { sellPutScans, type SellPutScanData } from "@/lib/db/schema";
 import SiteHeader from "@/components/SiteHeader";
 import OptionsSubNav from "@/components/OptionsSubNav";
+import SellOptionsSubNav from "@/components/SellOptionsSubNav";
 import SellPutsView from "@/components/SellPutsView";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,8 @@ export default async function SellPutsPage() {
       <>
         <SiteHeader />
         <main className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-          <OptionsSubNav active="sell-puts" />
+          <OptionsSubNav active="sell-options" />
+          <SellOptionsSubNav active="sell-puts" />
           <header className="space-y-2">
             <div className="text-[10px] uppercase tracking-widest text-amber-400">
               Sell Puts · Cash-secured short-put ranker
@@ -59,7 +61,8 @@ export default async function SellPutsPage() {
     <>
       <SiteHeader />
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-        <OptionsSubNav active="sell-puts" />
+        <OptionsSubNav active="sell-options" />
+          <SellOptionsSubNav active="sell-puts" />
         <header className="space-y-2">
           <div className="flex items-baseline justify-between gap-3">
             <div className="text-[10px] uppercase tracking-widest text-amber-400">

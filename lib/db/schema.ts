@@ -2478,6 +2478,134 @@ export const sellPutScans = pgTable(
 export type SellPutScan = typeof sellPutScans.$inferSelect;
 
 // ===========================================================================
+// PREMIUM RANKER — weekly high-IV / premium scanner
+//
+// Full-market funnel: pull every US stock from the Polygon all-tickers
+// snapshot, keep price ≥ $20 + daily volume > 500k, deep-scan each
+// survivor's near-30d option chain for ATM IV + best short-put premium,
+// then rank by IV (and by premium richness). The top names also get
+// concrete naked-put + put-credit-spread trade suggestions.
+//
+// One row per scan_day. We store the top ~120 ranked rows (not all
+// ~2500 survivors) to keep the JSONB tight, plus the 3 headline picks.
+// ===========================================================================
+
+/** A single ranked stock row in the Premium Ranker table. Every value is
+ *  derived from one weekly scan; nulls mean the metric couldn't be computed
+ *  (illiquid chain, missing quote, etc). */
+export interface PremiumRankerRow {
+  symbol: string;
+  /** Stock last/close at scan time. */
+  price: number;
+  /** Daily share volume used for the >500k liquidity gate. */
+  dayVolume: number;
+  /** Constant-ish 30d ATM implied vol (decimal, e.g. 0.62 = 62%). The
+   *  PRIMARY ranking metric — "highest IV". */
+  atmIv: number;
+  /** IV rank 0..100 vs the name's trailing-1y 30d ATM IV. null unless we
+   *  have iv_snapshots history for it (only the ~25 Options Edge names). */
+  ivRank: number | null;
+  /** ATM straddle premium ÷ spot × 100 — the market's implied move and a
+   *  clean "how rich is premium" read independent of strike selection. */
+  atmStraddlePct: number | null;
+  /** Best tradeable short put within the scan's DTE window. */
+  bestPut: {
+    expiration: string;       // YYYY-MM-DD
+    dteDays: number;
+    strike: number;
+    contractTicker: string;
+    credit: number | null;    // mid premium per share
+    creditToClosePct: number | null;  // credit / spot × 100
+    annualizedReturnPct: number | null; // creditPct × 365/dte — the SECONDARY ranking ("highest premium")
+    probabilityOfProfit: number | null; // risk-neutral P(expire > breakeven)
+    delta: number | null;
+    bid: number | null;
+    ask: number | null;
+    openInterest: number | null;
+  } | null;
+  /** 1-based position when the table is sorted by atmIv desc. */
+  rankByIv: number;
+  /** 1-based position when sorted by bestPut.annualizedReturnPct desc. */
+  rankByPremium: number;
+}
+
+/** A credit-spread leg pair derived for a headline suggestion. */
+export interface PremiumRankerSpread {
+  type: "put" | "call";
+  shortStrike: number;
+  longStrike: number;
+  expiration: string;
+  netCredit: number;          // per share
+  width: number;              // strike width
+  maxProfit: number;          // netCredit × 100
+  maxLoss: number;            // (width − netCredit) × 100
+  breakeven: number;
+  probabilityOfProfit: number | null;
+  shortContractTicker: string;
+  longContractTicker: string;
+}
+
+/** One of the 3 headline trade suggestions shown atop the page. */
+export interface PremiumRankerSuggestion {
+  symbol: string;
+  price: number;
+  atmIv: number;
+  thesis: string;
+  /** Cash-secured naked short put. */
+  nakedPut: {
+    expiration: string;
+    dteDays: number;
+    strike: number;
+    contractTicker: string;
+    credit: number;
+    breakeven: number;
+    creditToClosePct: number | null;
+    annualizedReturnPct: number | null;
+    probabilityOfProfit: number | null;
+    maxRisk: number;          // (strike − credit) × 100, if assigned to $0
+  };
+  /** Defined-risk version — put credit spread (short the naked put strike,
+   *  long a put one band lower). */
+  creditSpread: PremiumRankerSpread | null;
+}
+
+export interface PremiumRankerScanData {
+  scanDay: string;
+  /** Filters applied, echoed for the page footer. */
+  filters: { minPrice: number; minDayVolume: number; dteMin: number; dteMax: number };
+  /** Top N ranked rows (by IV). */
+  rows: PremiumRankerRow[];
+  /** 3 headline trade ideas. */
+  suggestions: PremiumRankerSuggestion[];
+}
+
+export const premiumRankerScans = pgTable(
+  "premium_ranker_scans",
+  {
+    id: serial("id").primaryKey(),
+    scanDay: date("scan_day").notNull().unique(),
+    /** How many tickers passed the price+volume gate (the deep-scan input). */
+    universeSize: integer("universe_size").notNull().default(0),
+    /** How many produced a usable IV row (the ranked output count). */
+    computedSize: integer("computed_size").notNull().default(0),
+    data: jsonb("data").$type<PremiumRankerScanData>().notNull().default({
+      scanDay: "",
+      filters: { minPrice: 20, minDayVolume: 500000, dteMin: 21, dteMax: 45 },
+      rows: [],
+      suggestions: [],
+    }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("premium_ranker_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type PremiumRankerScan = typeof premiumRankerScans.$inferSelect;
+
+// ===========================================================================
 // Calendar scans
 // ===========================================================================
 

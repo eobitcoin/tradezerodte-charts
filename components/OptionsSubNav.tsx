@@ -16,7 +16,7 @@ export type OptionsSubNavTab =
   | "gex"
   | "leaps"
   | "earnings"
-  | "sell-puts"
+  | "sell-options"
   | "calendars"
   | "risk-graph";
 
@@ -26,7 +26,9 @@ const TABS: Array<{ id: OptionsSubNavTab; label: string; href: string }> = [
   { id: "gex", label: "GEX", href: "/research/gex" },
   { id: "leaps", label: "LEAPs", href: "/research/leaps" },
   { id: "earnings", label: "Earnings", href: "/research/earnings-scans" },
-  { id: "sell-puts", label: "Sell Puts", href: "/research/sell-puts" },
+  // "Sell Options" is a hub — its sub-tabs (Sell Puts, Premium Ranker) live
+  // in SellOptionsSubNav. The top tab lands on Sell Puts (the first sub-tab).
+  { id: "sell-options", label: "Sell Options", href: "/research/sell-puts" },
   { id: "calendars", label: "Calendars", href: "/research/calendars" },
   { id: "risk-graph", label: "Risk Graph", href: "/research/risk-graph" },
 ];

@@ -125,6 +125,15 @@ export function requireSqueezeCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("SQUEEZE_CRON_TOKEN", req);
 }
 
+/**
+ * Premium Ranker cron token. Used by the weekly Sunday premium-ranker cron
+ * that runs the full-market high-IV / premium scan. Set as
+ * `PREMIUM_RANKER_CRON_TOKEN` in Railway env.
+ */
+export function requirePremiumRankerCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("PREMIUM_RANKER_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

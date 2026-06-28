@@ -2632,8 +2632,10 @@ export interface SqueezeUltraTf {
   label: string | null;
   /** state ∈ {1,2,3}. */
   inSqueeze: boolean;
-  /** EMA-stack + state==2 ideal long setup. */
+  /** Bullish ideal: EMA 8>13>21 stacked + rising with a Mid-state squeeze. */
   ideal: boolean;
+  /** Bearish ideal (mirror): EMA 8<13<21 stacked + falling with a Mid-state squeeze. */
+  idealShort: boolean;
   /** TTM momentum oscillator value (sign + slope drive the color). */
   momentum: number | null;
   /** cyan = +/rising, blue = +/falling, yellow = −/rising, red = −/falling. */
@@ -2649,6 +2651,47 @@ export interface SqueezeUltraRow {
   weekly: SqueezeUltraTf;
 }
 
+/** A concrete directional debit-spread idea, deep-linkable into Risk Graph. */
+export interface SqueezeUltraOptionTrade {
+  strategy: "call_debit_spread" | "put_debit_spread";
+  direction: "long" | "short";
+  expiration: string;
+  dteDays: number;
+  longStrike: number;
+  shortStrike: number;
+  netDebit: number;
+  width: number;
+  maxProfit: number; // (width − debit) × 100
+  maxLoss: number; // debit × 100
+  breakeven: number;
+  longContractTicker: string;
+  shortContractTicker: string;
+}
+
+/** A headline squeeze setup with AI directional analysis. */
+export interface SqueezeUltraSuggestion {
+  symbol: string;
+  price: number;
+  daily: SqueezeUltraTf;
+  weekly: SqueezeUltraTf;
+  /** 30d ATM implied vol from the chain (for trade context), if available. */
+  atmIv: number | null;
+  /** Whether the indicator's ideal flag pointed long or short for this pick. */
+  idealBias: "long" | "short";
+  aiAnalysis: {
+    /** AI's release-direction call — may differ from the indicator bias. */
+    direction: "long" | "short" | "neutral";
+    conviction: "high" | "medium" | "low";
+    /** Why the squeeze is likely to release this way (2-4 sentences). */
+    why: string;
+    /** Honest risk read — how the trade fails (2-3 sentences). */
+    risk: string;
+    model: string;
+  };
+  /** Concrete debit spread aligned to the AI direction; null if no clean chain. */
+  optionTrade: SqueezeUltraOptionTrade | null;
+}
+
 export interface SqueezeUltraScanData {
   scanDay: string;
   /** Filters echoed for the page footer. */
@@ -2656,10 +2699,14 @@ export interface SqueezeUltraScanData {
   /** Rows that are in a squeeze on Daily and/or Weekly, sorted ideal-first
    *  then tightest-state-first. */
   rows: SqueezeUltraRow[];
+  /** Up to 3 headline ideal setups with AI directional analysis + a trade. */
+  suggestions?: SqueezeUltraSuggestion[];
   /** Headline counters for the page hero. */
   counts: {
     dailyIdeal: number;
     weeklyIdeal: number;
+    dailyIdealShort: number;
+    weeklyIdealShort: number;
     dailySqueeze: number;
     weeklySqueeze: number;
   };
@@ -2678,7 +2725,15 @@ export const squeezeUltraScans = pgTable(
       scanDay: "",
       filters: { minPrice: 20, minDayVolume: 500000, barsLookbackDays: 420 },
       rows: [],
-      counts: { dailyIdeal: 0, weeklyIdeal: 0, dailySqueeze: 0, weeklySqueeze: 0 },
+      suggestions: [],
+      counts: {
+        dailyIdeal: 0,
+        weeklyIdeal: 0,
+        dailyIdealShort: 0,
+        weeklyIdealShort: 0,
+        dailySqueeze: 0,
+        weeklySqueeze: 0,
+      },
     }),
     meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
     runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),

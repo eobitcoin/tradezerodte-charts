@@ -28,7 +28,8 @@ import {
   type OhlcBar,
   type SqueezeSignal,
 } from "@/lib/squeeze-ultra-engine";
-import type { SqueezeUltraRow, SqueezeUltraTf } from "@/lib/db/schema";
+import { analyzeSqueezeSetups } from "@/lib/squeeze-ultra-analyst";
+import type { SqueezeUltraRow, SqueezeUltraTf, SqueezeUltraSuggestion } from "@/lib/db/schema";
 
 // ---- Filters ----
 export const MIN_PRICE = 20;
@@ -74,13 +75,14 @@ async function mapConcurrent<T, R>(
 
 function toTf(sig: SqueezeSignal | null): SqueezeUltraTf {
   if (!sig) {
-    return { state: null, label: null, inSqueeze: false, ideal: false, momentum: null, momColor: null };
+    return { state: null, label: null, inSqueeze: false, ideal: false, idealShort: false, momentum: null, momColor: null };
   }
   return {
     state: sig.state,
     label: sig.label,
     inSqueeze: sig.inSqueeze,
     ideal: sig.ideal,
+    idealShort: sig.idealShort,
     momentum: sig.momentum,
     momColor: sig.momColor,
   };
@@ -128,9 +130,10 @@ async function scanTicker(
   }
 }
 
-/** Sort key: ideal-first (weekly weighted over daily), then tightest state. */
+/** Sort key: ideal-first (weekly weighted over daily, long or short), then tightest state. */
 function sortRows(rows: SqueezeUltraRow[]): SqueezeUltraRow[] {
-  const idealRank = (r: SqueezeUltraRow) => (r.weekly.ideal ? 2 : 0) + (r.daily.ideal ? 1 : 0);
+  const idealRank = (r: SqueezeUltraRow) =>
+    (r.weekly.ideal || r.weekly.idealShort ? 2 : 0) + (r.daily.ideal || r.daily.idealShort ? 1 : 0);
   const tightness = (r: SqueezeUltraRow) => Math.max(r.daily.state ?? 0, r.weekly.state ?? 0);
   const stateSum = (r: SqueezeUltraRow) => (r.daily.state ?? 0) + (r.weekly.state ?? 0);
   return [...rows].sort((a, b) => {
@@ -148,7 +151,15 @@ export interface SqueezeUltraResult {
   universeSize: number;
   computedSize: number;
   rows: SqueezeUltraRow[];
-  counts: { dailyIdeal: number; weeklyIdeal: number; dailySqueeze: number; weeklySqueeze: number };
+  suggestions: SqueezeUltraSuggestion[];
+  counts: {
+    dailyIdeal: number;
+    weeklyIdeal: number;
+    dailyIdealShort: number;
+    weeklyIdealShort: number;
+    dailySqueeze: number;
+    weeklySqueeze: number;
+  };
   timing: { snapshotSec: number; scanSec: number; totalSec: number };
   truncated: boolean;
 }
@@ -189,16 +200,22 @@ export async function runSqueezeUltraScan(today: string): Promise<SqueezeUltraRe
   const counts = {
     dailyIdeal: inSqueeze.filter((r) => r.daily.ideal).length,
     weeklyIdeal: inSqueeze.filter((r) => r.weekly.ideal).length,
+    dailyIdealShort: inSqueeze.filter((r) => r.daily.idealShort).length,
+    weeklyIdealShort: inSqueeze.filter((r) => r.weekly.idealShort).length,
     dailySqueeze: inSqueeze.filter((r) => r.daily.inSqueeze).length,
     weeklySqueeze: inSqueeze.filter((r) => r.weekly.inSqueeze).length,
   };
 
   const rows = sortRows(inSqueeze).slice(0, STORE_MAX_ROWS);
 
+  // AI directional analysis on the top ideal setups (long or short). Best-effort.
+  const suggestions = await analyzeSqueezeSetups(rows, today).catch(() => []);
+
   return {
     universeSize,
     computedSize: inSqueeze.length,
     rows,
+    suggestions,
     counts,
     timing: { snapshotSec, scanSec, totalSec: (Date.now() - start) / 1000 },
     truncated,

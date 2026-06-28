@@ -538,8 +538,12 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
     });
   }
   if (b10[0]) {
-    const data = b10[0].data as { counts?: { dailyIdeal?: number; weeklyIdeal?: number } } | null;
-    const ideal = (data?.counts?.dailyIdeal ?? 0) + (data?.counts?.weeklyIdeal ?? 0);
+    const data = b10[0].data as {
+      counts?: { dailyIdeal?: number; weeklyIdeal?: number; dailyIdealShort?: number; weeklyIdealShort?: number };
+    } | null;
+    const ct = data?.counts;
+    const ideal =
+      (ct?.dailyIdeal ?? 0) + (ct?.weeklyIdeal ?? 0) + (ct?.dailyIdealShort ?? 0) + (ct?.weeklyIdealShort ?? 0);
     events.push({
       at: (b10[0].updatedAt ?? b10[0].runAt).toISOString(),
       surface: "Squeeze Scan",

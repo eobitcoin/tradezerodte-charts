@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     scanDay,
     filters: { minPrice: MIN_PRICE, minDayVolume: MIN_DAY_VOLUME, barsLookbackDays: BARS_LOOKBACK_DAYS },
     rows: result.rows,
+    suggestions: result.suggestions,
     counts: result.counts,
   };
   const meta = { timing: result.timing, truncated: result.truncated };
@@ -75,8 +76,16 @@ export async function POST(req: Request) {
     topRows: result.rows.slice(0, 10).map((r) => ({
       symbol: r.symbol,
       price: r.price,
-      daily: `${r.daily.label ?? "—"}${r.daily.ideal ? "/ideal" : ""}`,
-      weekly: `${r.weekly.label ?? "—"}${r.weekly.ideal ? "/ideal" : ""}`,
+      daily: `${r.daily.label ?? "—"}${r.daily.ideal ? "/long-ideal" : r.daily.idealShort ? "/short-ideal" : ""}`,
+      weekly: `${r.weekly.label ?? "—"}${r.weekly.ideal ? "/long-ideal" : r.weekly.idealShort ? "/short-ideal" : ""}`,
+    })),
+    suggestions: result.suggestions.map((s) => ({
+      symbol: s.symbol,
+      direction: s.aiAnalysis.direction,
+      conviction: s.aiAnalysis.conviction,
+      trade: s.optionTrade
+        ? `${s.optionTrade.strategy} ${s.optionTrade.longStrike}/${s.optionTrade.shortStrike} ${s.optionTrade.expiration}`
+        : null,
     })),
   });
 }

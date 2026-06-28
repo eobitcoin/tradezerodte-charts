@@ -35,9 +35,14 @@ export default function Page() {
             "They're the depth of the squeeze — how far inside the Keltner Channels the Bollinger Bands have pulled. The engine checks three Keltner widths (2.0×, 1.5×, and 1.0× ATR). Wide (state 1) = bands inside the 2.0× channel — a mild squeeze just forming. Mid (state 2) = inside the 1.5× channel — a developed squeeze. Tight (state 3) = inside the 1.0× channel — the tightest coil, maximum compression. Tighter generally means a more wound-up spring, closer to release. The scan sorts tightest-first within each ideal tier.",
         },
         {
-          question: "What makes a squeeze 'ideal'?",
+          question: "What makes a squeeze 'ideal' (↑ and ↓)?",
           answer:
-            "Ideal is the engine's high-quality long setup: the 8-, 13-, and 21-period EMAs are stacked bullishly (EMA8 > EMA13 > EMA21), the 13 and 21 EMAs are both rising, AND the name is in a Mid-state squeeze (state 2) specifically. That combination — a developed squeeze forming inside a clean, rising uptrend — is the textbook ST Squeeze Ultra continuation entry. It's flagged with a green IDEAL badge and those rows sort to the very top. Note it requires state 2 exactly, not 1 or 3, by design.",
+            "Ideal ↑ is the engine's high-quality LONG setup: the 8-, 13-, and 21-period EMAs are stacked bullishly (EMA8 > EMA13 > EMA21), the 13 and 21 EMAs are both rising, AND the name is in a Mid-state squeeze (state 2) specifically — a developed squeeze forming inside a clean rising uptrend, the textbook continuation entry. Ideal ↓ is the exact mirror for SHORTS: EMAs stacked down (EMA8 < EMA13 < EMA21) and falling, with a Mid-state squeeze — a coil inside a clean downtrend. Both require state 2 exactly (not 1 or 3) by design, get a coloured badge (green ↑ / red ↓), and sort to the top of the table.",
+        },
+        {
+          question: "What is the AI analysis on the top 3 setups?",
+          answer:
+            "Each week, the cleanest ideal setups (long or short, preferring names where Daily and Weekly agree and the coil is tightest) get a short read written by Claude (Opus 4.8) at scan time — never on page load. It gives a directional call (LONG / SHORT / NEUTRAL) for the likely release, a conviction level, a 'why' grounded in the squeeze tightness + momentum colour + timeframe alignment, and an honest risk note (a squeeze can release either way). Alongside it, the scan pulls a ~25–50 DTE options chain and builds a concrete defined-risk debit spread in the AI's direction — a call debit spread for long, a put debit spread for short — with strikes, net debit, max profit/loss, breakeven, and a one-click Risk Graph deep-link. The AI can disagree with the indicator's bias and call neutral when momentum conflicts.",
         },
         {
           question: "What do the momentum colours mean?",

@@ -57,9 +57,14 @@ for (const c of golden) {
       console.log(`[${c.name}] bar ${i}: color TS=${g.momColor} PY=${c.mom_color[i]}`);
       failures++;
     }
-    // ideal
+    // ideal (long)
     if (Boolean(g.ideal) !== Boolean(c.ideal[i])) {
       console.log(`[${c.name}] bar ${i}: ideal TS=${g.ideal} PY=${c.ideal[i]}`);
+      failures++;
+    }
+    // idealShort (bearish mirror)
+    if (Boolean(g.idealShort) !== Boolean(c.ideal_short[i])) {
+      console.log(`[${c.name}] bar ${i}: idealShort TS=${g.idealShort} PY=${c.ideal_short[i]}`);
       failures++;
     }
     checked++;

@@ -47,8 +47,10 @@ export interface SqueezeSignal {
   label: string | null;
   /** state ∈ {1,2,3} — the bar is inside a squeeze. */
   inSqueeze: boolean;
-  /** EMA-stack + state==2 ideal long setup. */
+  /** Bullish ideal: EMA 8>13>21 stacked + rising with a Mid-state squeeze. */
   ideal: boolean;
+  /** Bearish ideal (mirror): EMA 8<13<21 stacked + falling with a Mid-state squeeze. */
+  idealShort: boolean;
   /** TTM momentum oscillator value, or null during warmup. */
   momentum: number | null;
   /** cyan = +/rising, blue = +/falling, yellow = −/rising, red = −/falling. */
@@ -212,18 +214,25 @@ function momentumColorSeries(osc: number[]): MomColor[] {
   return out;
 }
 
-function idealSeries(bars: OhlcBar[], state: number[]): boolean[] {
+/** Bullish ideal (long) and bearish ideal (short) in one pass. */
+function idealSeries(bars: OhlcBar[], state: number[]): { long: boolean[]; short: boolean[] } {
   const close = bars.map((b) => b.c);
   const e8 = emaAdjustFalse(close, 8);
   const e13 = emaAdjustFalse(close, 13);
   const e21 = emaAdjustFalse(close, 21);
-  const out = new Array<boolean>(bars.length).fill(false);
+  const long = new Array<boolean>(bars.length).fill(false);
+  const short = new Array<boolean>(bars.length).fill(false);
   for (let i = 0; i < bars.length; i++) {
+    const mid = state[i] === 2;
     const bullish = e8[i] > e13[i] && e13[i] > e21[i];
     const slopingUp = i > 0 && e13[i] > e13[i - 1] && e21[i] > e21[i - 1];
-    out[i] = bullish && slopingUp && state[i] === 2;
+    long[i] = bullish && slopingUp && mid;
+    // Mirror image: stacked down + falling.
+    const bearish = e8[i] < e13[i] && e13[i] < e21[i];
+    const slopingDown = i > 0 && e13[i] < e13[i - 1] && e21[i] < e21[i - 1];
+    short[i] = bearish && slopingDown && mid;
   }
-  return out;
+  return { long, short };
 }
 
 /** Per-bar signals for the whole series. */
@@ -239,7 +248,8 @@ export function computeSeries(bars: OhlcBar[], length: number = SQ_LENGTH): Sque
       state: hasState ? s : null,
       label: hasState ? STATE_LABEL[s] : null,
       inSqueeze: hasState && (s === 1 || s === 2 || s === 3),
-      ideal: ideal[i],
+      ideal: ideal.long[i],
+      idealShort: ideal.short[i],
       momentum: Number.isNaN(momentum[i]) ? null : momentum[i],
       momColor: momColor[i],
     };

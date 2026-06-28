@@ -227,6 +227,28 @@ function SuggestionCard({ s }: { s: PremiumRankerSuggestion }) {
       </div>
       <p className="text-xs text-white/65 leading-snug">{s.thesis}</p>
 
+      {s.aiAnalysis && (
+        <div className="rounded-md ring-1 ring-amber-400/20 bg-amber-400/[0.04] p-2.5 space-y-2 text-xs">
+          <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-amber-300/90">
+            <span aria-hidden>✦</span>
+            <span>AI analysis</span>
+            {s.aiAnalysis.earningsInWindow === true && (
+              <span className="ml-auto rounded bg-red-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-red-300 normal-case tracking-normal">
+                Earnings in window
+              </span>
+            )}
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Why</div>
+            <p className="text-white/75 leading-snug">{s.aiAnalysis.why}</p>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-white/45">Probability &amp; risk</div>
+            <p className="text-white/75 leading-snug">{s.aiAnalysis.probability}</p>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-md ring-1 ring-white/[0.08] bg-white/[0.02] p-2.5 space-y-1.5 text-xs">
         <div className="flex items-baseline justify-between">
           <span className="font-semibold text-white/85">Naked put</span>

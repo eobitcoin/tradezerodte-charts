@@ -2567,6 +2567,21 @@ export interface PremiumRankerSuggestion {
   /** Defined-risk version — put credit spread (short the naked put strike,
    *  long a put one band lower). */
   creditSpread: PremiumRankerSpread | null;
+  /** LLM-written analysis of the setup. Computed once at scan time (weekly
+   *  cron), stored in the JSONB — never generated on page load. Optional so
+   *  older stored scans (and scans where the model call failed) still render. */
+  aiAnalysis?: {
+    /** Why this is an attractive premium-selling setup (2–4 sentences). */
+    why: string;
+    /** Honest probability / risk read contextualizing the model's PoP. */
+    probability: string;
+    /** Whether an earnings report falls inside the trade window — the single
+     *  biggest reason IV is elevated. null when the calendar lookup was
+     *  unavailable. */
+    earningsInWindow: boolean | null;
+    /** Model id that produced the analysis, for provenance. */
+    model: string;
+  };
 }
 
 export interface PremiumRankerScanData {

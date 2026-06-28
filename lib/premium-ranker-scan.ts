@@ -31,6 +31,7 @@ import {
   type PolygonContract,
 } from "@/lib/polygon";
 import { normalCdf } from "@/lib/black-scholes";
+import { analyzeSuggestions } from "@/lib/premium-ranker-analyst";
 import type {
   PremiumRankerRow,
   PremiumRankerSuggestion,
@@ -395,17 +396,22 @@ export async function runPremiumRankerScan(today: string): Promise<PremiumRanker
 
   // Phase 3: 3 headline suggestions. Pick from the top-IV names that have a
   // clean tradeable put (PoP in a sane band, OI present). Skip near-duplicates.
-  const suggestions: PremiumRankerSuggestion[] = [];
+  const built: PremiumRankerSuggestion[] = [];
   for (const res of byIv) {
-    if (suggestions.length >= 3) break;
+    if (built.length >= 3) break;
     const bp = res.row?.bestPut;
     if (!bp || bp.credit == null) continue;
     const pop = bp.probabilityOfProfit ?? 0;
     if (pop < 0.6 || pop > 0.92) continue;           // tradeable PoP band
     if ((bp.openInterest ?? 0) < 100) continue;       // liquid enough
     const s = buildSuggestion(res);
-    if (s) suggestions.push(s);
+    if (s) built.push(s);
   }
+
+  // Phase 4: AI analysis (Why? + Probability) for the 3 picks. Best-effort —
+  // enriches each with an LLM read + earnings-in-window check. Computed once
+  // here so the page never makes a model call. Never fatal to the scan.
+  const suggestions = await analyzeSuggestions(built, today).catch(() => built);
 
   return {
     universeSize,

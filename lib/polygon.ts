@@ -235,6 +235,39 @@ export async function fetchUnderlyingDailyBars(
   return out;
 }
 
+/** One daily OHLC bar (full, not close-only). */
+export interface PolygonOhlcBar {
+  date: string; // ISO YYYY-MM-DD
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  v: number;
+}
+
+/**
+ * Fetch DAILY OHLC bars for an underlying over a date range, ascending.
+ * Unlike fetchUnderlyingDailyBars (close-only), this returns full
+ * open/high/low/close/volume — needed by price-action indicators like the
+ * Squeeze engine. One call; Polygon returns up to 50,000 bars.
+ */
+export async function fetchUnderlyingOhlcBars(
+  ticker: string,
+  fromDate: string,
+  toDate: string,
+): Promise<PolygonOhlcBar[]> {
+  const path = `/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&limit=50000`;
+  const body: PolygonAggsResponse = await polygonGet(path);
+  return (body.results ?? []).map((r) => ({
+    date: new Date(r.t).toISOString().slice(0, 10),
+    o: r.o,
+    h: r.h,
+    l: r.l,
+    c: r.c,
+    v: r.v,
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // Surface extraction.
 // ---------------------------------------------------------------------------

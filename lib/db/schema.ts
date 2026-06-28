@@ -2621,6 +2621,77 @@ export const premiumRankerScans = pgTable(
 export type PremiumRankerScan = typeof premiumRankerScans.$inferSelect;
 
 // ===========================================================================
+// Squeeze Scan (ST Squeeze Ultra) — TTM-style squeeze on Daily + Weekly
+// ===========================================================================
+
+/** One timeframe's squeeze read for a ticker. Mirrors the engine's signal. */
+export interface SqueezeUltraTf {
+  /** 0..3 (0 none, 1 wide/black, 2 mid/red, 3 tight/orange), or null if no data. */
+  state: number | null;
+  /** Dot label: none / black / red / orange. */
+  label: string | null;
+  /** state ∈ {1,2,3}. */
+  inSqueeze: boolean;
+  /** EMA-stack + state==2 ideal long setup. */
+  ideal: boolean;
+  /** TTM momentum oscillator value (sign + slope drive the color). */
+  momentum: number | null;
+  /** cyan = +/rising, blue = +/falling, yellow = −/rising, red = −/falling. */
+  momColor: "cyan" | "blue" | "yellow" | "red" | null;
+}
+
+/** One ticker row in the Squeeze Scan output. */
+export interface SqueezeUltraRow {
+  symbol: string;
+  price: number;
+  dayVolume: number;
+  daily: SqueezeUltraTf;
+  weekly: SqueezeUltraTf;
+}
+
+export interface SqueezeUltraScanData {
+  scanDay: string;
+  /** Filters echoed for the page footer. */
+  filters: { minPrice: number; minDayVolume: number; barsLookbackDays: number };
+  /** Rows that are in a squeeze on Daily and/or Weekly, sorted ideal-first
+   *  then tightest-state-first. */
+  rows: SqueezeUltraRow[];
+  /** Headline counters for the page hero. */
+  counts: {
+    dailyIdeal: number;
+    weeklyIdeal: number;
+    dailySqueeze: number;
+    weeklySqueeze: number;
+  };
+}
+
+export const squeezeUltraScans = pgTable(
+  "squeeze_ultra_scans",
+  {
+    id: serial("id").primaryKey(),
+    scanDay: date("scan_day").notNull().unique(),
+    /** Tickers that passed the price+volume+optionable gate (scan input). */
+    universeSize: integer("universe_size").notNull().default(0),
+    /** Tickers in a squeeze on at least one timeframe (the stored row count). */
+    computedSize: integer("computed_size").notNull().default(0),
+    data: jsonb("data").$type<SqueezeUltraScanData>().notNull().default({
+      scanDay: "",
+      filters: { minPrice: 20, minDayVolume: 500000, barsLookbackDays: 420 },
+      rows: [],
+      counts: { dailyIdeal: 0, weeklyIdeal: 0, dailySqueeze: 0, weeklySqueeze: 0 },
+    }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("squeeze_ultra_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type SqueezeUltraScan = typeof squeezeUltraScans.$inferSelect;
+
+// ===========================================================================
 // Calendar scans
 // ===========================================================================
 

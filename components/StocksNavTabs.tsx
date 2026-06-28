@@ -9,6 +9,7 @@ import Link from "next/link";
  */
 export type StocksNavTab =
   | "research"
+  | "squeeze-scan"
   | "metals"
   | "quantum"
   | "radar"
@@ -16,6 +17,7 @@ export type StocksNavTab =
 
 const TABS: Array<{ id: StocksNavTab; label: string; href: string }> = [
   { id: "research", label: "Research", href: "/research" },
+  { id: "squeeze-scan", label: "Squeeze Scan", href: "/research/squeeze-scan" },
   { id: "metals", label: "Metals", href: "/research/metals" },
   { id: "quantum", label: "Quantum", href: "/research/quantum" },
   { id: "radar", label: "Radar", href: "/radar" },

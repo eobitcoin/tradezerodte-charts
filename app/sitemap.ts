@@ -39,6 +39,7 @@ const LEARN_SLUGS = [
   "sector-rotation",
   "insider-buys",
   "premium-ranker",
+  "squeeze-scan",
 ];
 
 const EXPLORE_TYPES: Array<{

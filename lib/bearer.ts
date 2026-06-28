@@ -134,6 +134,16 @@ export function requirePremiumRankerCronBearer(req: Request): BearerCheckResult 
   return checkBearerAgainst("PREMIUM_RANKER_CRON_TOKEN", req);
 }
 
+/**
+ * Squeeze Scan (ST Squeeze Ultra) cron token. Used by the weekly Sunday
+ * squeeze-ultra scan that runs the TTM-style squeeze engine over the full
+ * optionable $20+/500k universe on Daily + Weekly timeframes. Set as
+ * `SQUEEZE_ULTRA_CRON_TOKEN` in Railway env.
+ */
+export function requireSqueezeUltraCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("SQUEEZE_ULTRA_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

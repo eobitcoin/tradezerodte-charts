@@ -25,6 +25,7 @@ import {
   leapScans,
   premiumRankerScans,
   sellPutScans,
+  squeezeUltraScans,
   sectorFlowBars,
   economicEvents,
   cryptoPosts,
@@ -418,7 +419,7 @@ async function loadSectorFlowSnippet(): Promise<DashboardSectorFlowSnippet | nul
 
 async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
   // Pull the most-recent row from each surface in parallel; merge + sort desc.
-  const [b1, b2, b3, b4, b5, b6, b7, b8, b9] = await Promise.all([
+  const [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10] = await Promise.all([
     db.select().from(briefings).orderBy(desc(briefings.tradingDay)).limit(1),
     db
       .select()
@@ -432,6 +433,7 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
     db.select().from(leapScans).orderBy(desc(leapScans.scanDay)).limit(1),
     db.select().from(premiumRankerScans).orderBy(desc(premiumRankerScans.scanDay)).limit(1),
     db.select().from(sellPutScans).orderBy(desc(sellPutScans.scanDay)).limit(1),
+    db.select().from(squeezeUltraScans).orderBy(desc(squeezeUltraScans.scanDay)).limit(1),
   ]);
 
   const events: DashboardActivityEvent[] = [];
@@ -533,6 +535,18 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
       detail: `${picks} short puts ranked`,
       href: "/research/sell-puts",
       icon: "cash",
+    });
+  }
+  if (b10[0]) {
+    const data = b10[0].data as { counts?: { dailyIdeal?: number; weeklyIdeal?: number } } | null;
+    const ideal = (data?.counts?.dailyIdeal ?? 0) + (data?.counts?.weeklyIdeal ?? 0);
+    events.push({
+      at: (b10[0].updatedAt ?? b10[0].runAt).toISOString(),
+      surface: "Squeeze Scan",
+      title: `Scan ${b10[0].scanDay}`,
+      detail: `${b10[0].computedSize} in squeeze · ${ideal} ideal`,
+      href: "/research/squeeze-scan",
+      icon: "arrows-minimize",
     });
   }
   events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());

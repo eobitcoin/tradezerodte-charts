@@ -27,6 +27,7 @@ import { ivSnapshots } from "@/lib/db/schema";
 import {
   fetchAllTickersSnapshot,
   fetchOptionChainSlice,
+  fetchCommonStockTickerSet,
   type PolygonContract,
 } from "@/lib/polygon";
 import { normalCdf } from "@/lib/black-scholes";
@@ -336,11 +337,22 @@ export interface PremiumRankerResult {
 export async function runPremiumRankerScan(today: string): Promise<PremiumRankerResult> {
   const start = Date.now();
 
-  // Phase 1: full-market snapshot → price + volume gate.
-  const snap = await fetchAllTickersSnapshot();
+  // Phase 1: full-market snapshot + common-stock reference set (parallel) →
+  // price + volume + is-a-stock gate. The reference set drops ETFs/ETNs
+  // (esp. leveraged/inverse products) that top the raw IV ranking but are
+  // not "stocks" and are unsafe premium sells.
+  const [snap, stockSet] = await Promise.all([
+    fetchAllTickersSnapshot(),
+    fetchCommonStockTickerSet().catch(() => new Set<string>()),
+  ]);
   const snapshotSec = (Date.now() - start) / 1000;
   let candidates = snap.filter(
-    (s) => s.price != null && s.price >= MIN_PRICE && s.dayVolume != null && s.dayVolume > MIN_DAY_VOLUME,
+    (s) =>
+      s.price != null && s.price >= MIN_PRICE &&
+      s.dayVolume != null && s.dayVolume > MIN_DAY_VOLUME &&
+      // When the reference fetch failed (empty set), fall back to scanning
+      // everything rather than dropping all names.
+      (stockSet.size === 0 || stockSet.has(s.ticker.toUpperCase())),
   );
   const truncated = candidates.length > MAX_DEEP_SCAN;
   if (truncated) {

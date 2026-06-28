@@ -1128,3 +1128,34 @@ export async function fetchOptionChainSlice(
   );
   return body.results ?? [];
 }
+
+/**
+ * Build a Set of every active US common stock + ADR ticker, via Polygon's
+ * reference endpoint (paged). Used by the Premium Ranker to drop ETFs/ETNs
+ * — especially leveraged/inverse products (SOXL, KORU, AMDL…) which top the
+ * raw IV ranking but are not "stocks" and are dangerous premium sells.
+ *
+ * Types kept: CS (common stock) + ADRC (American Depositary Receipt common).
+ * ~6-8 pages of 1000. Cached-friendly but we just fetch fresh per weekly run.
+ */
+export async function fetchCommonStockTickerSet(): Promise<Set<string>> {
+  const set = new Set<string>();
+  for (const type of ["CS", "ADRC"] as const) {
+    let next: string | null =
+      `/v3/reference/tickers?type=${type}&market=stocks&active=true&limit=1000`;
+    let pages = 0;
+    while (next && pages < 20) {
+      const path = next.startsWith("http")
+        ? next.replace(/^https?:\/\/api\.polygon\.io/, "")
+        : next;
+      const body: { results?: Array<{ ticker?: string }>; next_url?: string } =
+        await polygonGet(path);
+      for (const r of body.results ?? []) {
+        if (r.ticker) set.add(r.ticker.toUpperCase());
+      }
+      next = body.next_url ?? null;
+      pages++;
+    }
+  }
+  return set;
+}

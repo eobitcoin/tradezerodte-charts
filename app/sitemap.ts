@@ -38,6 +38,7 @@ const LEARN_SLUGS = [
   "earnings-whiplash",
   "sector-rotation",
   "insider-buys",
+  "premium-ranker",
 ];
 
 const EXPLORE_TYPES: Array<{

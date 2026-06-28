@@ -23,6 +23,8 @@ import {
   sectorRotationPosts,
   optionsEdgeScans,
   leapScans,
+  premiumRankerScans,
+  sellPutScans,
   sectorFlowBars,
   economicEvents,
   cryptoPosts,
@@ -416,7 +418,7 @@ async function loadSectorFlowSnippet(): Promise<DashboardSectorFlowSnippet | nul
 
 async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
   // Pull the most-recent row from each surface in parallel; merge + sort desc.
-  const [b1, b2, b3, b4, b5, b6, b7] = await Promise.all([
+  const [b1, b2, b3, b4, b5, b6, b7, b8, b9] = await Promise.all([
     db.select().from(briefings).orderBy(desc(briefings.tradingDay)).limit(1),
     db
       .select()
@@ -428,6 +430,8 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
     db.select().from(sectorRotationPosts).orderBy(desc(sectorRotationPosts.scanDay)).limit(1),
     db.select().from(optionsEdgeScans).orderBy(desc(optionsEdgeScans.scanDay)).limit(1),
     db.select().from(leapScans).orderBy(desc(leapScans.scanDay)).limit(1),
+    db.select().from(premiumRankerScans).orderBy(desc(premiumRankerScans.scanDay)).limit(1),
+    db.select().from(sellPutScans).orderBy(desc(sellPutScans.scanDay)).limit(1),
   ]);
 
   const events: DashboardActivityEvent[] = [];
@@ -505,6 +509,30 @@ async function loadActivityFeed(): Promise<DashboardActivityEvent[]> {
       detail: `${picks} picks`,
       href: "/research/leaps",
       icon: "calendar-stats",
+    });
+  }
+  if (b8[0]) {
+    const data = b8[0].data as { suggestions?: unknown[] } | null;
+    const ideas = Array.isArray(data?.suggestions) ? data!.suggestions!.length : 0;
+    events.push({
+      at: (b8[0].updatedAt ?? b8[0].runAt).toISOString(),
+      surface: "Premium Ranker",
+      title: `Scan ${b8[0].scanDay}`,
+      detail: `${b8[0].computedSize} names ranked · ${ideas} ideas`,
+      href: "/research/premium-ranker",
+      icon: "coins",
+    });
+  }
+  if (b9[0]) {
+    const data = b9[0].data as { picks?: unknown[] } | null;
+    const picks = Array.isArray(data?.picks) ? data!.picks!.length : 0;
+    events.push({
+      at: (b9[0].updatedAt ?? b9[0].runAt).toISOString(),
+      surface: "Sell Puts",
+      title: `Scan ${b9[0].scanDay}`,
+      detail: `${picks} short puts ranked`,
+      href: "/research/sell-puts",
+      icon: "cash",
     });
   }
   events.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());

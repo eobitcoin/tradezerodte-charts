@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { premiumRankerScans, type PremiumRankerScanData } from "@/lib/db/schema";
@@ -28,8 +29,16 @@ export default async function PremiumRankerPage() {
         <SellOptionsSubNav active="premium-ranker" />
 
         <header className="space-y-2">
-          <div className="text-[10px] uppercase tracking-widest text-amber-400">
-            Premium Ranker · High-IV / premium scanner
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="text-[10px] uppercase tracking-widest text-amber-400">
+              Premium Ranker · High-IV / premium scanner
+            </div>
+            <Link
+              href="/learn/premium-ranker"
+              className="text-xs text-white/55 hover:text-white hover:underline whitespace-nowrap"
+            >
+              Help · how to read this →
+            </Link>
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Premium Ranker</h1>
           <p className="text-sm text-white/55 max-w-3xl">

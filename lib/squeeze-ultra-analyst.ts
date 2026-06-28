@@ -23,8 +23,10 @@ import type {
 } from "@/lib/db/schema";
 
 const MODEL = "claude-opus-4-8";
-const DTE_MIN = 25;
-const DTE_MAX = 50;
+// Wide enough to catch the nearest monthly for names without weeklies
+// (a 25-50 window misses monthly-only tickers whose cycle lands at ~19/~54 DTE).
+const DTE_MIN = 18;
+const DTE_MAX = 66;
 const TARGET_DTE = 35;
 const MAX_SUGGESTIONS = 3;
 

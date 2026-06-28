@@ -307,7 +307,7 @@ function SuggestionCard({ s }: { s: SqueezeUltraSuggestion }) {
           </a>
         </div>
       ) : (
-        <p className="text-[11px] text-white/40">No clean debit spread in the 25–50 DTE window.</p>
+        <p className="text-[11px] text-white/40">No clean debit spread in the ~18–66 DTE window.</p>
       )}
     </article>
   );

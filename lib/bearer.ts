@@ -155,6 +155,16 @@ export function requireBotwickAnalysisCronBearer(req: Request): BearerCheckResul
   return checkBearerAgainst("BOTWICK_ANALYSIS_CRON_TOKEN", req);
 }
 
+/**
+ * BotWick tweets cron token. Used by the ~6:15AM ET cron that posts the
+ * day's 5 best BotWick setups to X (@TheBotWick). Separate token because
+ * this endpoint PUBLISHES externally — a leaked analysis token must not be
+ * able to tweet. Set as `BOTWICK_TWEETS_CRON_TOKEN` in Railway env.
+ */
+export function requireBotwickTweetsCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("BOTWICK_TWEETS_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

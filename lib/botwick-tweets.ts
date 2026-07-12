@@ -13,9 +13,9 @@
 
 import type { BotwickTickerReport } from "@/lib/db/schema";
 
-const SITE_URL = "https://www.oliviatrades.com/today";
-/** X wraps every URL to a t.co link of fixed length. */
-const TCO_LEN = 23;
+// NO URLs anywhere in the text — X's pay-per-use bills $0.20/post with a
+// link vs $0.015 without, and even a bare domain gets auto-linked and
+// counted. Traffic routes via "link in bio" on @TheBotWick instead.
 const MAX_CHARS = 280;
 
 export const MAX_DAILY_TWEETS = 5;
@@ -39,11 +39,6 @@ export function pickTop(reports: BotwickTickerReport[], n = MAX_DAILY_TWEETS): B
 }
 
 const fmt = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(2));
-
-/** Effective length as X counts it (URL collapses to t.co). */
-function xLength(text: string): number {
-  return text.replace(SITE_URL, "x".repeat(TCO_LEN)).length;
-}
 
 /**
  * Compose one post. Lines degrade gracefully: if the full version exceeds
@@ -74,7 +69,7 @@ export function formatTweet(r: BotwickTickerReport): string {
   const context = `${eqSide} EQ ${fmt(lv.equilibrium)} · ${zone}`;
   const plan = `Targets ${targets.map(fmt).join(" → ")}`;
   const invalidation = bull ? `Bias flips below ${fmt(flip)}` : `Bias flips above ${fmt(flip)}`;
-  const footer = `Full levels & scenarios → ${SITE_URL}\nEducational only, not financial advice`;
+  const footer = `Full levels & scenarios → link in bio\nEducational only, not financial advice`;
 
   const variants = [
     [header, context, plan, invalidation, footer],
@@ -83,8 +78,8 @@ export function formatTweet(r: BotwickTickerReport): string {
   ];
   for (const lines of variants) {
     const text = lines.join("\n");
-    if (xLength(text) <= MAX_CHARS) return text;
+    if (text.length <= MAX_CHARS) return text;
   }
-  // Last resort: header + link only (always fits).
+  // Last resort: header + footer only (always fits).
   return `${header}\n${footer}`;
 }

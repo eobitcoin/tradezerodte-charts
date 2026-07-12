@@ -40,6 +40,7 @@ const LEARN_SLUGS = [
   "insider-buys",
   "premium-ranker",
   "squeeze-scan",
+  "botwick-analysis",
 ];
 
 const EXPLORE_TYPES: Array<{

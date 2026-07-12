@@ -13,10 +13,12 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { posts, type Post, type ScanKind } from "@/lib/db/schema";
+import { posts, botwickScans, type Post, type ScanKind, type BotwickScan } from "@/lib/db/schema";
 
 export type DayScans = {
   tradingDay: string;
+  /** 6:00 AM ET BotWick Analysis (Finora-style SMC read, own table). */
+  botwick: BotwickScan | null;
   premarket: Post | null;
   marketOpen: Post | null;
   analysis: Post | null;
@@ -27,9 +29,13 @@ export type DayScans = {
 
 /** Fetch all scans for a specific trading day. Any can be null. */
 export async function getScansForDay(tradingDay: string): Promise<DayScans> {
-  const rows = await db.select().from(posts).where(eq(posts.tradingDay, tradingDay));
+  const [rows, [botwick]] = await Promise.all([
+    db.select().from(posts).where(eq(posts.tradingDay, tradingDay)),
+    db.select().from(botwickScans).where(eq(botwickScans.scanDay, tradingDay)).limit(1),
+  ]);
   return {
     tradingDay,
+    botwick: botwick ?? null,
     premarket: rows.find((r) => r.scanKind === "premarket") ?? null,
     marketOpen: rows.find((r) => r.scanKind === "market_open") ?? null,
     analysis: rows.find((r) => r.scanKind === "analysis") ?? null,
@@ -38,19 +44,30 @@ export async function getScansForDay(tradingDay: string): Promise<DayScans> {
 }
 
 /**
- * Fetch the most recent day that has at least a premarket scan, then load
- * all three scans for that day. Drives the home page when the caller doesn't
- * supply a date.
+ * Fetch the most recent day that has ANY scan, then load all scans for that
+ * day. Keyed on the max of (latest premarket day, latest BotWick day) so the
+ * page flips to the new day at 6:00 AM when BotWick posts — hours before the
+ * 8:30 premarket — instead of showing yesterday until premarket lands.
  */
 export async function getLatestDayScans(): Promise<DayScans | null> {
-  const [latest] = await db
-    .select({ tradingDay: posts.tradingDay })
-    .from(posts)
-    .where(eq(posts.scanKind, "premarket"))
-    .orderBy(desc(posts.tradingDay))
-    .limit(1);
-  if (!latest) return null;
-  return getScansForDay(latest.tradingDay);
+  const [[latestPost], [latestBotwick]] = await Promise.all([
+    db
+      .select({ tradingDay: posts.tradingDay })
+      .from(posts)
+      .where(eq(posts.scanKind, "premarket"))
+      .orderBy(desc(posts.tradingDay))
+      .limit(1),
+    db
+      .select({ tradingDay: botwickScans.scanDay })
+      .from(botwickScans)
+      .orderBy(desc(botwickScans.scanDay))
+      .limit(1),
+  ]);
+  const days = [latestPost?.tradingDay, latestBotwick?.tradingDay].filter(
+    (d): d is string => Boolean(d),
+  );
+  if (days.length === 0) return null;
+  return getScansForDay(days.sort().reverse()[0]);
 }
 
 /** Single-scan fetch (used by /posts/[date] when a specific scan is requested). */
@@ -77,6 +94,7 @@ export async function getPostByDayKind(
  * Falls back gracefully when a tab's scan is missing.
  */
 export type ScanTab =
+  | "botwick"
   | "premarket"
   | "market_open"
   | "analysis"
@@ -93,6 +111,9 @@ export function defaultTabFor(scans: DayScans, nowEtHHMM = currentEtHHMM()): Sca
   if (past10 && scans.analysis) return "analysis";
   if (past945 && scans.marketOpen) return "market_open";
   if (scans.premarket) return "premarket";
+  // Between 6:00 (BotWick posts) and 8:30 (premarket posts), BotWick is the
+  // freshest read of the day.
+  if (scans.botwick) return "botwick";
   // Fallback chain when no premarket exists for this day.
   if (scans.marketOpen) return "market_open";
   if (scans.analysis) return "analysis";

@@ -268,6 +268,74 @@ export async function fetchUnderlyingOhlcBars(
   }));
 }
 
+/**
+ * Fetch OHLC bars at an arbitrary multiplier/timespan, NEWEST-FIRST with
+ * pagination, returned ascending.
+ *
+ * Why desc + next_url: Polygon's aggs `limit` counts BASE (minute)
+ * aggregates, not output bars — a 90-day HOURLY request needs ~86k minute
+ * bars vs the 50k cap, and with sort=asc Polygon silently keeps the OLDEST
+ * bars and drops the newest (a stale-"current price" trap). Descending sort
+ * guarantees the freshest bars arrive first even when truncation hits;
+ * pagination back-fills history for indicator warmup.
+ */
+export async function fetchOhlcBarsPaged(
+  ticker: string,
+  multiplier: number,
+  timespan: "minute" | "hour" | "day" | "week",
+  fromDate: string,
+  toDate: string,
+  maxBars = 3000,
+): Promise<PolygonOhlcBar[]> {
+  let path: string | null =
+    `/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/${multiplier}/${timespan}/${fromDate}/${toDate}?adjusted=true&sort=desc&limit=50000`;
+  const raw: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }> = [];
+  let pages = 0;
+  while (path && pages < 5 && raw.length < maxBars) {
+    const body: PolygonAggsResponse & { next_url?: string } = await polygonGet(path);
+    raw.push(...(body.results ?? []));
+    const next = body.next_url;
+    path = next ? next.replace(/^https?:\/\/api\.polygon\.io/, "") : null;
+    pages++;
+  }
+  const seen = new Set<number>();
+  const out: PolygonOhlcBar[] = [];
+  for (const r of raw) {
+    if (seen.has(r.t)) continue;
+    seen.add(r.t);
+    out.push({
+      date: new Date(r.t).toISOString(),
+      o: r.o,
+      h: r.h,
+      l: r.l,
+      c: r.c,
+      v: r.v,
+    });
+  }
+  out.sort((a, b) => (a.date < b.date ? -1 : 1));
+  return out;
+}
+
+/**
+ * Authoritative current price for one ticker from Polygon's snapshot (last
+ * trade → day close → prev close). Bars can silently truncate or go stale;
+ * the snapshot cannot — use it to cross-check any bar-derived price.
+ */
+export async function fetchTickerSnapshotPrice(
+  ticker: string,
+): Promise<{ price: number | null; prevClose: number | null }> {
+  const body: {
+    ticker?: {
+      lastTrade?: { p?: number };
+      day?: { c?: number };
+      prevDay?: { c?: number };
+    };
+  } = await polygonGet(`/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(ticker)}`);
+  const t = body.ticker ?? {};
+  const price = t.lastTrade?.p ?? t.day?.c ?? t.prevDay?.c ?? null;
+  return { price: price ?? null, prevClose: t.prevDay?.c ?? null };
+}
+
 // ---------------------------------------------------------------------------
 // Surface extraction.
 // ---------------------------------------------------------------------------

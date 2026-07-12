@@ -144,6 +144,17 @@ export function requireSqueezeUltraCronBearer(req: Request): BearerCheckResult {
   return checkBearerAgainst("SQUEEZE_ULTRA_CRON_TOKEN", req);
 }
 
+/**
+ * BotWick Analysis cron token. Used by the daily 6AM ET Finora-style SMC
+ * scan over the fixed 21-name universe (Today → BotWick Analysis tab).
+ * Deliberately separate from BOTWICK_CRON_TOKEN — that token can trigger
+ * trading actions; this one can only publish analysis. Set as
+ * `BOTWICK_ANALYSIS_CRON_TOKEN` in Railway env.
+ */
+export function requireBotwickAnalysisCronBearer(req: Request): BearerCheckResult {
+  return checkBearerAgainst("BOTWICK_ANALYSIS_CRON_TOKEN", req);
+}
+
 export function requireIngestBearer(req: Request): BearerCheckResult {
   const expected = process.env.INGEST_API_KEY;
   if (!expected) return { ok: false, status: 500, reason: "INGEST_API_KEY not configured" };

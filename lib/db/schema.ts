@@ -2747,6 +2747,98 @@ export const squeezeUltraScans = pgTable(
 export type SqueezeUltraScan = typeof squeezeUltraScans.$inferSelect;
 
 // ===========================================================================
+// BotWick Analysis — daily 6AM Finora-style SMC read on the fixed universe
+// ===========================================================================
+
+/** One indicator's read on the entry timeframe. */
+export interface BotwickIndicatorRead {
+  verdict: "bullish" | "bearish";
+  detail: string;
+}
+
+/** Deterministic Finora-style narrative, one string[] per report section. */
+export interface BotwickSections {
+  general: string[];
+  levels: string[];
+  ideas: string[];
+  shortScenario: string[];
+  longScenario: string[];
+  expectation: string[];
+}
+
+/** Defined-risk options expression of the bias, deep-linkable to Risk Graph. */
+export interface BotwickOptionsIdea {
+  strategy: "call_debit_spread" | "put_debit_spread";
+  direction: "long" | "short";
+  expiration: string; // YYYY-MM-DD (~35 DTE Friday)
+  dteDays: number;
+  longStrike: number;
+  shortStrike: number;
+  note: string;
+}
+
+export interface BotwickTickerReport {
+  symbol: string;
+  ok: boolean;
+  /** Set when the ticker failed (bad symbol, stale bars, no data). */
+  error?: string;
+  price: number;
+  bias: "bullish" | "bearish" | "neutral";
+  asOf: { lastTradePrice: number | null; lastLtfBar: string; lastHtfBar: string };
+  warnings: string[];
+  trend: { trend: "bullish" | "bearish" | "neutral"; structure: string; ema20: number; ema50: number };
+  priceAction: { today: string; week: string; todayChg: number; weekChg: number };
+  indicators: Record<string, BotwickIndicatorRead> & {
+    ADX: { verdict: "strong" | "moderate" | "weak"; value: number; detail: string };
+  };
+  tally: { bullish: string[]; bearish: string[] };
+  levels: {
+    swingHigh: number;
+    swingLow: number;
+    equilibrium: number;
+    resistance: number[];
+    support: number[];
+    clusters: Array<{ low: number; high: number; touches: number }>;
+    imbalances: Array<{ type: "supply" | "demand"; low: number; high: number }>;
+  };
+  sections: BotwickSections;
+  optionsIdea: BotwickOptionsIdea | null;
+}
+
+export interface BotwickScanData {
+  scanDay: string;
+  /** Universe attempted, in display order. */
+  tickers: string[];
+  /** One report per ticker (ok:false rows carry `error`). */
+  reports: BotwickTickerReport[];
+}
+
+export const botwickScans = pgTable(
+  "botwick_scans",
+  {
+    id: serial("id").primaryKey(),
+    scanDay: date("scan_day").notNull().unique(),
+    /** Universe size attempted. */
+    universeSize: integer("universe_size").notNull().default(0),
+    /** Tickers that produced a full report. */
+    computedSize: integer("computed_size").notNull().default(0),
+    data: jsonb("data").$type<BotwickScanData>().notNull().default({
+      scanDay: "",
+      tickers: [],
+      reports: [],
+    }),
+    meta: jsonb("meta").$type<Record<string, unknown>>().notNull().default({}),
+    runAt: timestamp("run_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("botwick_scans_scan_day_desc_idx").on(t.scanDay.desc())],
+);
+
+export type BotwickScan = typeof botwickScans.$inferSelect;
+
+// ===========================================================================
 // Calendar scans
 // ===========================================================================
 

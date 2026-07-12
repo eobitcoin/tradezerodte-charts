@@ -5,7 +5,9 @@ import PostView from "@/components/PostView";
 import ScanTabs from "@/components/ScanTabs";
 import AnalysisView from "@/components/AnalysisView";
 import TradeCardsView from "@/components/TradeCardsView";
+import BotwickAnalysisView from "@/components/BotwickAnalysisView";
 import { defaultTabFor, getScansForDay, type ScanTab } from "@/lib/scans";
+import type { BotwickScanData } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,7 @@ type Search = { tab?: string };
 
 function resolveTab(raw: string | undefined): ScanTab | null {
   if (
+    raw === "botwick" ||
     raw === "premarket" ||
     raw === "market_open" ||
     raw === "analysis" ||
@@ -36,7 +39,7 @@ export default async function PostDetailPage({
   if (!DATE_RE.test(date)) notFound();
 
   const scans = await getScansForDay(date);
-  if (!scans.premarket && !scans.marketOpen && !scans.analysis) notFound();
+  if (!scans.premarket && !scans.marketOpen && !scans.analysis && !scans.botwick) notFound();
 
   const { tab } = await searchParams;
   const explicit = resolveTab(tab);
@@ -55,6 +58,7 @@ export default async function PostDetailPage({
       <div className="max-w-4xl lg:max-w-5xl mx-auto px-4 pt-4">
         <ScanTabs
           active={active}
+          hasBotwick={!!scans.botwick}
           hasPremarket={!!scans.premarket}
           hasMarketOpen={!!scans.marketOpen}
           hasAnalysis={!!scans.analysis || !!(scans.premarket && scans.marketOpen)}
@@ -62,6 +66,17 @@ export default async function PostDetailPage({
           hrefFor={(t) => `/posts/${date}?tab=${t}`}
         />
       </div>
+
+      {active === "botwick" && scans.botwick && (
+        <BotwickAnalysisView scanDay={date} data={scans.botwick.data as BotwickScanData} />
+      )}
+      {active === "botwick" && !scans.botwick && (
+        <main className="max-w-3xl mx-auto px-4 py-10">
+          <div className="rounded border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+            No BotWick Analysis was published for {date}.
+          </div>
+        </main>
+      )}
 
       {active === "trade_cards" && (
         <TradeCardsView

@@ -3,6 +3,9 @@ import type { ScanTab } from "@/lib/scans";
 
 type Props = {
   active: ScanTab;
+  /** 6AM BotWick Analysis (Finora-style SMC read). Optional so older
+   *  callsites keep working; undefined renders as "pending". */
+  hasBotwick?: boolean;
   hasPremarket: boolean;
   hasMarketOpen: boolean;
   hasAnalysis: boolean;
@@ -21,9 +24,10 @@ const TABS: {
   label: string;
   key: keyof Pick<
     Props,
-    "hasPremarket" | "hasMarketOpen" | "hasAnalysis" | "hasTradeCards" | "hasScorecard"
+    "hasBotwick" | "hasPremarket" | "hasMarketOpen" | "hasAnalysis" | "hasTradeCards" | "hasScorecard"
   >;
 }[] = [
+  { id: "botwick", label: "BotWick Analysis", key: "hasBotwick" },
   { id: "premarket", label: "Pre-market", key: "hasPremarket" },
   { id: "market_open", label: "Market-Open", key: "hasMarketOpen" },
   { id: "analysis", label: "Analysis", key: "hasAnalysis" },

@@ -5,8 +5,10 @@ import ScanTabs from "@/components/ScanTabs";
 import AnalysisView from "@/components/AnalysisView";
 import TradeCardsView from "@/components/TradeCardsView";
 import ScorecardView from "@/components/ScorecardView";
+import BotwickAnalysisView from "@/components/BotwickAnalysisView";
 import { nyTradingDay } from "@/lib/trading-day";
 import { defaultTabFor, getLatestDayScans, type ScanTab } from "@/lib/scans";
+import type { BotwickScanData } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ type Search = { tab?: string };
 
 function resolveTab(raw: string | undefined): ScanTab | null {
   if (
+    raw === "botwick" ||
     raw === "premarket" ||
     raw === "market_open" ||
     raw === "analysis" ||
@@ -42,12 +45,13 @@ export default async function TodayPage({
         <div className="max-w-4xl lg:max-w-5xl mx-auto px-4 pt-6">
           <ScanTabs
             active={wantsScorecard ? "scorecard" : "premarket"}
+            hasBotwick={false}
             hasPremarket={false}
             hasMarketOpen={false}
             hasAnalysis={false}
             hasTradeCards={false}
             hasScorecard
-            hrefFor={(t) => `/?tab=${t}`}
+            hrefFor={(t) => `/today?tab=${t}`}
           />
         </div>
         {wantsScorecard ? (
@@ -86,16 +90,30 @@ export default async function TodayPage({
         )}
         <ScanTabs
           active={active}
+          hasBotwick={!!scans.botwick}
           hasPremarket={!!scans.premarket}
           hasMarketOpen={!!scans.marketOpen}
           hasAnalysis={!!scans.analysis || !!(scans.premarket && scans.marketOpen)}
           hasTradeCards={!!scans.premarket}
           hasScorecard
-          hrefFor={(t) => `/?tab=${t}`}
+          hrefFor={(t) => `/today?tab=${t}`}
         />
       </div>
 
       {active === "scorecard" && <ScorecardView />}
+
+      {active === "botwick" && scans.botwick && (
+        <BotwickAnalysisView
+          scanDay={scans.botwick.scanDay}
+          data={scans.botwick.data as BotwickScanData}
+        />
+      )}
+      {active === "botwick" && !scans.botwick && (
+        <PendingNotice
+          tradingDay={scans.tradingDay}
+          message={`Awaiting the BotWick Analysis for ${scans.tradingDay} (~6:00 AM ET).`}
+        />
+      )}
 
       {active === "trade_cards" && (
         <TradeCardsView

@@ -37,8 +37,21 @@ function client(): TwitterApi {
 }
 
 /** Post a single tweet; returns the tweet id. Throws on API errors
- *  (403 usually means the access token was minted with Read Only perms). */
+ *  (403 usually means the access token was minted with Read Only perms).
+ *  Surfaces X's error detail — the bare status code is undiagnosable. */
 export async function postTweet(text: string): Promise<string> {
-  const res = await client().v2.tweet(text);
-  return res.data.id;
+  try {
+    const res = await client().v2.tweet(text);
+    return res.data.id;
+  } catch (err) {
+    const e = err as {
+      code?: number;
+      data?: { detail?: string; title?: string; reason?: string; errors?: Array<{ message?: string }> };
+    };
+    const detail =
+      e?.data?.detail || e?.data?.title || e?.data?.reason || e?.data?.errors?.[0]?.message || "";
+    throw new Error(
+      `X API ${e?.code ?? "?"}${detail ? `: ${detail}` : `: ${err instanceof Error ? err.message : String(err)}`}`,
+    );
+  }
 }

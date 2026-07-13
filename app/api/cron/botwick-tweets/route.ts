@@ -3,8 +3,8 @@ import { desc, eq, sql } from "drizzle-orm";
 import { requireBotwickTweetsCronBearer } from "@/lib/bearer";
 import { db } from "@/lib/db";
 import { botwickScans, type BotwickScanData } from "@/lib/db/schema";
-import { pickTop, formatTweet } from "@/lib/botwick-tweets";
-import { hasXCredentials, postTweet } from "@/lib/x-post";
+import { pickTop, formatTweet, formatDetail, chunkDetail } from "@/lib/botwick-tweets";
+import { hasXCredentials, postTweet, postReply, isLengthError } from "@/lib/x-post";
 import { nyTradingDay } from "@/lib/trading-day";
 
 /**
@@ -45,7 +45,12 @@ export async function POST(req: Request) {
 
   const data = row.data as BotwickScanData;
   const picks = pickTop(data.reports);
-  const composed = picks.map((r) => ({ symbol: r.symbol, bias: r.bias, text: formatTweet(r) }));
+  const composed = picks.map((r) => ({
+    symbol: r.symbol,
+    bias: r.bias,
+    card: formatTweet(r),
+    detail: formatDetail(r),
+  }));
 
   if (dry) {
     return NextResponse.json({ ok: true, dry: true, scanDay: today, tweets: composed });
@@ -59,18 +64,40 @@ export async function POST(req: Request) {
 
   // Idempotency: skip symbols already posted for this scan day.
   const meta = (row.meta ?? {}) as Record<string, unknown>;
-  const prior = (meta.tweets as Array<{ symbol: string; tweetId: string }> | undefined) ?? [];
+  const prior =
+    (meta.tweets as Array<{ symbol: string; tweetId: string; replyIds?: string[] }> | undefined) ??
+    [];
   const postedSymbols = new Set(prior.map((t) => t.symbol));
 
-  const posted: Array<{ symbol: string; tweetId: string }> = [];
+  const posted: Array<{ symbol: string; tweetId: string; mode: string; replyIds: string[] }> = [];
   const failed: Array<{ symbol: string; error: string }> = [];
   for (const t of composed) {
     if (postedSymbols.has(t.symbol)) continue;
     try {
-      const id = await postTweet(t.text);
-      posted.push({ symbol: t.symbol, tweetId: id });
+      // Preferred: ONE long post (card + blank line + full website detail).
+      // Works when @TheBotWick has X Premium; timeline shows the card with
+      // "Show more" expanding into the detail.
+      const id = await postTweet(`${t.card}\n\n${t.detail}`);
+      posted.push({ symbol: t.symbol, tweetId: id, mode: "long", replyIds: [] });
     } catch (err) {
-      failed.push({ symbol: t.symbol, error: err instanceof Error ? err.message : String(err) });
+      if (!isLengthError(err)) {
+        failed.push({ symbol: t.symbol, error: err instanceof Error ? err.message : String(err) });
+        continue;
+      }
+      // Fallback (no Premium): card as the root tweet, detail as a thread of
+      // replies chunked at bullet boundaries.
+      try {
+        const rootId = await postTweet(t.card);
+        const replyIds: string[] = [];
+        let last = rootId;
+        for (const chunk of chunkDetail(t.detail)) {
+          last = await postReply(chunk, last);
+          replyIds.push(last);
+        }
+        posted.push({ symbol: t.symbol, tweetId: rootId, mode: "thread", replyIds });
+      } catch (err2) {
+        failed.push({ symbol: t.symbol, error: err2 instanceof Error ? err2.message : String(err2) });
+      }
     }
   }
 

@@ -18,7 +18,7 @@ import type { BotwickTickerReport } from "@/lib/db/schema";
 // counted. Traffic routes via "link in bio" on @TheBotWick instead.
 const MAX_CHARS = 280;
 
-export const MAX_DAILY_TWEETS = 5;
+export const MAX_DAILY_TWEETS = 3;
 
 export function scoreReport(r: BotwickTickerReport): number {
   if (!r.ok || r.bias === "neutral") return -1;
@@ -104,4 +104,47 @@ export function formatTweet(r: BotwickTickerReport): string {
   }
   // Last resort: header + footer only (always fits).
   return `${header}\n${footer}`;
+}
+
+/**
+ * Full website-style detail — the same narrative sections rendered on the
+ * BotWick Analysis tab, formatted for X. Appended below the card in one
+ * long post when the account has X Premium; otherwise posted as a reply
+ * thread via chunkDetail().
+ */
+export function formatDetail(r: BotwickTickerReport): string {
+  const s = r.sections;
+  const section = (title: string, bullets: string[]) =>
+    bullets.length ? `${title}\n${bullets.map((b) => `– ${b}`).join("\n")}` : null;
+  return [
+    section("📈 Critical Levels", s.levels),
+    section("💡 Trade Ideas", s.ideas),
+    section("✅ Example Scenario for Short Entry", s.shortScenario),
+    section("✅ Example Scenario for Long Entry", s.longScenario),
+    section("🌌 My Expectation (BotWick)", s.expectation),
+  ]
+    .filter((x): x is string => x != null)
+    .join("\n\n");
+}
+
+/**
+ * Split the detail into ≤270-weighted-char chunks for the thread fallback,
+ * breaking at bullet/section boundaries (never mid-sentence). Each chunk is
+ * one reply tweet.
+ */
+export function chunkDetail(detail: string, max = 270): string[] {
+  const lines = detail.split("\n");
+  const chunks: string[] = [];
+  let cur = "";
+  for (const line of lines) {
+    const candidate = cur ? `${cur}\n${line}` : line;
+    if (weightedLength(candidate) > max && cur) {
+      chunks.push(cur);
+      cur = line;
+    } else {
+      cur = candidate;
+    }
+  }
+  if (cur.trim()) chunks.push(cur);
+  return chunks;
 }

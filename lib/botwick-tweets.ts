@@ -53,24 +53,33 @@ function weightedLength(text: string): number {
  * Lines degrade gracefully if over the limit: EQ drops first, then the zone,
  * then the timeframe — header, triggers, targets, and footer always survive.
  */
-export function formatTweet(r: BotwickTickerReport): string {
+/**
+ * The tweetable plan levels for a report — SHARED between the morning card
+ * (formatTweet) and the EOD updater (formatUpdateReply) so the evening grade
+ * is judged against exactly the numbers that were tweeted.
+ *
+ * Triggers: the level whose daily close breaks/confirms each direction.
+ * Bullish bias: bull trigger = first resistance (continuation breakout),
+ * bear trigger = demand floor / second support (invalidation). Bearish bias
+ * mirrors: bear trigger = first support, bull trigger = supply top / second
+ * resistance (the bias-flip level). Targets = the bias-direction ladder
+ * BEYOND the trigger (the trigger itself isn't a target).
+ */
+export function planLevels(r: BotwickTickerReport) {
   const lv = r.levels;
   const bull = r.bias === "bullish";
-
   const supply = lv.imbalances.find((z) => z.type === "supply");
   const demand = lv.imbalances.find((z) => z.type === "demand");
-
-  // Triggers: the level whose daily close breaks/confirms each direction.
-  // Bullish bias: bull trigger = first resistance (continuation breakout),
-  // bear trigger = demand floor / second support (invalidation). Bearish
-  // bias mirrors: bear trigger = first support, bull trigger = supply top /
-  // second resistance (the bias-flip level).
   const bullTrigger = bull ? lv.resistance[0] : (supply?.high ?? lv.resistance[1] ?? lv.swingHigh);
   const bearTrigger = bull ? (demand?.low ?? lv.support[1] ?? lv.swingLow) : lv.support[0];
-
-  // Targets: the ladder BEYOND the trigger (trigger itself isn't a target).
   const ladder = bull ? lv.resistance : lv.support;
   const targets = ladder.slice(1, 4).length >= 2 ? ladder.slice(1, 4) : ladder.slice(0, 3);
+  return { bull, bullTrigger, bearTrigger, targets, supply, demand };
+}
+
+export function formatTweet(r: BotwickTickerReport): string {
+  const lv = r.levels;
+  const { bull, bullTrigger, bearTrigger, targets, supply, demand } = planLevels(r);
 
   // Ranges always print low–high regardless of ladder order.
   const asc = (arr: number[]) => [...arr].sort((a, b) => a - b);
@@ -104,6 +113,74 @@ export function formatTweet(r: BotwickTickerReport): string {
   }
   // Last resort: header + footer only (always fits).
   return `${header}\n${footer}`;
+}
+
+/** One completed session's OHLC + prior close, for grading the plan. */
+export interface DayOutcome {
+  o: number;
+  h: number;
+  l: number;
+  c: number;
+  prevClose: number | null;
+}
+
+/**
+ * EOD update reply — grades the completed session against the SAME triggers
+ * and targets the morning card tweeted (via planLevels). Trigger grading is
+ * close-based (the card says "daily close"); target grading is touch-based
+ * (a take-profit fills on the touch).
+ */
+export function formatUpdateReply(r: BotwickTickerReport, day: DayOutcome): string {
+  const { bull, bullTrigger, bearTrigger, targets } = planLevels(r);
+
+  const pct =
+    day.prevClose && day.prevClose > 0 ? ((day.c - day.prevClose) / day.prevClose) * 100 : null;
+  const pctStr = pct == null ? "" : ` (${pct >= 0 ? "+" : ""}${pct.toFixed(1)}% on day)`;
+
+  const header = `$${r.symbol} EOD update 📊`;
+  const summary = `Close ${fmt(day.c)}${pctStr} · Range ${fmt(day.l)}–${fmt(day.h)}`;
+
+  // Trigger status (close-based, matching the card's "(daily close)").
+  const bullFired = Number.isFinite(bullTrigger) && day.c > bullTrigger;
+  const bearFired = Number.isFinite(bearTrigger) && day.c < bearTrigger;
+  const triggerLines: string[] = [];
+  if (bullFired) triggerLines.push(`🟩 Bull trigger fired — closed above ${fmt(bullTrigger)}`);
+  if (bearFired) triggerLines.push(`🟥 Bear trigger fired — closed below ${fmt(bearTrigger)}`);
+  if (!bullFired && !bearFired) {
+    if (Number.isFinite(bullTrigger) && day.h >= bullTrigger) {
+      triggerLines.push(`⏳ Tested ${fmt(bullTrigger)} intraday — no close above yet`);
+    } else if (Number.isFinite(bearTrigger) && day.l <= bearTrigger) {
+      triggerLines.push(`⏳ Tested ${fmt(bearTrigger)} intraday — no close below yet`);
+    } else {
+      triggerLines.push(`⏸ Triggers intact — closed inside the range`);
+    }
+  }
+  // A close through the trigger AGAINST the card's bias = plan invalidated.
+  if ((bull && bearFired) || (!bull && bullFired)) {
+    triggerLines.push(`⚠️ ${bull ? "Bullish" : "Bearish"} read invalidated`);
+  }
+
+  // Targets (touch-based, bias direction).
+  const hit = targets.filter((t) => (bull ? day.h >= t : day.l <= t));
+  const remaining = targets.filter((t) => !hit.includes(t));
+  const targetLine =
+    hit.length > 0
+      ? `${"🎯".repeat(Math.min(hit.length, 3))} ${hit.length}/${targets.length} target${targets.length === 1 ? "" : "s"} hit: ${hit.map(fmt).join(", ")} (${bull ? "high" : "low"} ${fmt(bull ? day.h : day.l)})`
+      : null;
+  const nextLine = remaining.length > 0 ? `Next: ${remaining.map(fmt).join(" → ")}` : null;
+
+  const footer = `Not financial advice`;
+
+  const variants = [
+    [header, summary, ...triggerLines, targetLine, nextLine, footer],
+    [header, summary, ...triggerLines, targetLine, footer],
+    [header, summary, triggerLines[0], footer],
+  ];
+  for (const lines of variants) {
+    const text = lines.filter((x): x is string => x != null).join("\n");
+    if (weightedLength(text) <= MAX_CHARS) return text;
+  }
+  return `${header}\n${summary}\n${footer}`;
 }
 
 /**

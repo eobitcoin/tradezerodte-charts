@@ -33,11 +33,12 @@ import type {
   BotwickOptionsIdea,
 } from "@/lib/db/schema";
 
-/** The fixed BotWick universe, in display order. */
+/** The fixed BotWick universe, in display order.
+ *  GOOGL only (not GOOG) — same company, one report. */
 export const BOTWICK_TICKERS = [
-  "AAPL", "AMD", "AMZN", "AVGO", "BABA", "GOOG", "GOOGL", "HOOD", "INTC",
-  "META", "MSFT", "MU", "SNDK", "NFLX", "NVDA", "ORCL", "PLTR", "TSLA",
-  "SPCX", "SPY", "QQQ",
+  "AAPL", "AMD", "AMZN", "AVGO", "BABA", "BE", "GOOGL", "HOOD", "IBM",
+  "INTC", "META", "MSFT", "MU", "SNDK", "NFLX", "NVDA", "ORCL", "OUST",
+  "PLTR", "TSLA", "SPCX", "SPY", "QQQ",
 ] as const;
 
 const SCAN_CONCURRENCY = 6;

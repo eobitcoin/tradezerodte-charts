@@ -6,7 +6,7 @@ const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 export const metadata: Metadata = {
   title: "Reading BotWick Analysis — Daily Smart-Money Technical Reports",
   description:
-    "Every weekday at 6:00 AM ET, BotWick Analysis publishes a full Smart-Money-Concepts technical report for 21 core names (AAPL, NVDA, TSLA, SPY, QQQ and more): a 10-indicator scorecard, swing/equilibrium levels, support & resistance ladders, supply/demand imbalances, long and short trade scenarios with entries, targets and stops, and a defined-risk options idea. Here's how to read every section.",
+    "Every weekday at 6:00 AM ET, BotWick Analysis publishes a full Smart-Money-Concepts technical report for 23 core names (AAPL, NVDA, TSLA, SPY, QQQ and more): a 10-indicator scorecard, swing/equilibrium levels, support & resistance ladders, supply/demand imbalances, long and short trade scenarios with entries, targets and stops, and a defined-risk options idea. Here's how to read every section.",
   alternates: { canonical: `${APP_URL}/learn/botwick-analysis` },
   openGraph: {
     type: "article",
@@ -21,13 +21,13 @@ export default function Page() {
   return (
     <LearnPageScaffold
       title="Reading BotWick Analysis — Daily Smart-Money Technical Reports"
-      lead="BotWick Analysis is the first tab of the Today page. Every weekday at 6:00 AM ET — hours before the opening bell — it runs a full multi-timeframe technical read on a fixed universe of 21 core names: the mega-cap complex (AAPL, MSFT, NVDA, META, AMZN, GOOG/GOOGL, AVGO, ORCL, NFLX, TSLA), high-beta movers (AMD, MU, PLTR, HOOD, INTC, BABA, SNDK, SPCX), and the index ETFs (SPY, QQQ). Daily bars set the trend and the Smart-Money level map; hourly bars drive the indicator scorecard and entry zones. Every number is computed from live Polygon price data at scan time — nothing is estimated or generated."
+      lead="BotWick Analysis is the first tab of the Today page. Every weekday at 6:00 AM ET — hours before the opening bell — it runs a full multi-timeframe technical read on a fixed universe of 23 core names: the mega-cap complex (AAPL, MSFT, NVDA, META, AMZN, GOOGL, AVGO, ORCL, IBM, NFLX, TSLA), high-beta movers (AMD, MU, PLTR, HOOD, INTC, BABA, SNDK, SPCX, OUST, BE), and the index ETFs (SPY, QQQ). Daily bars set the trend and the Smart-Money level map; hourly bars drive the indicator scorecard and entry zones. Every number is computed from live Polygon price data at scan time — nothing is estimated or generated."
       slug="botwick-analysis"
       faqs={[
         {
           question: "What exactly runs at 6:00 AM?",
           answer:
-            "For each of the 21 tickers, the engine pulls ~90 days of hourly bars and ~2 years of daily bars from Polygon, cross-checks them against the live snapshot price (a stale or truncated feed refuses to publish rather than show wrong numbers), then computes: the daily-timeframe trend and structure, a 10-indicator scorecard on the hourly, the Smart-Money level map (swing high/low, equilibrium, support/resistance ladders, pivot clusters, fair-value-gap imbalances), a net directional bias, the narrative trade scenarios, and a defined-risk options idea. One report per ticker, all published together.",
+            "For each of the 23 tickers, the engine pulls ~90 days of hourly bars and ~2 years of daily bars from Polygon, cross-checks them against the live snapshot price (a stale or truncated feed refuses to publish rather than show wrong numbers), then computes: the daily-timeframe trend and structure, a 10-indicator scorecard on the hourly, the Smart-Money level map (swing high/low, equilibrium, support/resistance ladders, pivot clusters, fair-value-gap imbalances), a net directional bias, the narrative trade scenarios, and a defined-risk options idea. One report per ticker, all published together.",
         },
         {
           question: "What do the ticker chip colors mean?",

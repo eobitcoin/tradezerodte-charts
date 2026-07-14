@@ -53,7 +53,10 @@ export async function POST(req: Request) {
         universeSize: BOTWICK_TICKERS.length,
         computedSize: result.okCount,
         data,
-        meta,
+        // MERGE into existing meta rather than replace — meta.tweets holds the
+        // day's posted-tweet ledger, and clobbering it on a re-run would let
+        // the tweets cron double-post.
+        meta: sql`coalesce(${botwickScans.meta}, '{}'::jsonb) || ${JSON.stringify(meta)}::jsonb`,
         runAt: new Date(),
         updatedAt: sql`now()`,
       },

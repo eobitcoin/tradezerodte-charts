@@ -25,9 +25,22 @@ import { runEarningsScan } from "@/lib/earnings-scans";
  * filtered by total chain OI ≥ 5,000 (drops illiquid names where
  * the option strategies wouldn't fill cleanly anyway).
  *
+ * ASYNC BY DESIGN: the scan walks each event sequentially with a 600ms
+ * delay (Finnhub 60/min rate-limit pacing — cannot be parallelized away),
+ * so a full week takes 5-20 minutes. Railway's edge proxy severs HTTP
+ * responses at ~5 minutes (observed: curl 502 at +5:01), so this endpoint
+ * validates, kicks the scan off in the background, and returns 202
+ * immediately. Completion lands in the earnings_scans row + deploy logs.
+ *
  * Returns:
- *   200 { ok, scanWeek, universeSize, computedSize, topByStraddle, topByCondor, errors[] }
+ *   202 { accepted, scanWeek, universeSize }   — scan started
+ *   409 { error }                              — a scan is already running
  */
+/** In-flight guard — one scan at a time. Module-level is fine here: the app
+ *  runs as a single long-lived Node process on Railway. Stale entries clear
+ *  after 40 min in case a background run dies without the finally firing. */
+let inFlight: { scanWeek: string; startedAt: number } | null = null;
+
 export async function POST(req: Request) {
   const auth = requireEarningsCronBearer(req);
   if (!auth.ok) {
@@ -70,72 +83,89 @@ export async function POST(req: Request) {
     return true;
   });
 
-  const tickers = await runEarningsScan(unique, { perEventDelayMs: 600 });
-
-  // Sort by best-of-any strategy descending for a useful default order.
-  tickers.sort((a, b) => {
-    const aMax = Math.max(
-      a.strategies.rush.score,
-      a.strategies.condor.score,
-      a.strategies.straddle.score,
-      a.strategies.breakout.score,
+  // One at a time — a re-trigger while a run is in flight would double-hammer
+  // Finnhub/Polygon and race the UPSERT.
+  if (inFlight && Date.now() - inFlight.startedAt < 40 * 60_000) {
+    return NextResponse.json(
+      {
+        error: `earnings scan for ${inFlight.scanWeek} already running (${Math.round((Date.now() - inFlight.startedAt) / 60000)} min in)`,
+      },
+      { status: 409 },
     );
-    const bMax = Math.max(
-      b.strategies.rush.score,
-      b.strategies.condor.score,
-      b.strategies.straddle.score,
-      b.strategies.breakout.score,
-    );
-    return bMax - aMax;
-  });
+  }
+  inFlight = { scanWeek: fromIso, startedAt: Date.now() };
 
-  await db
-    .insert(earningsScans)
-    .values({
-      scanWeek: fromIso,
-      universeSize: unique.length,
-      computedSize: tickers.length,
-      data: { coveredFrom: fromIso, coveredTo: toIso, tickers },
-      meta: {},
-      runAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: earningsScans.scanWeek,
-      set: {
+  // Fire-and-forget: Railway runs a persistent Node server, so this promise
+  // keeps executing after the response is sent. Completion is observable in
+  // the earnings_scans row (runAt/updatedAt) and the deploy logs.
+  void (async () => {
+    const started = Date.now();
+    console.log(`[earnings-scan] background run started — week ${fromIso}, ${unique.length} events`);
+    const tickers = await runEarningsScan(unique, { perEventDelayMs: 600 });
+
+    // Sort by best-of-any strategy descending for a useful default order.
+    tickers.sort((a, b) => {
+      const aMax = Math.max(
+        a.strategies.rush.score,
+        a.strategies.condor.score,
+        a.strategies.straddle.score,
+        a.strategies.breakout.score,
+      );
+      const bMax = Math.max(
+        b.strategies.rush.score,
+        b.strategies.condor.score,
+        b.strategies.straddle.score,
+        b.strategies.breakout.score,
+      );
+      return bMax - aMax;
+    });
+
+    await db
+      .insert(earningsScans)
+      .values({
+        scanWeek: fromIso,
         universeSize: unique.length,
         computedSize: tickers.length,
         data: { coveredFrom: fromIso, coveredTo: toIso, tickers },
+        meta: {},
         runAt: new Date(),
-        updatedAt: sql`now()`,
-      },
+      })
+      .onConflictDoUpdate({
+        target: earningsScans.scanWeek,
+        set: {
+          universeSize: unique.length,
+          computedSize: tickers.length,
+          data: { coveredFrom: fromIso, coveredTo: toIso, tickers },
+          runAt: new Date(),
+          updatedAt: sql`now()`,
+        },
+      });
+    console.log(
+      `[earnings-scan] completed — week ${fromIso}, ${tickers.length}/${unique.length} tickers in ${Math.round((Date.now() - started) / 1000)}s`,
+    );
+  })()
+    .catch((err) => {
+      console.error(`[earnings-scan] background run FAILED — week ${fromIso}:`, err);
+    })
+    .finally(() => {
+      inFlight = null;
     });
 
-  // Headline previews for the cron response.
-  const topByStraddle = [...tickers]
-    .sort((a, b) => b.strategies.straddle.score - a.strategies.straddle.score)
-    .slice(0, 5)
-    .map((t) => `${t.symbol} (${t.strategies.straddle.score})`);
-  const topByCondor = [...tickers]
-    .sort((a, b) => b.strategies.condor.score - a.strategies.condor.score)
-    .slice(0, 5)
-    .map((t) => `${t.symbol} (${t.strategies.condor.score})`);
-
-  return NextResponse.json({
-    ok: true,
-    scanWeek: fromIso,
-    coveredTo: toIso,
-    universeSize: unique.length,
-    computedSize: tickers.length,
-    topByStraddle,
-    topByCondor,
-  });
+  return NextResponse.json(
+    {
+      accepted: true,
+      scanWeek: fromIso,
+      coveredTo: toIso,
+      universeSize: unique.length,
+      note: "scan running in background (~5-20 min); earnings_scans row upserts on completion",
+    },
+    { status: 202 },
+  );
 }
 
 export const GET = POST;
 
 export const runtime = "nodejs";
-// V3.1 added Polygon-priced backtest per ticker (~12 extra calls each).
-// Worst-case 150 tickers × ~8s each ≈ 20 min. Bump cap to 25 min.
-// (Railway's app-tier services don't impose a hard ceiling beyond what
-// we set here; the edge keeps the connection open for the full duration.)
-export const maxDuration = 1500;
+// The response returns in ~2s (calendar fetch only); the scan itself runs
+// detached from the request. maxDuration guards just the synchronous part.
+export const maxDuration = 60;

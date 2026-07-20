@@ -106,8 +106,30 @@ function buildSections(opts: {
   const aboveEq = price >= lv.equilibrium;
   const zone = aboveEq ? "premium" : "discount";
 
+  // --- Range-regime guardrails -------------------------------------------
+  // After a violent gap (e.g. an earnings crash) price can sit entirely
+  // OUTSIDE the last CONFIRMED swing — pivot confirmation needs 3 bars each
+  // side, so the crash extremes aren't pivots yet and the "most recent
+  // swing" is the pre-crash one. Every line that anchors to the swing or
+  // its equilibrium must know which regime it's in, or it produces nonsense
+  // like "wait for a sweep of 243.68" with price at 212.
+  const belowSwing = price < lv.swingLow;
+  const aboveSwing = price > lv.swingHigh;
+  /** Swing extremes are only usable as stop/sweep anchors when NEAR price. */
+  const swingHighNear = lv.swingHigh > price && lv.swingHigh <= price * 1.1;
+  const swingLowNear = lv.swingLow < price && lv.swingLow >= price * 0.9;
+  const zonePhrase = belowSwing
+    ? "in post-breakdown price discovery below the prior swing"
+    : aboveSwing
+      ? "in breakout price discovery above the prior swing"
+      : `in the ${zone} zone`;
+
   const general: string[] = [
-    `Current price for ${symbol} is ${fmt(price)}, sitting ${aboveEq ? "above" : "below"} the equilibrium of the most recent swing (${fmt(lv.equilibrium)}) — in the ${zone} half of the ${fmt(lv.swingLow)}–${fmt(lv.swingHigh)} range.`,
+    belowSwing
+      ? `Current price for ${symbol} is ${fmt(price)}, trading BELOW the entire prior ${fmt(lv.swingLow)}–${fmt(lv.swingHigh)} swing after a breakdown — the old range and its equilibrium (${fmt(lv.equilibrium)}) sit overhead and only matter again on a major reclaim.`
+      : aboveSwing
+        ? `Current price for ${symbol} is ${fmt(price)}, trading ABOVE the entire prior ${fmt(lv.swingLow)}–${fmt(lv.swingHigh)} swing after a breakout — the old range and its equilibrium (${fmt(lv.equilibrium)}) sit below as reference support, not active structure.`
+        : `Current price for ${symbol} is ${fmt(price)}, sitting ${aboveEq ? "above" : "below"} the equilibrium of the most recent swing (${fmt(lv.equilibrium)}) — in the ${zone} half of the ${fmt(lv.swingLow)}–${fmt(lv.swingHigh)} range.`,
     `The overall trend is ${trend.trend} on the ${opts.htf} timeframe (${trend.structure}; EMA20 ${fmt(trend.ema20)} vs EMA50 ${fmt(trend.ema50)}).`,
     bulls.length && bears.length
       ? `Indicators are mixed on the ${opts.ltf}: ${bulls.join(", ")} lean bullish while ${bears.join(", ")} lean bearish. ${inds.ADX.detail}.`
@@ -120,7 +142,11 @@ function buildSections(opts: {
   const cl = lv.clusters[0];
 
   const levels: string[] = [
-    `Most recent swing high ${fmt(lv.swingHigh)}, swing low ${fmt(lv.swingLow)} — the key liquidity zones where sweeps/manipulations are likely.`,
+    belowSwing
+      ? `Prior swing high ${fmt(lv.swingHigh)}, swing low ${fmt(lv.swingLow)} — price has broken BELOW this range, so the old swing low ${fmt(lv.swingLow)} now acts as distant overhead resistance; the crash extremes below are the fresh liquidity, not these.`
+      : aboveSwing
+        ? `Prior swing high ${fmt(lv.swingHigh)}, swing low ${fmt(lv.swingLow)} — price has broken ABOVE this range, so the old swing high ${fmt(lv.swingHigh)} now acts as first support reference; fresh highs above are the active liquidity.`
+        : `Most recent swing high ${fmt(lv.swingHigh)}, swing low ${fmt(lv.swingLow)} — the key liquidity zones where sweeps/manipulations are likely.`,
     `Closest resistance above: ${lv.resistance.map(fmt).join(", ") || "—"}`,
     `Closest support below: ${lv.support.map(fmt).join(", ") || "—"}`,
   ];
@@ -140,18 +166,27 @@ function buildSections(opts: {
   const shortTargets = lv.support.slice(0, 3);
   const longTargets = lv.resistance.slice(0, 3);
 
+  // Sweep anchors must be on the SWEEPABLE side of price: a long waits for a
+  // flush BELOW price, a short-side sweep runs ABOVE price. When the swing
+  // extreme is on the wrong side (price broke out of the swing), fall back to
+  // the deep end of the ladder, which is always side-correct by construction.
+  const sweepLowRef =
+    lv.swingLow < price ? lv.swingLow : (lv.support[2] ?? lv.support[lv.support.length - 1] ?? longZoneLo);
+  const sweepHighRef =
+    lv.swingHigh > price ? lv.swingHigh : (lv.resistance[2] ?? lv.resistance[lv.resistance.length - 1] ?? shortZoneHi);
+
   const ideas: string[] = [];
   if (bias === "bearish") {
     ideas.push(
-      `With the ${opts.htf} trend bearish and price in the ${zone} zone, the primary setup is a short on rejection of the ${fmt(shortZoneLo)}–${fmt(shortZoneHi)} supply area.`,
+      `With the ${opts.htf} trend bearish and price ${zonePhrase}, the primary setup is a short on rejection of the ${fmt(shortZoneLo)}–${fmt(shortZoneHi)} supply area.`,
       `First targets for shorts: ${shortTargets.map(fmt).join(" → ")}.`,
-      `For a long, wait for a sweep of ${fmt(lv.swingLow)} (or the ${fmt(longZoneLo)}–${fmt(longZoneHi)} demand) with strong bullish reversal confirmation, then target ${longTargets.map(fmt).join(" → ")}.`,
+      `For a long, wait for a sweep of ${fmt(sweepLowRef)} (or the ${fmt(longZoneLo)}–${fmt(longZoneHi)} demand) with strong bullish reversal confirmation, then target ${longTargets.map(fmt).join(" → ")}.`,
     );
   } else if (bias === "bullish") {
     ideas.push(
-      `With the ${opts.htf} trend bullish, the primary setup is a long on a dip into the ${fmt(longZoneLo)}–${fmt(longZoneHi)} demand area holding as support.`,
+      `With the ${opts.htf} trend bullish and price ${zonePhrase}, the primary setup is a long on a dip into the ${fmt(longZoneLo)}–${fmt(longZoneHi)} demand area holding as support.`,
       `First targets for longs: ${longTargets.map(fmt).join(" → ")}.`,
-      `For a short, wait for a sweep of ${fmt(lv.swingHigh)} (or a hard rejection of ${fmt(shortZoneLo)}–${fmt(shortZoneHi)}) with bearish confirmation, then target ${shortTargets.map(fmt).join(" → ")}.`,
+      `For a short, wait for a sweep of ${fmt(sweepHighRef)} (or a hard rejection of ${fmt(shortZoneLo)}–${fmt(shortZoneHi)}) with bearish confirmation, then target ${shortTargets.map(fmt).join(" → ")}.`,
     );
   } else {
     ideas.push(
@@ -159,30 +194,39 @@ function buildSections(opts: {
       `Short targets: ${shortTargets.map(fmt).join(" → ")} · Long targets: ${longTargets.map(fmt).join(" → ")}.`,
     );
   }
-  ideas.push(`Stops: just above the swing high (${fmt(lv.swingHigh)}) for shorts, just below the swing low (${fmt(lv.swingLow)}) for longs.`);
+  // Stops anchor to NEARBY structure. The swing extremes are only cited when
+  // within ~10% of price — a post-crash swing high 47% away is not a stop.
+  ideas.push(
+    `Stops: just above ${swingHighNear ? `the swing high (${fmt(lv.swingHigh)})` : `the ${fmt(shortZoneHi)} supply`} for shorts, just below ${swingLowNear ? `the swing low (${fmt(lv.swingLow)})` : `the ${fmt(longZoneLo)} demand`} for longs.`,
+  );
 
   const shortScenario: string[] = [
     `If price rallies into ${fmt(shortZoneLo)}–${fmt(shortZoneHi)}, watch for a lower-timeframe rejection (bearish engulfing, pin bar, or a lower-TF breakdown). Enter short after confirmation.`,
     `Take profit at ${fmt(shortTargets[0] ?? lv.equilibrium)} first${shortTargets[1] ? `, then scale at ${fmt(shortTargets[1])}` : ""}${shortTargets[2] ? ` and ${fmt(shortTargets[2])}` : ""}.`,
-    `Stop-loss just above ${fmt(Math.max(shortZoneHi, lv.swingHigh === shortZoneHi ? shortZoneHi : shortZoneHi))} — or above the swing high ${fmt(lv.swingHigh)} for the conservative version.`,
+    `Stop-loss just above ${fmt(shortZoneHi)}${swingHighNear ? ` — or above the swing high ${fmt(lv.swingHigh)} for the conservative version` : ""}.`,
   ];
 
   const longScenario: string[] = [
     `If price drops into ${fmt(longZoneLo)}–${fmt(longZoneHi)}, wait for a strong bullish pin bar, sharp rejection wick, or bullish divergence on lower timeframes.`,
     `Enter long on confirmation, aiming for ${fmt(longTargets[0] ?? lv.equilibrium)}${longTargets[1] ? ` and ${fmt(longTargets[1])}` : ""}.`,
-    `Stop-loss just below ${fmt(longZoneLo)}, or below the swing low ${fmt(lv.swingLow)} if positioning for a deeper liquidity grab.`,
+    `Stop-loss just below ${fmt(longZoneLo)}${swingLowNear ? `, or below the swing low ${fmt(lv.swingLow)} if positioning for a deeper liquidity grab` : ""}.`,
   ];
+
+  // Flip targets follow the same near-swing rule: cite the swing extreme when
+  // it's plausible, else the far end of the visible ladder.
+  const bullFlipTarget = swingHighNear || (!aboveSwing && !belowSwing) ? lv.swingHigh : (lv.resistance[lv.resistance.length - 1] ?? shortZoneHi);
+  const bearFlipTarget = swingLowNear || (!aboveSwing && !belowSwing) ? lv.swingLow : (lv.support[lv.support.length - 1] ?? longZoneLo);
 
   const expectation: string[] = [];
   if (bias === "bearish") {
     expectation.push(
       `If price can't reclaim ${fmt(shortZoneLo)}–${fmt(shortZoneHi)} and confirms rejection, expect a move down toward ${shortTargets.map(fmt).join(", then ")}.`,
-      `A clean break and hold above ${fmt(lv.resistance[1] ?? shortZoneHi)} flips the bias bullish, targeting ${fmt(lv.swingHigh)}.`,
+      `A clean break and hold above ${fmt(lv.resistance[1] ?? shortZoneHi)} flips the bias bullish, targeting ${fmt(bullFlipTarget)}.`,
     );
   } else if (bias === "bullish") {
     expectation.push(
       `As long as ${fmt(longZoneLo)}–${fmt(longZoneHi)} holds as support, expect continuation toward ${longTargets.map(fmt).join(", then ")}.`,
-      `A decisive loss of ${fmt(lv.support[1] ?? longZoneLo)} flips the bias bearish, opening ${fmt(lv.swingLow)}.`,
+      `A decisive loss of ${fmt(lv.support[1] ?? longZoneLo)} flips the bias bearish, opening ${fmt(bearFlipTarget)}.`,
     );
   } else {
     expectation.push(

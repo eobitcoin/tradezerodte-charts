@@ -70,8 +70,19 @@ export function planLevels(r: BotwickTickerReport) {
   const bull = r.bias === "bullish";
   const supply = lv.imbalances.find((z) => z.type === "supply");
   const demand = lv.imbalances.find((z) => z.type === "demand");
-  const bullTrigger = bull ? lv.resistance[0] : (supply?.high ?? lv.resistance[1] ?? lv.swingHigh);
-  const bearTrigger = bull ? (demand?.low ?? lv.support[1] ?? lv.swingLow) : lv.support[0];
+  let bullTrigger = bull ? lv.resistance[0] : (supply?.high ?? lv.resistance[1] ?? lv.swingHigh);
+  let bearTrigger = bull ? (demand?.low ?? lv.support[1] ?? lv.swingLow) : lv.support[0];
+  // Side-sanity guardrail: a bull trigger must sit ABOVE price and a bear
+  // trigger BELOW it. The swing fallbacks can violate this after a violent
+  // gap (price outside the last confirmed swing — e.g. an earnings crash),
+  // so repair from the side-correct ladders, then a ±3% last resort.
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  if (!(Number.isFinite(bullTrigger) && bullTrigger > r.price)) {
+    bullTrigger = lv.resistance.find((x) => x > r.price) ?? r2(r.price * 1.03);
+  }
+  if (!(Number.isFinite(bearTrigger) && bearTrigger < r.price)) {
+    bearTrigger = [...lv.support].find((x) => x < r.price) ?? r2(r.price * 0.97);
+  }
   const ladder = bull ? lv.resistance : lv.support;
   const targets = ladder.slice(1, 4).length >= 2 ? ladder.slice(1, 4) : ladder.slice(0, 3);
   return { bull, bullTrigger, bearTrigger, targets, supply, demand };
@@ -98,12 +109,21 @@ export function formatTweet(r: BotwickTickerReport): string {
   const trigBear = `🟥 Bear trigger: < ${fmt(bearTrigger)} (daily close)`;
   const triggers = bull ? [trigBull, trigBear] : [trigBear, trigBull];
   const tgt = `🎯 ${targets.map(fmt).join(" → ")}`;
-  const eq = `EQ ${fmt(lv.equilibrium)} = ${r.price >= lv.equilibrium ? "premium" : "discount"} pivot`;
+  // EQ is only meaningful while price trades INSIDE the swing. Outside it
+  // (post-crash/breakout), state the regime instead of a bogus pivot.
+  const eq =
+    r.price < lv.swingLow
+      ? `⚠️ Trading below the prior ${fmt(lv.swingLow)}–${fmt(lv.swingHigh)} swing (breakdown)`
+      : r.price > lv.swingHigh
+        ? `🚀 Trading above the prior ${fmt(lv.swingLow)}–${fmt(lv.swingHigh)} swing (breakout)`
+        : `EQ ${fmt(lv.equilibrium)} = ${r.price >= lv.equilibrium ? "premium" : "discount"} pivot`;
   const footer = `Link in bio · Not financial advice`;
 
+  // Degradation order: the Timeframe filler drops before the EQ/regime line —
+  // on a post-crash name the regime warning is the most informative line.
   const variants = [
     [header, tf, keyLevels, ...triggers, tgt, zone, eq, footer],
-    [header, tf, keyLevels, ...triggers, tgt, zone, footer],
+    [header, keyLevels, ...triggers, tgt, zone, eq, footer],
     [header, keyLevels, ...triggers, tgt, zone, footer],
     [header, ...triggers, tgt, footer],
   ];

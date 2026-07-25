@@ -101,42 +101,51 @@ export default function ResearchSidebar({
   );
 
   return (
-    // order-first pulls the rail ABOVE the article on mobile's single column
-    // (so switching tickers doesn't require scrolling past the whole writeup);
-    // lg:order-none restores its natural right-column placement on desktop.
+    // order-first pulls the switcher ABOVE the article on mobile's single
+    // column (so changing tickers doesn't require scrolling past the whole
+    // writeup); lg:order-none restores natural right-column placement on
+    // desktop, where the full rail is used instead.
     <aside className="order-first lg:order-none lg:sticky lg:top-6 lg:self-start">
-      {/* Mobile: a compact, collapsed-by-default "jump to ticker" disclosure.
-          Takes one row when closed; expands to a scrollable panel. Hidden on
-          desktop, where the full rail below is always visible. */}
-      <details className="group lg:hidden rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] overflow-hidden">
-        <summary className="flex items-center justify-between gap-2 px-3.5 py-3 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
-          <span className="flex items-baseline gap-2 min-w-0">
-            <span className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
-              Browse research
-            </span>
-            {currentTicker && (
-              <span className="font-mono text-sm font-semibold text-black/80 dark:text-white/80 truncate">
-                {currentTicker}
-              </span>
+      {/* Mobile: an always-visible, horizontally scrollable strip of ticker
+          chips — no tap-to-expand. Sticky under the header so you can jump
+          to any ticker at any scroll position. Hidden on desktop. */}
+      {!empty && (
+        <div className="lg:hidden -mx-4 sm:mx-0 sticky top-0 z-20 bg-white/95 dark:bg-black/95 backdrop-blur border-b border-black/10 dark:border-white/10">
+          <div className="px-4 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+            Browse research — tap a ticker
+          </div>
+          <div className="flex gap-2 overflow-x-auto px-4 pb-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {orderedDays.map((day) =>
+              groups.get(day)!.map((item) => {
+                const active =
+                  currentScanDay === item.scanDay && currentTicker === item.ticker;
+                const chip =
+                  "shrink-0 flex flex-col items-start rounded-lg border px-3 py-1.5 leading-tight " +
+                  (active
+                    ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    : "border-black/15 dark:border-white/20 bg-black/[0.03] dark:bg-white/[0.06] text-black/80 dark:text-white/80");
+                return active ? (
+                  <div key={`m-${item.scanDay}-${item.ticker}`} className={chip} aria-current="true">
+                    <span className="font-mono text-sm font-bold">{item.ticker}</span>
+                    <span className="text-[10px] opacity-70">{fmtDate(item.scanDay)}</span>
+                  </div>
+                ) : (
+                  <Link
+                    key={`m-${item.scanDay}-${item.ticker}`}
+                    href={buildHref(item)}
+                    className={chip}
+                  >
+                    <span className="font-mono text-sm font-bold">{item.ticker}</span>
+                    <span className="text-[10px] opacity-70">{fmtDate(item.scanDay)}</span>
+                  </Link>
+                );
+              }),
             )}
-          </span>
-          <svg
-            className="shrink-0 w-4 h-4 text-black/40 dark:text-white/40 transition-transform group-open:rotate-180"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.75"
-            aria-hidden="true"
-          >
-            <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </summary>
-        <div className="px-3 pb-3 pt-1 max-h-[65vh] overflow-y-auto border-t border-black/10 dark:border-white/10">
-          {list}
+          </div>
         </div>
-      </details>
+      )}
 
-      {/* Desktop: the sticky rail, exactly as before. */}
+      {/* Desktop: the sticky vertical rail, exactly as before. */}
       <div className="hidden lg:block space-y-4">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50 px-1">
           Research

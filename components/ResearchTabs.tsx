@@ -24,7 +24,7 @@ const TABS: Array<{ id: ResearchTab; label: string; href: string }> = [
 
 export default function ResearchTabs({ active }: { active: ResearchTab }) {
   return (
-    <nav className="border-b border-black/10 dark:border-white/10 flex gap-2 flex-wrap">
+    <nav className="border-b border-black/10 dark:border-white/10 flex gap-2 flex-nowrap overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {TABS.map((t) => {
         const isActive = t.id === active;
         return (
@@ -32,7 +32,7 @@ export default function ResearchTabs({ active }: { active: ResearchTab }) {
             key={t.id}
             href={t.href}
             className={[
-              "px-4 py-2 -mb-px border-b-2 text-sm font-medium transition-colors",
+              "shrink-0 whitespace-nowrap px-4 py-2 -mb-px border-b-2 text-sm font-medium transition-colors",
               isActive
                 ? "border-emerald-500 text-emerald-700 dark:text-emerald-300"
                 : "border-transparent text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white hover:border-black/20 dark:hover:border-white/20",

@@ -26,7 +26,7 @@ const TABS: Array<{ id: StocksNavTab; label: string; href: string }> = [
 
 export default function StocksNavTabs({ active }: { active: StocksNavTab }) {
   return (
-    <nav className="border-b border-black/10 dark:border-white/10 flex gap-2 flex-wrap">
+    <nav className="border-b border-black/10 dark:border-white/10 flex gap-2 flex-nowrap overflow-x-auto lg:flex-wrap lg:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {TABS.map((t) => {
         const isActive = t.id === active;
         return (
@@ -34,7 +34,7 @@ export default function StocksNavTabs({ active }: { active: StocksNavTab }) {
             key={t.id}
             href={t.href}
             className={[
-              "px-4 py-2 -mb-px border-b-2 text-sm font-semibold uppercase tracking-wide transition-colors",
+              "shrink-0 whitespace-nowrap px-4 py-2 -mb-px border-b-2 text-sm font-semibold uppercase tracking-wide transition-colors",
               isActive
                 ? "border-amber-500 text-amber-700 dark:text-amber-300"
                 : "border-transparent text-black/60 dark:text-white/60 hover:text-black dark:hover:text-white hover:border-black/20 dark:hover:border-white/20",

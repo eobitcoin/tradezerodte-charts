@@ -1,6 +1,15 @@
 @import "tailwindcss";
 @import "highlight.js/styles/github-dark.css";
 
+/* Drive Tailwind's `dark:` variant off the `.dark` class on <html> (see
+   layout.tsx) instead of Tailwind v4's default `@media (prefers-color-scheme:
+   dark)`. Without this, `dark:` utilities silently switch OFF for anyone whose
+   OS/browser is in LIGHT mode — even though the body is force-dark — leaving
+   nav text as near-invisible `text-black/…` on the near-black background. The
+   site is dark-first and always renders `<html class="dark">`, so this makes
+   all 1300+ `dark:` utilities active on every device regardless of OS theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* OliviaTrades Research is dark-first. We force dark regardless of OS
      preference so dashboards (with white-on-near-black card styling) never

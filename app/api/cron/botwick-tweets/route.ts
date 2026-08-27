@@ -28,6 +28,13 @@ export async function POST(req: Request) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.reason }, { status: auth.status });
   }
+  // Kill switch: when the X app is unavailable (e.g. suspended), set
+  // BOTWICK_TWEETS_PAUSED=1 on the web service. The cron still fires but this
+  // returns a green no-op WITHOUT touching the X API — no failed posts, no
+  // red cron runs, no calls to the suspended app. Unset the var to resume.
+  if (process.env.BOTWICK_TWEETS_PAUSED === "1") {
+    return NextResponse.json({ ok: true, paused: true, note: "BotWick X posting paused (BOTWICK_TWEETS_PAUSED=1)" });
+  }
   const dry = new URL(req.url).searchParams.get("dry") === "1";
 
   const today = nyTradingDay();

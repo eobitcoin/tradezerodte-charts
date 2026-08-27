@@ -30,6 +30,11 @@ export async function POST(req: Request) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.reason }, { status: auth.status });
   }
+  // Kill switch — shares BOTWICK_TWEETS_PAUSED with the tweets cron. When the
+  // X app is unavailable, this returns a green no-op without hitting X.
+  if (process.env.BOTWICK_TWEETS_PAUSED === "1") {
+    return NextResponse.json({ ok: true, paused: true, note: "BotWick X posting paused (BOTWICK_TWEETS_PAUSED=1)" });
+  }
   const dry = new URL(req.url).searchParams.get("dry") === "1";
 
   const today = nyTradingDay();

@@ -109,13 +109,21 @@ export async function POST(req: Request) {
       .where(eq(botwickScans.scanDay, today));
   }
 
-  return NextResponse.json({
-    ok: failed.length === 0,
-    scanDay: today,
-    posted,
-    skippedAlreadyPosted: composed.filter((t) => postedSymbols.has(t.symbol)).map((t) => t.symbol),
-    failed,
-  });
+  // When there WERE picks to post and every one failed (e.g. X API 401 after a
+  // credential rotation), return a non-2xx so botwick-tweets-cron shows RED in
+  // Railway. Previously this returned 200 with ok:false, so three days of 401s
+  // looked green and went unnoticed. A partial success (some posted) stays 200.
+  const allFailed = posted.length === 0 && failed.length > 0;
+  return NextResponse.json(
+    {
+      ok: failed.length === 0,
+      scanDay: today,
+      posted,
+      skippedAlreadyPosted: composed.filter((t) => postedSymbols.has(t.symbol)).map((t) => t.symbol),
+      failed,
+    },
+    allFailed ? { status: 502 } : undefined,
+  );
 }
 
 export const GET = POST;

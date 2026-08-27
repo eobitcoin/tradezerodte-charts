@@ -35,13 +35,20 @@ export async function POST(req: Request) {
   const today = nyTradingDay();
   const [row] = await db.select().from(botwickScans).where(eq(botwickScans.scanDay, today)).limit(1);
   if (!row) {
-    return NextResponse.json({ error: `no BotWick scan for ${today}` }, { status: 409 });
+    // No scan row today (market holiday, or analysis hasn't run yet) → nothing
+    // to grade. This is a legitimate no-op, NOT a failure: return 200 so the
+    // cron stays green rather than crashing on a day with nothing to do.
+    return NextResponse.json({ ok: true, noop: true, scanDay: today, reason: "no BotWick scan row" });
   }
   const meta = (row.meta ?? {}) as Record<string, unknown>;
   const tweets =
     (meta.tweets as Array<{ symbol: string; tweetId: string }> | undefined) ?? [];
   if (tweets.length === 0) {
-    return NextResponse.json({ error: `no tweets ledger for ${today} — nothing to update` }, { status: 409 });
+    // No tweets were posted this morning (neutral-bias day with no picks, or —
+    // the real alarm — the tweets cron failed upstream). Either way updates has
+    // nothing to reply to, which is a no-op here, not an updates failure. Stay
+    // green: the failure, if any, surfaces RED on botwick-tweets-cron instead.
+    return NextResponse.json({ ok: true, noop: true, scanDay: today, reason: "no tweets ledger to update" });
   }
   const priorUpdates =
     (meta.updates as Array<{ symbol: string; replyId: string }> | undefined) ?? [];
@@ -104,7 +111,14 @@ export async function POST(req: Request) {
       .where(eq(botwickScans.scanDay, today));
   }
 
-  return NextResponse.json({ ok: failed.length === 0, scanDay: today, posted, skipped, failed });
+  // If we had replies to post and EVERY one failed (e.g. X 401), surface it as
+  // a non-2xx so the cron goes RED — a green "ok:false" is how the tweets 401s
+  // went unnoticed for days.
+  const allFailed = posted.length === 0 && failed.length > 0;
+  return NextResponse.json(
+    { ok: failed.length === 0, scanDay: today, posted, skipped, failed },
+    allFailed ? { status: 502 } : undefined,
+  );
 }
 
 export const GET = POST;

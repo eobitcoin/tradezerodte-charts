@@ -9,14 +9,14 @@ const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 export const metadata: Metadata = {
   title: "0DTE Market Research — Invite-Only Private Research",
   description:
-    "Trader-grade daily 0DTE options research, Max Pain & gamma analytics, Polymarket whale tracking, equity radar, crypto coverage, and a regime-aware economic calendar. Apply for an invitation.",
+    "Trader-grade daily 0DTE options research, Max Pain & gamma analytics, equity radar, crypto coverage, and a regime-aware economic calendar. Apply for an invitation.",
   alternates: { canonical: `${APP_URL}/welcome` },
   openGraph: {
     type: "website",
     url: `${APP_URL}/welcome`,
     title: "0DTE Market Research — Invite-Only Private Research",
     description:
-      "Trader-grade daily 0DTE research, Max Pain & GEX analytics, Polymarket whale tracking, equity radar, crypto coverage. Apply for an invitation.",
+      "Trader-grade daily 0DTE research, Max Pain & GEX analytics, equity radar, crypto coverage. Apply for an invitation.",
   },
 };
 
@@ -26,7 +26,7 @@ const ORG_LD = {
   name: "0DTE Market Research",
   url: APP_URL,
   description:
-    "Invite-only private research for 0DTE options traders: daily trade ideas, Max Pain & gamma analytics, per-ticker research reports, equity radar, Polymarket whale tracking, crypto coverage, regime-aware economic calendar.",
+    "Invite-only private research for 0DTE options traders: daily trade ideas, Max Pain & gamma analytics, per-ticker research reports, equity radar, crypto coverage, regime-aware economic calendar.",
   sameAs: [],
 };
 
@@ -96,8 +96,8 @@ export default function WelcomePage() {
               <span className="italic text-white/80">private.</span>
             </h1>
             <p className="text-lg lg:text-xl text-white/65 leading-relaxed max-w-2xl font-sans">
-              Trader-grade Max Pain &amp; gamma-exposure analytics, Polymarket
-              whale tracking, regime-aware economic calendar, multi-timeframe
+              Trader-grade Max Pain &amp; gamma-exposure analytics, regime-aware
+              economic calendar, multi-timeframe
               equity radar, full crypto coverage — and a daily 0DTE options
               brief that lands before the open.
             </p>
@@ -201,22 +201,8 @@ export default function WelcomePage() {
               </div>
             </div>
 
-            {/* 5. Polymarket Whale Tracking */}
-            <div className="space-y-4">
-              <FeatureImage src="/assets/landing/polymarket.png" alt="Polymarket Live Whales feed showing $500+ trades with trader pseudonyms, price, size, and USD value" />
-              <div className="space-y-2">
-                <h3 className="text-xl font-bold tracking-tight">Polymarket Whale Tracking</h3>
-                <p className="text-sm text-white/65 leading-relaxed font-sans">
-                  Live firehose of $500+ Polymarket trades, a composite-score
-                  leaderboard ranking every wallet by realized PnL and ROI,
-                  and convergence signals when multiple high-scoring wallets
-                  enter the same position.
-                </p>
-              </div>
-            </div>
-
-            {/* 6. Crypto Coverage */}
-            <div className="space-y-4">
+            {/* 5. Crypto Coverage */}
+            <div className="space-y-4 lg:col-span-2 lg:w-1/2 lg:mx-auto">
               <FeatureImage src="/assets/landing/cryptoResearch.png" alt="Crypto Research page with daily trade plans for BTC, ETH, SOL, BNB" />
               <div className="space-y-2">
                 <h3 className="text-xl font-bold tracking-tight">Crypto Coverage</h3>
@@ -483,12 +469,11 @@ export default function WelcomePage() {
               </span>
               <span className="h-px flex-1 bg-gradient-to-r from-red-500/60 via-red-500/20 to-transparent" />
             </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
                 { href: "/learn/0dte-options", title: "0DTE Options", desc: "Same-day expiration: theta, gamma, and why size matters." },
                 { href: "/learn/max-pain", title: "Max Pain", desc: "Where the open-interest pin lives, and why it pulls price." },
                 { href: "/learn/gamma-exposure", title: "Gamma Exposure", desc: "Dealer hedging, the zero-gamma flip, and POS vs NEG regimes." },
-                { href: "/learn/polymarket-whales", title: "Polymarket Whales", desc: "Composite scoring, convergence signals, and what they mean." },
               ].map((it) => (
                 <Link
                   key={it.href}

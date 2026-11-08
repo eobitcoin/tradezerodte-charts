@@ -60,7 +60,6 @@ export default function Page() {
         { slug: "earnings-whiplash", title: "Earnings Whiplash — Implied vs Realized Vol" },
         { slug: "insider-buys", title: "Reading Insider Buys (SEC Form 4)" },
         { slug: "sector-rotation", title: "Sector Rotation — Leadership Flips" },
-        { slug: "polymarket-whales", title: "Polymarket Whale Tracking" },
       ]}
     >
       <h2>The acceleration filter, concretely</h2>

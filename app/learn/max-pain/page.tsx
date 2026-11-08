@@ -54,7 +54,6 @@ export default function Page() {
       related={[
         { slug: "gamma-exposure", title: "Gamma Exposure (GEX) Explained" },
         { slug: "0dte-options", title: "What is 0DTE Options Trading?" },
-        { slug: "polymarket-whales", title: "Polymarket Whale Tracking" },
       ]}
     >
       <h2>The intuition behind Max Pain</h2>

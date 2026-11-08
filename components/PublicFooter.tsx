@@ -66,9 +66,6 @@ export default function PublicFooter() {
           <Link href="/learn/weekly-research" className="block text-white/70 hover:text-white">
             Weekly Research
           </Link>
-          <Link href="/learn/polymarket-whales" className="block text-white/70 hover:text-white">
-            Polymarket Whales
-          </Link>
           <Link href="/learn/trade-cards" className="block text-white/70 hover:text-white">
             Trade Cards
           </Link>

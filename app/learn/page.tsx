@@ -8,7 +8,7 @@ const APP_URL = process.env.APP_URL || "https://www.oliviatrades.com";
 export const metadata: Metadata = {
   title: "Learn — 0DTE Options, Max Pain, Gamma, Institutional Flow, Insider Buys",
   description:
-    "Long-form, plain-English explainers for every concept used in 0DTE Market Research: 0DTE mechanics, Max Pain, gamma exposure, Polymarket whales, institutional flow, earnings whiplash, sector rotation, insider buys, and the weekly research stack.",
+    "Long-form, plain-English explainers for every concept used in 0DTE Market Research: 0DTE mechanics, Max Pain, gamma exposure, institutional flow, earnings whiplash, sector rotation, insider buys, and the weekly research stack.",
   alternates: { canonical: `${APP_URL}/learn` },
   openGraph: {
     type: "website",
@@ -43,12 +43,6 @@ const PRIMITIVES: LearnEntry[] = [
     title: "Gamma Exposure (GEX)",
     blurb:
       "Dealer hedging flows, the zero-gamma flip, and why positive- vs negative-gamma regimes produce opposite intraday behaviour.",
-  },
-  {
-    href: "/learn/polymarket-whales",
-    title: "Polymarket Whales",
-    blurb:
-      "Composite whale scoring, convergence signals across large prediction-market bettors, and what cross-market agreement actually predicts.",
   },
 ];
 

@@ -21,15 +21,13 @@ export const metadata: Metadata = {
     template: "%s · OliviaTrades Research",
   },
   description:
-    "Trader-grade daily 0DTE options research, Max Pain & gamma-exposure analytics, Polymarket whale tracking, and a regime-aware economic calendar. Invite-only.",
+    "Trader-grade daily 0DTE options research, Max Pain & gamma-exposure analytics, and a regime-aware economic calendar. Invite-only.",
   keywords: [
     "0DTE options",
     "max pain",
     "gamma exposure",
     "GEX",
     "options research",
-    "polymarket whales",
-    "prediction markets",
     "economic calendar",
     "options trading",
   ],
@@ -41,7 +39,7 @@ export const metadata: Metadata = {
     siteName: "OliviaTrades Research",
     title: "OliviaTrades Research — Invite-Only Private Research",
     description:
-      "Trader-grade daily 0DTE options research, Max Pain & gamma analytics, Polymarket whale tracking, and a regime-aware economic calendar. Invite-only.",
+      "Trader-grade daily 0DTE options research, Max Pain & gamma analytics, and a regime-aware economic calendar. Invite-only.",
     url: APP_URL,
     locale: "en_US",
   },
@@ -49,7 +47,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "OliviaTrades Research",
     description:
-      "Trader-grade daily 0DTE research, Max Pain & GEX analytics, Polymarket whale tracking. Invite-only.",
+      "Trader-grade daily 0DTE research, Max Pain & GEX analytics. Invite-only.",
   },
   robots: {
     index: true,

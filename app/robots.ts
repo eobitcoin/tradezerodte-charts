@@ -35,8 +35,6 @@ export default function robots(): MetadataRoute.Robots {
           "/calendar/*",
           "/maxpain",
           "/maxpain/*",
-          "/polymarket",
-          "/polymarket/*",
           "/insider",
           "/insider/*",
           "/research",

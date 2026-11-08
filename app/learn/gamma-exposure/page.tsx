@@ -54,7 +54,6 @@ export default function Page() {
       related={[
         { slug: "max-pain", title: "How Max Pain Works" },
         { slug: "0dte-options", title: "What is 0DTE Options Trading?" },
-        { slug: "polymarket-whales", title: "Polymarket Whale Tracking" },
       ]}
     >
       <h2>The intuition: gamma is the second derivative of dealer P&amp;L</h2>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export type CryptoTab = "radar" | "research" | "weekly" | "maxpain" | "polymarket";
+export type CryptoTab = "radar" | "research" | "weekly" | "maxpain";
 
 export default function CryptoTabs({ active }: { active: CryptoTab }) {
   const cls = (tab: CryptoTab) =>
@@ -23,9 +23,6 @@ export default function CryptoTabs({ active }: { active: CryptoTab }) {
       </Link>
       <Link href="/crypto/maxpain" className={cls("maxpain")}>
         Max Pain
-      </Link>
-      <Link href="/polymarket" className={cls("polymarket")}>
-        Polymarket
       </Link>
     </nav>
   );

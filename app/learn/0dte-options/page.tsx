@@ -54,7 +54,6 @@ export default function Page() {
       related={[
         { slug: "max-pain", title: "How Max Pain Works" },
         { slug: "gamma-exposure", title: "Gamma Exposure (GEX) Explained" },
-        { slug: "polymarket-whales", title: "Polymarket Whale Tracking" },
       ]}
     >
       <h2>What "zero days to expiration" actually means</h2>

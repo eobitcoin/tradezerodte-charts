@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
 import { requireGexCronBearer } from "@/lib/bearer";
 import { db } from "@/lib/db";
 import { gexSnapshots } from "@/lib/db/schema";
@@ -78,6 +79,26 @@ export async function POST(req: Request) {
     }
   }
 
+  // Rolling retention — keep every snapshot for 14 days, then only the last
+  // snapshot of each NY trading day per ticker. Without this the table grows
+  // ~93 MB/week. Best-effort: a failed prune must not fail the snapshot tick.
+  let pruneError: string | null = null;
+  try {
+    await db.execute(sql`
+      DELETE FROM gex_snapshots g
+      WHERE g.ts < now() - interval '14 days'
+        AND EXISTS (
+          SELECT 1 FROM gex_snapshots later
+          WHERE later.ticker = g.ticker
+            AND later.ts > g.ts
+            AND (later.ts AT TIME ZONE 'America/New_York')::date =
+                (g.ts AT TIME ZONE 'America/New_York')::date
+        )
+    `);
+  } catch (err) {
+    pruneError = err instanceof Error ? err.message : String(err);
+  }
+
   return NextResponse.json({
     ok: true,
     snapshotTs: snapshotTs.toISOString(),
@@ -85,6 +106,7 @@ export async function POST(req: Request) {
     failed: failed.length,
     failedTickers: failed,
     errors,
+    pruneError,
   });
 }
 

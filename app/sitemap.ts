@@ -27,7 +27,6 @@ const LEARN_SLUGS = [
   "0dte-options",
   "max-pain",
   "gamma-exposure",
-  "polymarket-whales",
   // App-features (how-to-read explainers for authenticated tabs)
   "trade-cards",
   "analysis",

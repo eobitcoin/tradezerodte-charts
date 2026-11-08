@@ -59,7 +59,6 @@ export default function Page() {
         { slug: "weekly-research", title: "Weekly Research — How to Read a Setup" },
         { slug: "institutional-flow", title: "13F Institutional Flow" },
         { slug: "earnings-whiplash", title: "Earnings Whiplash" },
-        { slug: "polymarket-whales", title: "Polymarket Whale Tracking" },
         { slug: "0dte-options", title: "What is 0DTE Options Trading?" },
       ]}
     >
